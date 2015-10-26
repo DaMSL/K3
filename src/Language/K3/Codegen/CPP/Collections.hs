@@ -6,15 +6,16 @@
 module Language.K3.Codegen.CPP.Collections where
 
 import Data.Char
-import Data.List (elemIndex, intercalate, partition, sort, isInfixOf)
+import Data.List (elemIndex, find, intercalate, partition, sort, isInfixOf)
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
+import Language.K3.Core.Expression
 import Language.K3.Core.Type
 
 import Language.K3.Codegen.CPP.Types
-import Language.K3.Codegen.CPP.MultiIndex (indexes)
+import Language.K3.Codegen.CPP.CollectionMembers (indexes,polybuffer)
 
 import qualified Language.K3.Codegen.CPP.Representation as R
 
@@ -31,9 +32,10 @@ import qualified Language.K3.Codegen.CPP.Representation as R
 --  - Serialization function, which should proxy the dataspace serialization.
 composite :: Identifier -> [(Identifier, [AnnMemDecl])] -> [K3 Type] -> CPPGenM [R.Definition]
 composite name ans content_ts = do
-    let overrideGeneratedName n = if "SortedMapE" `isInfixOf` n then "SortedMapE"
-                                  else if "MapE" `isInfixOf` n then "MapE"
-                                  else n
+    let overrideGeneratedName n = case find (`isInfixOf` n) reservedGeneratedAnnotations of
+                                    Nothing -> n
+                                    Just i -> i
+
     let isReserved (aname, _) = overrideGeneratedName aname `elem` reservedAnnotations
     let (ras, as) = partition isReserved ans
 
@@ -43,10 +45,27 @@ composite name ans content_ts = do
     -- Split data and method declarations, for access specifiers.
     -- let (dataDecls, methDecls) = partition isDataDecl positives
 
+    -- For arrays, extract the array size template parameter.
+    let arraySize mdecls = case mdecls of
+                             Nothing -> []
+                             Just l -> (\f -> foldl f [] l) $ \acc m ->
+                                         case m of
+                                           Lifted _ "array_size" _ (Just (tag -> EConstant (CInt i))) _ ->
+                                             acc ++ [R.Named $ R.Name $ show i]
+                                           _ -> acc
+
+
+    -- MultiIndex member generation.
     -- When dealing with Indexes, we need to specialize the MultiIndex* classes on each index type
     (indexTypes, indexDefns) <- indexes name as content_ts
 
-    let addnSpecializations n = if "MultiIndex" `isInfixOf` n then indexTypes else []
+
+    let selfType = R.Named $ R.Specialized [R.Named $ R.Name "__CONTENT"] $ R.Name name
+
+    let addnSpecializations n = if "Array" `isInfixOf` n then arraySize $ lookup n ans
+                                else if "MultiIndex" `isInfixOf` n then indexTypes
+                                else if "UniquePolyBuffer" `isInfixOf` n then [selfType]
+                                else []
 
     let baseClass (n,_) = R.Qualified (R.Name "K3")
                            (R.Specialized ((R.Named $ R.Name "__CONTENT"): addnSpecializations n)
@@ -54,13 +73,14 @@ composite name ans content_ts = do
 
     let baseClasses = map baseClass ras
 
-    let selfType = R.Named $ R.Specialized [R.Named $ R.Name "__CONTENT"] $ R.Name name
+    -- FlatPolyBuffer member generation.
+    pbufDefns <- polybuffer name ras
 
     let defaultConstructor
             = R.FunctionDefn (R.Name name) [] Nothing [R.Call (R.Variable b) [] | b <- baseClasses] False []
 
     let superConstructor = R.FunctionDefn (R.Name name)
-                           [ ("__other" ++ show i, R.Const $ R.Reference $ R.Named b)
+                           [ (Just $ "__other" ++ show i, R.Reference $ R.Const $ R.Named b)
                            | (b,i) <- zip baseClasses ([1..] :: [Integer])
                            ] Nothing
                            [ R.Call (R.Variable b)
@@ -70,7 +90,7 @@ composite name ans content_ts = do
 
     let superMoveConstructor
             = R.FunctionDefn (R.Name name)
-              [ ("__other" ++ show i, R.RValueReference $ R.Named b)
+              [ (Just $ "__other" ++ show i, R.RValueReference $ R.Named b)
               | (b,i) <- zip baseClasses ([1..] :: [Integer])
               ] Nothing
               [ R.Call
@@ -102,12 +122,14 @@ composite name ans content_ts = do
     let serializeFn asYas =
           R.TemplateDefn [("archive", Nothing)]
             (R.FunctionDefn (R.Name "serialize")
-              ([("_archive", R.Reference (R.Parameter "archive"))]
-               ++ (if asYas then [] else [ ("_version", R.Const $ R.Named (R.Name "unsigned int")) ]))
+              ([(Just "_archive", R.Reference (R.Parameter "archive"))]
+               ++ (if asYas then [] else [ (Just "_version", R.Const $ R.Named (R.Name "unsigned int")) ]))
              (Just $ R.Named $ R.Name "void")
              [] False $ serializeStatements asYas)
 
-    let methods = [defaultConstructor, superConstructor, superMoveConstructor, serializeFn False, serializeFn True] ++ indexDefns
+    let methods = [defaultConstructor, superConstructor, superMoveConstructor]
+                    ++ [serializeFn False, serializeFn True]
+                    ++ indexDefns ++ pbufDefns
 
     let collectionClassDefn = R.TemplateDefn [("__CONTENT", Nothing)]
              (R.ClassDefn (R.Name name) [] (map R.Named baseClasses) methods [] [])
@@ -133,7 +155,7 @@ composite name ans content_ts = do
                          [ R.TemplateDefn [("__CONTENT", Nothing)] $
                             R.ClassDefn (R.Name "convert") [selfType] []
                              [ R.FunctionDefn (R.Name "encode")
-                                 [("c", R.Const $ R.Reference $ selfType)]
+                                 [(Just "c", R.Reference $ R.Const $ selfType)]
                                  (Just $ R.Static $ R.Named $ R.Name "Node") [] False
                                  [R.Return $ R.Call
                                        (R.Variable $ R.Qualified
@@ -141,8 +163,8 @@ composite name ans content_ts = do
                                              (R.Name "encode"))
                                        [R.Variable $ R.Name "c"]]
                              , R.FunctionDefn (R.Name "decode")
-                                 [ ("node", R.Const $ R.Reference $ R.Named $ R.Name "Node")
-                                 , ("c", R.Reference selfType)
+                                 [ (Just "node", R.Reference $ R.Const $ R.Named $ R.Name "Node")
+                                 , (Just "c", R.Reference selfType)
                                  ] (Just $ R.Static $ R.Primitive $ R.PBool) [] False
                                  [R.Return $ R.Call
                                        (R.Variable $ R.Qualified
@@ -158,8 +180,8 @@ composite name ans content_ts = do
                             R.ClassDefn (R.Name "convert") [selfType] []
                              [ R.TemplateDefn [("Allocator", Nothing)] $
                                R.FunctionDefn (R.Name "encode")
-                                 [("c", R.Const $ R.Reference $ selfType)
-                                 ,("al", R.Reference $ R.Named $ R.Name "Allocator")
+                                 [(Just "c", R.Reference $ R.Const $ selfType)
+                                 ,(Just "al", R.Reference $ R.Named $ R.Name "Allocator")
                                  ]
                                  (Just $ R.Static $ R.Named $ R.Name "rapidjson::Value") [] False
                                  [R.Return $ R.Call
@@ -191,10 +213,10 @@ record (sort -> ids) = do
 
     let forwardTemplateVars = map ('_':) templateVars
 
-    let init1Const fv tv i = R.FunctionDefn (R.Name recordName) [(fv, R.Const $ R.Reference $ R.Named $ R.Name tv)]
+    let init1Const fv tv i = R.FunctionDefn (R.Name recordName) [(Just fv, R.Reference $ R.Const $ R.Named $ R.Name tv)]
                              Nothing [R.Call (R.Variable $ R.Name i) [R.Variable $ R.Name fv]] False []
 
-    let init1Move fv tv i = R.FunctionDefn (R.Name recordName) [(fv, R.RValueReference $ R.Named $ R.Name tv)]
+    let init1Move fv tv i = R.FunctionDefn (R.Name recordName) [(Just fv, R.RValueReference $ R.Named $ R.Name tv)]
                             Nothing [R.Call (R.Variable $ R.Name i)
                                           [R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "move"))
                                                 [R.Variable $ R.Name fv]]] False []
@@ -202,7 +224,7 @@ record (sort -> ids) = do
     let initConstructor
             = R.TemplateDefn (zip forwardTemplateVars $ repeat Nothing) $
               R.FunctionDefn (R.Name recordName)
-              [(fv, R.RValueReference $ R.Named $ R.Name tv) | fv <- formalVars | tv <- forwardTemplateVars] Nothing
+              [(Just fv, R.RValueReference $ R.Named $ R.Name tv) | fv <- formalVars | tv <- forwardTemplateVars] Nothing
               [ R.Call (R.Variable $ R.Name i)
                            [R.Call (R.Variable $ R.Qualified (R.Name "std")
                                          (R.Specialized [R.Named $ R.Name t] (R.Name "forward")))
@@ -217,7 +239,7 @@ record (sort -> ids) = do
                              _ -> [initConstructor]
     let equalityOperator
             = R.FunctionDefn (R.Name "operator==")
-              [("__other", R.Const $ R.Reference recordType)] (Just $ R.Primitive R.PBool) []
+              [(Just "__other", R.Reference $ R.Const recordType)] (Just $ R.Primitive R.PBool) []
               True
               [R.Return $ foldr1 (R.Binary "&&")
                     [ R.Binary "==" (R.Variable $ R.Name i) (R.Project (R.Variable $ R.Name "__other") (R.Name i))
@@ -230,7 +252,7 @@ record (sort -> ids) = do
 
     let logicOp op
             = R.FunctionDefn (R.Name $ "operator"++op)
-              [("__other", R.Const $ R.Reference recordType)] (Just $ R.Primitive R.PBool)
+              [(Just "__other", R.Reference $ R.Const recordType)] (Just $ R.Primitive R.PBool)
               [] True
               [R.Return $ R.Binary op tieSelf (tieOther "__other")]
 
@@ -246,11 +268,21 @@ record (sort -> ids) = do
 
     let serializeStatements asYas = map (serializeMember asYas) ids
 
+    let x_alizeMember fun m = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "arg") (R.Name fun)) [R.Variable $ R.Name m]
+    let x_alizeStatements fun = map (x_alizeMember fun) ids
+    let x_alize fun = R.TemplateDefn [("T", Nothing)] $
+                      R.FunctionDefn (R.Name fun)
+                        [ (Just "arg", R.Reference $ (R.Parameter "T")) ]
+                        (Just $ R.Reference recordType)
+                        []
+                        False
+                        (x_alizeStatements fun ++ [R.Return $ R.Dereference $ R.Variable $ R.Name "this"])
+
     let serializeFn asYas =
           R.TemplateDefn [("archive", Nothing)]
             (R.FunctionDefn (R.Name "serialize")
-                  ([ ("_archive", R.Reference (R.Parameter "archive")) ]
-                   ++ if asYas then [] else [ ("_version", R.Const $ R.Named (R.Name "unsigned int")) ])
+                  ([ (Just "_archive", R.Reference (R.Parameter "archive")) ]
+                   ++ if asYas then [] else [ (Just "_version", R.Const $ R.Named (R.Name "unsigned int")) ])
                   (Just $ R.Named $ R.Name "void")
                   [] False $ serializeStatements asYas)
 
@@ -260,7 +292,7 @@ record (sort -> ids) = do
 
     let constructors = (defaultConstructor:initConstructors)
     let comparators = [equalityOperator, logicOp "!=", logicOp "<", logicOp ">", logicOp "<=", logicOp ">="]
-    let members = typedefs ++ constructors ++ comparators ++ [serializeFn False, serializeFn True] ++ fieldDecls
+    let members = typedefs ++ constructors ++ comparators ++ [serializeFn False, serializeFn True] ++ fieldDecls ++ [x_alize "internalize", x_alize "externalize"]
 
     let recordStructDefn
             = R.GuardedDefn ("K3_" ++ recordName) $
@@ -339,7 +371,7 @@ record (sort -> ids) = do
                 [
                   R.FunctionDefn
                     (R.Name "operator()")
-                    [("r", R.Const $ R.Reference recordType)]
+                    [(Just "r", R.Reference $ R.Const recordType)]
                     (Just $ R.Named $ R.Qualified (R.Name "std") (R.Name "size_t"))
                     []
                     True
@@ -350,7 +382,7 @@ record (sort -> ids) = do
               ]
     let hashValueDefn = R.TemplateDefn (zip templateVars (repeat Nothing)) $ R.FunctionDefn
                           (R.Name "hash_value")
-                          [("r", R.Const $ R.Reference recordType)]
+                          [(Just "r", R.Reference $ R.Const recordType)]
                           (Just $ R.Named $ R.Qualified (R.Name "std") (R.Name "size_t"))
                           []
                           False
@@ -360,7 +392,7 @@ record (sort -> ids) = do
                          [ R.TemplateDefn (zip templateVars (repeat Nothing)) $
                             R.ClassDefn (R.Name "convert") [recordType] []
                              [ R.FunctionDefn (R.Name "encode")
-                                 [("r", R.Const $ R.Reference $ recordType)]
+                                 [(Just "r", R.Reference $ R.Const $ recordType)]
                                  (Just $ R.Static $ R.Named $ R.Name "Node") [] False
                                  ([R.Forward $ R.ScalarDecl (R.Name "node") (R.Named $ R.Name "Node") Nothing] ++
                                   [R.Assignment (R.Subscript
@@ -372,8 +404,8 @@ record (sort -> ids) = do
                                   | field <- ids | fieldType <- templateVars
                                   ] ++ [R.Return $ R.Variable $ R.Name "node"])
                              , R.FunctionDefn (R.Name "decode")
-                                 [ ("node", R.Const $ R.Reference $ R.Named $ R.Name "Node")
-                                 , ("r", R.Reference recordType)
+                                 [ (Just "node", R.Reference $ R.Const $ R.Named $ R.Name "Node")
+                                 , (Just "r", R.Reference recordType)
                                  ] (Just $ R.Static $ R.Primitive $ R.PBool) [] False
                                  ([ R.IfThenElse (R.Unary "!" $ R.Call (R.Project
                                                                             (R.Variable $ R.Name "node")
@@ -410,8 +442,8 @@ record (sort -> ids) = do
                            R.ClassDefn (R.Name "convert") [recordType] []
                            [
                            R.TemplateDefn [("Allocator", Nothing)] (R.FunctionDefn (R.Name "encode")
-                           [("r", R.Const $ R.Reference recordType)
-                           ,("al", R.Reference $ R.Named $ R.Name "Allocator")
+                           [(Just "r", R.Reference $ R.Const recordType)
+                           ,(Just "al", R.Reference $ R.Named $ R.Name "Allocator")
                            ]
                            (Just $ R.Static $ R.Named $ R.Name "rapidjson::Value") [] False
                            (
@@ -445,7 +477,12 @@ record (sort -> ids) = do
 
 reservedAnnotations :: [Identifier]
 reservedAnnotations =
-  [ "Collection", "External", "Seq", "Set", "Sorted", "Map", "Vector"
-  , "IntMap", "StrMap", "VMap", "SortedMap", "SortedSet", "MapE", "SortedMapE"
+  [ "Collection", "External", "Seq", "Set", "Sorted", "Map", "Vector", "Array"
+  , "IntSet", "SortedSet"
+  , "IntMap", "StrMap", "VMap", "SortedMap", "MapE", "SortedMapE", "MapCE"
   , "MultiIndexBag", "MultiIndexMap", "MultiIndexVMap", "RealVector"
+  , "BulkFlatCollection", "FlatPolyBuffer", "UniquePolyBuffer"
   ]
+
+reservedGeneratedAnnotations :: [Identifier]
+reservedGeneratedAnnotations = ["Array", "SortedMapE", "MapE", "MapCE", "FlatPolyBuffer", "UniquePolyBuffer"]

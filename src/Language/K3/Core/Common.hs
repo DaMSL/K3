@@ -8,8 +8,10 @@
 -- | Primitive Definitions for Compiler-Wide Terms.
 module Language.K3.Core.Common (
     Identifier,
-    UID(..),
     NoneMutability(..),
+
+    UID(..),
+    gUID,
 
     ParGenSymS(..),
     zerosymS,
@@ -96,6 +98,11 @@ data Span
 -- | Unique identifiers for AST nodes.
 data UID = UID Int deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
+instance Hashable UID
+
+gUID :: UID -> Int
+gUID (UID i) = i
+
 
 {- Symbol generation -}
 data ParGenSymS = ParGenSymS { stride :: Int, offset :: Int, current :: Int }
@@ -163,6 +170,9 @@ data EndpointSpec
 
   | FileMuxseqEP String Bool String
     -- ^ File sequence collection (as expression), text/binary, format
+
+  | PolyFileMuxEP String Bool String String
+    -- ^ File path collection, text/binary, format, order file
 
   | NetworkEP String Bool String
     -- ^ Address, text/binary, format

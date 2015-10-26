@@ -2,6 +2,7 @@
 #define K3_MOSAICBUILTINS
 
 #include <climits>
+#include <cmath>
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/thread.hpp>
 
@@ -26,6 +27,11 @@ class MosaicBuiltins {
     return (a < b ? a : b);
   }
 
+  template <class A>
+  auto abs(A a) {
+    return std::abs(a);
+  }
+
   int date_part(const string_impl& s, int y) {
     if (s == "day" || s == "DAY") {
       return y % 100;
@@ -36,7 +42,7 @@ class MosaicBuiltins {
     if (s == "year" || s == "YEAR") {
       return (y / 10000);
     }
-    throw std::runtime_error("Unrecognized date part key: " + s);
+    throw std::runtime_error("Unrecognized date part key: " + std::string(s));
   }
 
   double real_of_int(int n) { return static_cast<double>(n); }

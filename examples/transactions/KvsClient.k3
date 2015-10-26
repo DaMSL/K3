@@ -1,0 +1,85 @@
+// Benchmark Configuration
+declare server: address
+declare duration: int = 5000
+declare tx_limit: int = 1
+declare write_frac: real = 0.25
+
+// Benchmark State
+declare curr_tid: mut int = 0
+declare tid_map: collection {key: int, value: int} @IntMap
+declare start_time: mut int = 0
+declare curr_tx_count: mut int = 0
+declare finished_tx_count: mut int = 0
+declare latencies: collection {elem: int} @Seq // TODO: keep running stats instead! also, read vs write latency!
+
+// Local Code
+declare stats: int -> () = \elapsed -> (
+  let acc = latencies.fold (\acc -> \e -> {sum: acc.sum + e.elem, count: acc.count + 1}) {sum: 0.0, count: 0}
+  in print ("Elapsed time: " ++ (itos elapsed));
+     print ("Finished Transactions: " ++ (itos finished_tx_count));
+     print ("Throughput (tps): " ++ (rtos (1000.0 * finished_tx_count / elapsed)));
+     print ("Avg Latency (ms): " ++ (rtos (acc.sum / acc.count)))
+)
+
+declare tx_start: () -> int = \_ -> (
+  let tid = curr_tid
+  in curr_tid = curr_tid + 1;
+     tid_map.insert {key: tid, value: now_int()};
+     curr_tx_count = curr_tx_count + 1;
+     tid
+)
+
+declare tx_complete: int -> () = \tid -> (
+  tid_map.lookup_key
+    tid
+    (\_ -> error (print ("Unknown tid: " ++ (itos tid))))
+    (\kv -> latencies.insert {elem: now_int() - kv.value});
+  curr_tx_count = curr_tx_count - 1;
+  finished_tx_count = finished_tx_count + 1;
+  tick()
+)
+
+declare do_get: () -> () = \_ -> (
+  let tid = tx_start()
+  in (kvs_get_request, server) <- {client: me, tid: tid, key: "test"} // TODO random keys
+)
+
+declare do_put: () -> () = \_ -> (
+  let tid = tx_start()
+  in (kvs_put_request, server) <- {client: me, tid: tid, key: "test", value: "test"} // TODO random keys/values
+)
+
+declare do_random: () -> () = \_ -> (
+  if randomFraction() < write_frac
+  then do_put()
+  else do_get()
+)
+
+declare issue_requests: () -> () = \_ -> (
+  let i = tx_limit - curr_tx_count
+  in (range i).iterate (\x -> do_random())
+)
+
+declare tick: () -> () = \_ -> (
+  let elapsed = now_int() - start_time
+  in if elapsed > duration
+     then print "DONE!";
+          stats elapsed;
+          peers.iterate (\p -> (shutdown, p.addr) <- ())
+     else issue_requests()
+)
+
+trigger main: () = \_ -> (
+  print "Starting benchmark.";
+  start_time = now_int();
+  tick()
+)
+
+// Key-Value API
+trigger kvs_get_response: get_response_r = \response -> (
+  tx_complete response.tid
+)
+
+trigger kvs_put_response: put_response_r = \response -> (
+  tx_complete response.tid
+)

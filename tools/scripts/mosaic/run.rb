@@ -174,8 +174,11 @@ end
 # do both creation and compilation remotely (returns uid)
 def run_create_compile_k3_remote(server_url, bin_file, block_on_compile, k3_cpp_name, k3_path, nice_name)
   stage "[3-4] Remote creating && compiling K3 file to binary"
-  res = curl(server_url, "/compile", file: k3_path, post: true, json: true,
-            args:{ "compilestage" => "both", "workload" => $options[:skew].to_s})
+  args = { "compilestage" => "both",
+           "workload" => $options[:skew].to_s}
+  args["compileargs"] = $options[:compileargs] if $options[:compileargs]
+
+  res = curl(server_url, "/compile", file: k3_path, post: true, json: true, args:args)
   uid = res["uid"]
   $options[:uid] = uid
   persist_options()
@@ -231,6 +234,7 @@ def gen_yaml(k3_data_path, role_file, script_path)
   cmd << "--nodes " << $options[:num_nodes].to_s << " " if $options[:num_nodes]
   cmd << "--nmask " << $options[:nmask] << " " if $options[:nmask]
   cmd << "--perhost " << $options[:perhost].to_s << " " if $options[:perhost]
+  cmd << "--csv-data " if $options[:csv_data]
   cmd << "--file " << k3_data_path << " "
 
   cmd << "--multicore" if $options[:run_mode] == :multicore
@@ -334,7 +338,7 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
 
 end
 
-def run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, script_path, full_ktrace)
+def run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, script_path, full_ktrace, perf_profile)
   role_path = File.join($workdir, nice_name + ".yaml")
 
   # we can either have a uid from a previous stage, or send a binary and get a uid now
@@ -354,6 +358,9 @@ def run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, scr
 
   stage "[5] Creating new mesos job"
   curl_args = full_ktrace ? {'jsonlog' => 'yes'} : {'jsonfinal' => 'yes'}
+  if perf_profile
+    curl_args['perfprofile'] = 'yes'
+  end
   res = curl(server_url, "/jobs/#{nice_name}#{uid_s}", json:true, post:true, file:role_path, args:curl_args)
   jobid = res['jobId']
   $options[:jobid] = jobid
@@ -377,7 +384,9 @@ def run_deploy_k3_local(bin_path, k3_data_path, nice_name, script_path)
   args = ""
   args << "--json #{json_dist_path} " unless $options[:logging] == :none
   args << "--json_final_only " if $options[:logging] == :final
-  run("#{bin_path} -p #{role_file} #{args}")
+  cmd_suffix = "#{bin_path} -p #{role_file} #{args}"
+  perf_cmd = "perf record -F 10 -a --call-graph dwarf -- "
+  run($options[:profile] == :perf ? perf_cmd + cmd_suffix : cmd_suffix)
 end
 
 # convert a string to the narrowest value
@@ -665,6 +674,7 @@ def main()
   $options = {}
   $options[:run_mode] = :dist
   $options[:logging] = :final
+  $options[:profile] = :none
 
   uid = nil
 
@@ -701,11 +711,21 @@ def main()
     opts.on("--dry-run",  "Dry run for Mosaic deployment (generates K3 YAML topology)") { $options[:dry_run] = true}
     opts.on("--full-ktrace", "Turn on JSON logging for ktrace") { $options[:logging] = :full }
     opts.on("--no-ktrace", "Turn off JSON logging for ktrace") { $options[:logging] = :none }
+    opts.on("--perf-profile", "Turn on perf profiling") { $options[:profile] = :perf }
     opts.on("--dots", "Get the awesome dots") { $options[:dots] = true }
     opts.on("--gc-epoch [MS]", "Set gc epoch time (ms)") { |i| $options[:gc_epoch] = i }
     opts.on("--msg-delay [MS]", "Set switch message delay (ms)") { |i| $options[:msg_delay] = i }
-    opts.on("--compileargs [STRING]", "Pass arguments to compiler (distributed only)") { |s| $options[:compileargs] = s }
     opts.on("--no-correctives", "Run in no-corrective mode") { $options[:no_corrective] = true }
+    opts.on("--csv-data", "Use the old data format (csv)") {$options[:csv_data] = true }
+
+    # Compile args synonyms
+    opts.on("--compileargs [STRING]", "Pass arguments to compiler (distributed only)") { |s| $options[:compileargs] = s }
+
+    opts.on("--dmat",       "Use distributed materialization")                 { $options[:compileargs] = "#{$options[:compileargs]} --sparallel2stage sparallel2=True" }
+    opts.on("--dmat-debug", "Use distributed materialization (in debug mode)") { $options[:compileargs] = "#{$options[:compileargs]} --sparallel2stage sparallel2-debug=True" }
+    opts.on("--wmoderate",  "Skew argument")                                   { $options[:compileargs] = "#{$options[:compileargs]} --workerfactor hm=3 --workerblocks hd=4:qp3=4:qp4=4:qp5=4:qp6=4" }
+    opts.on("--wmoderate2", "Skew argument")                                   { $options[:compileargs] = "#{$options[:compileargs]} --workerfactor hm=3 --workerblocks hd=2:qp3=2:qp4=2:qp5=2:qp6=2" }
+    opts.on("--wextreme",   "Skew argument")                                   { $options[:compileargs] = "#{$options[:compileargs]} --workerfactor hm=4 --workerblocks hd=1:qp3=1:qp4=1:qp5=1:qp6=1" }
 
     # Stages.
     # Ktrace is not run by default.
@@ -879,7 +899,9 @@ def main()
     elsif $options[:run_mode] == :local
       run_deploy_k3_local(bin_path, k3_data_path, nice_name, script_path)
     else
-      run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, script_path, $options[:logging] == :full)
+      log = $options[:logging] == :full
+      prof = $options[:profile] == :perf
+      run_deploy_k3_remote(uid, server_url, k3_data_path, bin_path, nice_name, script_path, log, prof)
     end
   end
 

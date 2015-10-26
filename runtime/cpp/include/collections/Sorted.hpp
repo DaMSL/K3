@@ -23,63 +23,137 @@ class Sorted : public SortedDS<K3::Sorted, Elem> {
   Sorted() : Super() {}
   Sorted(const Container& con) : Super(con) {}
   Sorted(Container&& con) : Super(std::move(con)) {}
-  template <typename Iterator>
-  Sorted(Iterator begin, Iterator end)
-      : Super(begin, end) {}
 
-  std::shared_ptr<Elem> min() const {
+  template <typename Iterator>
+  Sorted(Iterator begin, Iterator end) : Super(begin, end) {}
+
+  /////////////////////////////////////////////////
+  // Modifier overrides to exploit container type.
+
+  template <class T>
+  unit_t update(const Elem& v, T&& v2) {
+    auto& x = Super::getContainer();
+    auto it = x.find(v);
+    if (it != x.end()) {
+      *it = std::forward<T>(v2);
+    }
+    return unit_t();
+  }
+
+  unit_t erase(const Elem& v) {
+    auto& x = Super::getContainer();
+    auto it = x.find(v);
+    if (it != x.end()) {
+      x.erase(it);
+    }
+    return unit_t();
+  }
+
+
+  //////////////////////////
+  // Sort-order methods.
+
+  template <class F, class G>
+  auto min(F f, G g) const {
     // begin is the smallest element
     const auto& x = Super::getConstContainer();
     auto it = x.begin();
-    std::shared_ptr<Elem> result(nullptr);
-    if (it != x.end()) {
-      result = std::make_shared<Elem>(*it);
+    if (it == x.end()) {
+      return f(unit_t{});
+    } else {
+      return g(*it);
     }
-    return result;
   }
 
-  std::shared_ptr<Elem> max() const {
+  template <class F, class G>
+  auto max(F f, G g) const {
     const auto& x = Super::getConstContainer();
     auto it = x.rbegin();
-    std::shared_ptr<Elem> result(nullptr);
-    if (it != x.rend()) {
-      result = std::make_shared<Elem>(*it);
+    if (it == x.rend()) {
+      return f(unit_t{});
+    } else {
+      return g(*it);
     }
-    return result;
   }
 
-  std::shared_ptr<Elem> lowerBound(const Elem& e) const {
+  template <class F, class G>
+  auto lower_bound(const Elem& e, F f, G g) const {
     const auto& x = Super::getConstContainer();
     auto it = x.lower_bound(e);
-    std::shared_ptr<Elem> result(nullptr);
-    if (it != x.end()) {
-      result = std::make_shared<Elem>(*it);
+    if (it == x.end()) {
+      return f(unit_t{});
+    } else {
+      return g(*it);
     }
-    return result;
   }
 
-  std::shared_ptr<Elem> upperBound(const Elem& e) const {
+  template <class F, class G>
+  auto upper_bound(const Elem& e, F f, G g) const {
     const auto& x = Super::getConstContainer();
     auto it = x.upper_bound(e);
-    std::shared_ptr<Elem> result(nullptr);
-    if (it != x.end()) {
-      result = std::make_shared<Elem>(*it);
+    if (it == x.end()) {
+      return f(unit_t{});
+    } else {
+      return g(*it);
     }
-    return result;
   }
 
-  Sorted<Elem> slice(const Elem& a, const Elem& b) const {
-    const auto& x = Super::getConstContainer();
-    Sorted<Elem> result;
-    for (Elem e : x) {
-      if (e >= a && e <= b) {
-        result.insert(e);
-      }
-      if (e > b) {
-        break;
-      }
+  Sorted filter_lt(const Elem& bound) const {
+    const auto& x =Super::getConstContainer();
+    auto it = x.lower_bound(bound);
+    if (it != x.begin()) --it;
+    return Sorted<Elem>(x.begin(), it);
+  }
+
+  Sorted filter_gt(const Elem& bound) const {
+    const auto& x =Super::getConstContainer();
+    auto it = x.upper_bound(bound);
+    return Sorted<Elem>(it, x.end());
+  }
+
+  Sorted filter_geq(const Elem& bound) const {
+    const auto& x =Super::getConstContainer();
+    auto it = x.lower_bound(bound);
+    return Sorted<Elem>(it, x.end());
+  }
+
+  Sorted filter_leq(const Elem& bound) const {
+    const auto& x =Super::getConstContainer();
+    auto it = x.upper_bound(bound);
+    if (it != x.begin()) --it;
+    return Sorted<Elem>(x.begin(), it);
+  }
+
+  Sorted between(const Elem& a, const Elem& b) const {
+    const auto& x =Super::getConstContainer();
+    auto it = x.lower_bound(a);
+    auto end = x.upper_bound(b);
+    if (it != x.end()) {
+      return Sorted<Elem>(it, end);
+    } else {
+      return Sorted<Elem>();
     }
-    return result;
+  }
+
+  ///////////////////////////////////
+  // Range-based modification.
+
+  unit_t erase_before(const Elem& bound) {
+    auto& x = Super::getContainer();
+    auto it = x.lower_bound(bound);
+    if (it != x.end()) {
+      x.erase(x.cbegin(), it);
+    }
+    return unit_t();
+  }
+
+  unit_t erase_after(const Elem& bound) {
+    auto& x = Super::getContainer();
+    auto it = x.upper_bound(bound);
+    if (it != x.end()) {
+      x.erase(it, x.cend());
+    }
+    return unit_t();
   }
 
   template<class Archive>

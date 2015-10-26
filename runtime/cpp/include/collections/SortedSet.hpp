@@ -53,17 +53,11 @@ class SortedSet {
 
   const_iterator end() const { return const_iterator(container.cend()); }
 
-  shared_ptr<Elem> peek(unit_t) const {
-    shared_ptr<Elem> res(nullptr);
-    const_iterator_type it = container.begin();
-    if (it != container.end()) {
-      res = std::make_shared<Elem>(*it);
-    }
-    return res;
-  }
+  // Functionality
+  int size(const unit_t&) const { return container.size(); }
 
   template <typename F, typename G>
-  auto peek_with(F f, G g) const {
+  auto peek(F f, G g) const {
     auto it = container.begin();
     if (it == container.end()) {
       return f(unit_t{});
@@ -78,11 +72,6 @@ class SortedSet {
     return unit_t();
   }
 
-  unit_t erase(const Elem& v) {
-    container.erase(v);
-    return unit_t();
-  }
-
   template <class T>
   unit_t update(const Elem& v, T&& v2) {
     container.erase(v);
@@ -90,8 +79,154 @@ class SortedSet {
     return unit_t();
   }
 
-  // Return the number of elements
-  int size(const unit_t&) const { return container.size(); }
+  unit_t erase(const Elem& v) {
+    container.erase(v);
+    return unit_t();
+  }
+
+
+  ///////////////////////////////////////////////////
+  // Set-specific methods.
+
+  bool member(const Elem& e) const {
+    return container.find(e) != container.end();
+  }
+
+  bool is_subset_of(const SortedSet<Elem>& other) const {
+    for (const auto& x : getConstContainer()) {
+      if (!other.member(x)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  SortedSet<Elem> intersect(const SortedSet<Elem>& other) const {
+    SortedSet<Elem> result;
+    for (const auto& x : getConstContainer()) {
+      if (other.member(x)) {
+        result.insert(x);
+      }
+    }
+    return result;
+  }
+
+  SortedSet<Elem> difference(const SortedSet<Elem>& other) const {
+    SortedSet<Elem> result;
+    for (const auto& x : getConstContainer()) {
+      if (!other.member(x)) {
+        result.insert(x);
+      }
+    }
+    return result;
+  }
+
+  //////////////////////////////////////////////////////////
+  // Sort-order methods.
+
+  template <class F, class G>
+  auto min(F f, G g) const {
+    // begin is the smallest element
+    const auto& x = container;
+    auto it = x.begin();
+    if (it == x.end()) {
+      return f(unit_t{});
+    } else {
+      return g(*it);
+    }
+  }
+
+  template <class F, class G>
+  auto max(F f, G g) const {
+    const auto& x = container;
+    auto it = x.rbegin();
+    if (it == x.rend()) {
+      return f(unit_t{});
+    } else {
+      return g(*it);
+    }
+  }
+
+  template <class F, class G>
+  auto lower_bound(const Elem& e, F f, G g) const {
+    const auto& x = container;
+    auto it = x.lower_bound(e);
+    if (it == x.end()) {
+      return f(unit_t{});
+    } else {
+      return g(*it);
+    }
+  }
+
+  template <class F, class G>
+  auto upper_bound(const Elem& e, F f, G g) const {
+    const auto& x = container;
+    auto it = x.upper_bound(e);
+    if (it == x.end()) {
+      return f(unit_t{});
+    } else {
+      return g(*it);
+    }
+  }
+
+  SortedSet<Elem> filter_lt(const Elem& bound) const {
+    const auto& x = getConstContainer();
+    auto it = x.lower_bound(bound);
+    if (it != x.begin()) --it;
+    return SortedSet<Elem>(x.begin(), it);
+  }
+
+  SortedSet<Elem> filter_gt(const Elem& bound) const {
+    const auto& x = getConstContainer();
+    auto it = x.upper_bound(bound);
+    return SortedSet<Elem>(it, x.end());
+  }
+
+  SortedSet<Elem> filter_geq(const Elem& bound) const {
+    const auto& x = getConstContainer();
+    auto it = x.lower_bound(bound);
+    return SortedSet<Elem>(it, x.end());
+  }
+
+  SortedSet<Elem> filter_leq(const Elem& bound) const {
+    const auto& x = getConstContainer();
+    auto it = x.upper_bound(bound);
+    if (it != x.begin()) --it;
+    return SortedSet<Elem>(x.begin(), it);
+  }
+
+  SortedSet<Elem> between(const Elem& a, const Elem& b) const {
+    const auto& x = getConstContainer();
+    auto it = x.lower_bound(a);
+    auto end = x.upper_bound(b);
+    if (it != x.end()) {
+      return SortedSet<Elem>(it, end);
+    } else {
+      return SortedSet<Elem>();
+    }
+  }
+
+  // Range-based modification, exclusive of the given element if it exists in the set.
+
+  unit_t erase_before(const Elem& bound) {
+    auto it = container.lower_bound(bound);
+    if (it != container.end()) {
+      container.erase(container.cbegin(), it);
+    }
+    return unit_t();
+  }
+
+  unit_t erase_after(const Elem& bound) {
+    auto it = container.upper_bound(bound);
+    if (it != container.end()) {
+      container.erase(it, container.cend());
+    }
+    return unit_t();
+  }
+
+
+  ///////////////////////////////////////////////////
+  // Bulk transformations.
 
   SortedSet<Elem> combine(Set<Elem> other) const {
     // copy this DS
@@ -155,15 +290,15 @@ class SortedSet {
   template <typename Fun, typename Acc>
   Acc fold(Fun f, Acc acc) const {
     for (const Elem& e : container) {
-      acc = f(std::move(acc))(e);
+      acc = f(std::move(acc), e);
     }
     return acc;
   }
 
   // Group By
   template <typename F1, typename F2, typename Z>
-  SortedSet<R_key_value<RT<F1, Elem>, Z>> groupBy(F1 grouper, F2 folder,
-                                                  const Z& init) const {
+  SortedSet<R_key_value<RT<F1, Elem>, Z>> group_by(F1 grouper, F2 folder, const Z& init) const
+  {
     // Create a map to hold partial results
     typedef RT<F1, Elem> K;
     unordered_map<K, Z> accs;
@@ -173,27 +308,26 @@ class SortedSet {
       if (accs.find(key) == accs.end()) {
         accs[key] = init;
       }
-
-      accs[key] = folder(std::move(accs[key]))(elem);
+      accs[key] = folder(std::move(accs[key]), elem);
     }
 
     // Build the R_key_value records and insert them into result
     SortedSet<R_key_value<RT<F1, Elem>, Z>> result;
     for (auto& it : accs) {
       // move out of the map as we iterate
-      result.insert(
-          R_key_value<K, Z>{std::move(it.first), std::move(it.second)});
+      result.insert(R_key_value<K, Z>{std::move(it.first), std::move(it.second)});
     }
     return result;
   }
 
   template <class G, class F, class Z>
-  SortedSet<R_key_value<RT<G, Elem>, Z>> groupByContiguous(
-      G grouper, F folder, const Z& zero, const int& size) const {
+  SortedSet<R_key_value<RT<G, Elem>, Z>>
+  group_by_contiguous(G grouper, F folder, const Z& zero, const int& size) const
+  {
     auto table = std::vector<Z>(size, zero);
     for (const auto& elem : container) {
       auto key = grouper(elem);
-      table[key] = folder(std::move(table[key]))(elem);
+      table[key] = folder(std::move(table[key]), elem);
     }
     // Build the R_key_value records and insert them into result
     SortedSet<R_key_value<RT<G, Elem>, Z>> result;
@@ -209,7 +343,7 @@ class SortedSet {
     typedef typename RT<Fun, Elem>::ElemType T;
     SortedSet<T> result;
     for (const Elem& elem : container) {
-      for (T& elem2 : expand(elem).container) {
+      for (T&& elem2 : expand(elem).container) {
         result.insert(std::move(elem2));
       }
     }
@@ -230,170 +364,6 @@ class SortedSet {
 
   bool operator>(const Set<Elem>& other) const {
     return container < other.container;
-  }
-
-  // Set specific functions
-  bool member(const Elem& e) const {
-    return container.find(e) != container.end();
-  }
-
-  bool isSubsetOf(const SortedSet<Elem>& other) const {
-    for (const auto& x : getConstContainer()) {
-      if (!other.member(x)) {
-        return false;
-      }
-    }
-    return true;
-  }
-
-  // union is a reserved word
-  SortedSet<Elem> union1(const SortedSet<Elem>& other) const {
-    SortedSet<Elem> result;
-    for (const auto& x : getConstContainer()) {
-      result.insert(x);
-    }
-    for (const auto& x : other.getConstContainer()) {
-      result.insert(x);
-    }
-    return result;
-  }
-
-  SortedSet<Elem> intersect(const SortedSet<Elem>& other) const {
-    SortedSet<Elem> result;
-    for (const auto& x : getConstContainer()) {
-      if (other.member(x)) {
-        result.insert(x);
-      }
-    }
-    return result;
-  }
-
-  SortedSet<Elem> difference(const SortedSet<Elem>& other) const {
-    SortedSet<Elem> result;
-    for (const auto& x : getConstContainer()) {
-      if (!other.member(x)) {
-        result.insert(x);
-      }
-    }
-    return result;
-  }
-
-  // Sort-based retrieval.
-  std::shared_ptr<Elem> min() const {
-    // begin is the smallest element
-    const auto& x = getConstContainer();
-    auto it = x.begin();
-    std::shared_ptr<Elem> result(nullptr);
-    if (it != x.end()) {
-      result = std::make_shared<Elem>(*it);
-    }
-    return result;
-  }
-
-  std::shared_ptr<Elem> max() const {
-    const auto& x = getConstContainer();
-    auto it = x.rbegin();
-    std::shared_ptr<Elem> result(nullptr);
-    if (it != x.rend()) {
-      result = std::make_shared<Elem>(*it);
-    }
-    return result;
-  }
-
-  template <class F>
-  unit_t min_with(F f) const {
-    auto it = container.begin();
-    if (it != container.end()) {
-      return f(*it);
-    }
-
-    return unit_t{};
-  }
-
-  template <class F>
-  unit_t max_with(F f) const {
-    auto it = container.rbegin();
-    if (it != container.rend()) {
-      return f(*it);
-    }
-
-    return unit_t{};
-  }
-
-  std::shared_ptr<Elem> lower_bound(const Elem& e) const {
-    const auto& x = getConstContainer();
-    auto it = x.lower_bound(e);
-    std::shared_ptr<Elem> result(nullptr);
-    if (it != x.end()) {
-      result = std::make_shared<Elem>(*it);
-    }
-    return result;
-  }
-
-  std::shared_ptr<Elem> upper_bound(const Elem& e) const {
-    const auto& x = getConstContainer();
-    auto it = x.upper_bound(e);
-    std::shared_ptr<Elem> result(nullptr);
-    if (it != x.end()) {
-      result = std::make_shared<Elem>(*it);
-    }
-    return result;
-  }
-
-  SortedSet<Elem> filter_lt(const Elem& bound) const {
-    const auto& x = getConstContainer();
-    auto it = x.lower_bound(bound);
-    if (it != x.begin()) --it;
-    return SortedSet<Elem>(x.begin(), it);
-  }
-
-  SortedSet<Elem> filter_gt(const Elem& bound) const {
-    const auto& x = getConstContainer();
-    auto it = x.upper_bound(bound);
-    return SortedSet<Elem>(it, x.end());
-  }
-
-  SortedSet<Elem> filter_geq(const Elem& bound) const {
-    const auto& x = getConstContainer();
-    auto it = x.lower_bound(bound);
-    return SortedSet<Elem>(it, x.end());
-  }
-
-  SortedSet<Elem> filter_leq(const Elem& bound) const {
-    const auto& x = getConstContainer();
-    auto it = x.upper_bound(bound);
-    if (it != x.begin()) --it;
-    return SortedSet<Elem>(x.begin(), it);
-  }
-
-  SortedSet<Elem> between(const Elem& a, const Elem& b) const {
-    const auto& x = getConstContainer();
-    auto it = x.lower_bound(a);
-    auto end = x.upper_bound(b);
-    if (it != x.end()) {
-      return SortedSet<Elem>(it, end);
-    } else {
-      return SortedSet<Elem>();
-    }
-  }
-
-  // Range-based modification, exclusive of the given element if it exists in
-  // the set.
-
-  unit_t erase_prefix(const Elem& bound) {
-    auto it = container.lower_bound(bound);
-    if (it != container.end()) {
-      container.erase(container.cbegin(), it);
-    }
-    return unit_t();
-  }
-
-  unit_t erase_suffix(const Elem& bound) {
-    auto it = container.upper_bound(bound);
-    if (it != container.end()) {
-      container.erase(it, container.cend());
-    }
-    return unit_t();
   }
 
   Container& getContainer() { return container; }

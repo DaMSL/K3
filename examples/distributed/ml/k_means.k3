@@ -1,4 +1,4 @@
-include "Annotation/RealVector.k3"
+include "Annotation/Vectors/RealVector.k3"
 include "Annotation/Map.k3"
 include "Annotation/Set.k3"
 include "Annotation/Seq.k3"
@@ -67,13 +67,7 @@ declare printMeans: () -> () = \_ -> (
 // Initialize the means and send out the initial broadcast
 // For now_int, we use the first k data points.
 declare start: () -> () = \_ -> (
-  (range k).iterate (\i ->
-    means.insert {
-                  value: case (data.at i.i) of
-                           { Some x -> x.elem }
-                           { None -> error () }
-                 }
-  );
+  (range k).iterate (\i -> means.insert {value: (data.at i.elem).elem});
 
   // Log initial means
   print "Intial Means: ";
@@ -159,11 +153,11 @@ trigger assign: collection { value: feature_vector} @ {Collection} = \new_means 
   (counts = (range k).fold (\acc -> \_ -> (acc.insert {elem: 0}; acc)) (empty {elem: int} @RealVector) );
 
   // compute aggregate statistics:
-  let aggs = data.groupBy
+  let aggs = data.group_by
     (\p -> ((last_key = nearest_mean p.elem); last_key))
     (\sc -> \p -> (
       (counts.set last_key ({elem: (counts.at last_key).elem + 1}));
-      (sc.inPlaceAdd p.elem);
+      (sc.add_with p.elem);
       sc
     ))
     (zeroVector dimensionality)
@@ -185,7 +179,7 @@ trigger maximize: () = \_ -> (
   means = empty {value: collection {elem: real} @RealVector} @ {Collection};
   aggregates.iterate (\x ->
     means.insert
-      {value: x.value.sum.scalarMult (1.0 / x.value.count)}
+      {value: x.value.sum.scale (1.0 / x.value.count)}
 
   );
 

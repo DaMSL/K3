@@ -42,126 +42,146 @@
 
 namespace K3 {
 
-// Codec Interface
-class Codec {
- public:
-  virtual ~Codec() { }
-  virtual unique_ptr<PackedValue> pack(const NativeValue&) = 0;
-  virtual unique_ptr<NativeValue> unpack(const PackedValue& pv) = 0;
-  virtual CodecFormat format() = 0;
+  namespace Codec {
+    CodecFormat getFormat(const string& s);
+  }
+  namespace io = boost::iostreams;
+  typedef io::stream<io::back_insert_device<Buffer>> OByteStream;
+namespace boost_ser {
 
-  template <typename T>
-  static shared_ptr<Codec> getCodec(CodecFormat format);
-  static CodecFormat getFormat(const string& s);
-};
-
-namespace io = boost::iostreams;
-typedef io::stream<io::back_insert_device<Buffer>> OByteStream;
-
-template <class T>
-class BoostCodec : public Codec {
- public:
-  virtual unique_ptr<PackedValue> pack(const NativeValue& nv) {
+  template <class T>
+  unique_ptr<PackedValue> pack(const T& t, CodecFormat format) {
     Buffer buf;
     OByteStream output_stream(buf);
     boost::archive::binary_oarchive oa(output_stream);
-    oa << *nv.asConst<T>();
+    oa << t;
     output_stream.flush();
-    return make_unique<BufferPackedValue>(std::move(buf), format());
+    return make_unique<BufferPackedValue>(std::move(buf), format);
   }
 
-  virtual unique_ptr<NativeValue> unpack(const PackedValue& pv) {
+  template <class T>
+  unique_ptr<T> unpack(const PackedValue& pv) {
     io::basic_array_source<char> source(pv.buf(), pv.length());
     io::stream<io::basic_array_source<char>> input_stream(source);
     boost::archive::binary_iarchive ia(input_stream);
     T t;
     ia >> t;
-    return make_unique<TNativeValue<T>>(std::move(t));
+    return make_unique<T>(std::move(t));
+  }
+}
+
+namespace yas_ser {
+  template <class T>
+  unique_ptr<PackedValue> pack(const T& t, CodecFormat format) {
+    ::yas::mem_ostream os;
+    ::yas::binary_oarchive<::yas::mem_ostream> oa(os);
+    oa& t;
+    return make_unique<YASPackedValue>(os.get_shared_buffer(), format);
   }
 
-  virtual CodecFormat format() { return format_; }
-
- protected:
-  CodecFormat format_ = CodecFormat::BoostBinary;
-};
-
-template <class T>
-class YASCodec : public Codec {
- public:
-  virtual unique_ptr<PackedValue> pack(const NativeValue& nv) {
-    yas::mem_ostream os;
-    yas::binary_oarchive<yas::mem_ostream> oa(os);
-    oa& *nv.asConst<T>();
-    return make_unique<YASPackedValue>(os.get_shared_buffer(), format_);
-  }
-
-  virtual unique_ptr<NativeValue> unpack(const PackedValue& pv) {
-    yas::mem_istream is(pv.buf(), pv.length());
-    yas::binary_iarchive<yas::mem_istream> ia(is);
+  template <class T>
+  unique_ptr<T> unpack(const PackedValue& pv) {
+    ::yas::mem_istream is(pv.buf(), pv.length());
+    ::yas::binary_iarchive<::yas::mem_istream> ia(is);
     T t;
     ia& t;
-    return make_unique<TNativeValue<T>>(std::move(t));
+    return make_unique<T>(std::move(t));
   }
+}
 
-  virtual CodecFormat format() { return format_; }
-
- protected:
-  CodecFormat format_ = CodecFormat::YASBinary;
-};
-
-template <class T, char sep = ','>
-class CSVCodec : public Codec {
- public:
-  virtual unique_ptr<PackedValue> pack(const NativeValue& nv) {
+namespace csvpp_ser {
+  template <class T, char sep>
+  std::enable_if_t<is_flat<T>::value, unique_ptr<PackedValue>> pack(const T& t, CodecFormat format) {
     Buffer buf;
     OByteStream output_stream(buf);
     csv::writer oa(output_stream, sep);
-    oa << *nv.asConst<T>();
+    oa << t;
     output_stream.flush();
-    return make_unique<BufferPackedValue>(std::move(buf), format());
+    return make_unique<BufferPackedValue>(std::move(buf), format);
   }
 
-  virtual unique_ptr<NativeValue> unpack(const PackedValue& pv) {
+  template <class T, char sep>
+  std::enable_if_t<!is_flat<T>::value, unique_ptr<PackedValue>> pack(const T& t, CodecFormat format) {
+    throw std::runtime_error("CSV pack error: value is not flat");
+  }
+
+  template <class T, char sep>
+  std::enable_if_t<is_flat<T>::value, unique_ptr<T>> unpack(const PackedValue& pv) {
     io::basic_array_source<char> source(pv.buf(), pv.length());
     io::stream<io::basic_array_source<char>> input_stream(source);
     csv::parser ia(input_stream, sep);
 
     T t;
     ia >> t;
-    return make_unique<TNativeValue<T>>(std::move(t));
+    return make_unique<T>(std::move(t));
   }
 
-  virtual CodecFormat format() { return format_; }
-
- protected:
-  CodecFormat format_ = CodecFormat::CSV;
-};
-
-template <class T, char sep = ','>
-std::enable_if_t<is_flat<T>::value, shared_ptr<Codec>> makeCSVCodec() {
-  return make_shared<CSVCodec<T, sep>>();
+  template <class T, char sep>
+  std::enable_if_t<!is_flat<T>::value, unique_ptr<T>> unpack(const PackedValue& pv) {
+    throw std::runtime_error("CSV unpack error: value is not flat");
+  }
 }
 
-template <class T, char sep = ','>
-std::enable_if_t<!is_flat<T>::value, shared_ptr<Codec>> makeCSVCodec() {
-  throw std::runtime_error("Invalid csv type");
-}
-
-template <typename T>
-shared_ptr<Codec> Codec::getCodec(CodecFormat format) {
+template <class T>
+unique_ptr<PackedValue> pack(const T& t, CodecFormat format) {
   switch (format) {
     case CodecFormat::YASBinary:
-      return make_shared<YASCodec<T>>();
+      return yas_ser::pack<T>(t, format);
     case CodecFormat::BoostBinary:
-      return make_shared<BoostCodec<T>>();
+      return boost_ser::pack<T>(t, format);
     case CodecFormat::CSV:
-      return makeCSVCodec<T>();
+      return csvpp_ser::pack<T, ','>(t, format);
     case CodecFormat::PSV:
-      return makeCSVCodec<T, '|'>();
+      return csvpp_ser::pack<T, '|'>(t, format);
+    case CodecFormat::Raw:
+      throw std::runtime_error("Raw format only supports base_strings");
     default:
       throw std::runtime_error("Unrecognized codec format");
   }
 }
+
+template <class T>
+unique_ptr<T> unpack(unique_ptr<PackedValue> t) {
+  switch (t->format()) {
+    case CodecFormat::YASBinary:
+      return yas_ser::unpack<T>(*t);
+    case CodecFormat::BoostBinary:
+      return boost_ser::unpack<T>(*t);
+    case CodecFormat::CSV:
+      return csvpp_ser::unpack<T, ','>(*t);
+    case CodecFormat::PSV:
+      return csvpp_ser::unpack<T, '|'>(*t);
+    case CodecFormat::Raw:
+      throw std::runtime_error("Raw format only supports base_strings");
+    default:
+      throw std::runtime_error("Unrecognized codec format");
+  }
+}
+
+template <class T>
+unique_ptr<T> unpack(const PackedValue& t) {
+  switch (t.format()) {
+    case CodecFormat::YASBinary:
+      return yas_ser::unpack<T>(t);
+    case CodecFormat::BoostBinary:
+      return boost_ser::unpack<T>(t);
+    case CodecFormat::CSV:
+      return csvpp_ser::unpack<T, ','>(t);
+    case CodecFormat::PSV:
+      return csvpp_ser::unpack<T, '|'>(t);
+    case CodecFormat::Raw:
+      throw std::runtime_error("Raw format only supports base_strings");
+    default:
+      throw std::runtime_error("Unrecognized codec format");
+  }
+}
+
+unique_ptr<base_string> steal_base_string(PackedValue* t);
+
+template<>
+unique_ptr<PackedValue> pack(const base_string& t, CodecFormat format);
+template <>
+unique_ptr<base_string> unpack(unique_ptr<PackedValue> t);
 
 }  // namespace K3
 

@@ -8,11 +8,11 @@
 namespace K3 {
 
 StandardBuiltins::StandardBuiltins(Engine& engine)
-    : __engine_(engine) {}
+    : __engine_(engine), __rand_distribution_(0.0, 1.0) {}
 
 boost::mutex StandardBuiltins::__mutex_;
 
-unit_t StandardBuiltins::print(string_impl message) {
+unit_t StandardBuiltins::print(const string_impl& message) {
   boost::lock_guard<boost::mutex> lock(__mutex_);
   std::cout << message << std::endl;
   return unit_t();
@@ -38,6 +38,10 @@ int StandardBuiltins::hash(const int& b) {
     hash ^= p[i];
   }
   return hash;
+}
+
+double StandardBuiltins::randomFraction(unit_t) {
+  return __rand_distribution_(__rand_generator_);
 }
 
 }  // namespace K3

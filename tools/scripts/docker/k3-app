@@ -10,12 +10,16 @@
 # Debian: Sid
 FROM debian:sid
 
+ENV JEMALLOC_VER 4.0.0
+ENV JAVA_HOME /usr/lib/jvm/java-8-openjdk-amd64
+ENV PATH /software/bde-tools/bin:$PATH
+
 # Install basic packages to build the image
 RUN apt-get update && apt-get install -y \
   bzip2 unzip autoconf Libtool \
-  gcc g++ make cmake git curl wget \
-  libyaml-cpp-dev \
-  subversion 
+  gcc g++ openjdk-8-jre make cmake git curl wget sudo \
+  libyaml-cpp-dev libunwind-dev\
+  subversion
 
 # Install Boost v1.57.0
 RUN wget http://sourceforge.net/projects/boost/files/boost/1.57.0/boost_1_57_0.tar.bz2/download && \
@@ -27,6 +31,16 @@ RUN wget http://sourceforge.net/projects/boost/files/boost/1.57.0/boost_1_57_0.t
   ./b2 install threading=multi link=shared && \
   cd .. && \
   rm -Rf boost_1_57_0
+
+# Install Bloomberg BSL and BDL
+RUN mkdir -p /software && cd /software                                         && \
+    git clone https://github.com/bloomberg/bde-tools.git                       && \
+    git clone https://github.com/bloomberg/bde.git                             && \
+    cd bde                                                                     && \
+    waf configure --targets=bsl,bdl --build-type=release --library-type=shared && \
+    waf build --targets=bsl,bdl --build-type=release --library-type=shared     && \
+    waf install --targets=bsl,bdl                                              && \
+    rm -Rf bde-tools bde
 
 # Install Google Regex (re2) lib
 RUN git clone https://github.com/google/re2.git && \
@@ -69,9 +83,33 @@ RUN wget https://github.com/google/protobuf/releases/download/v2.5.0/protobuf-2.
   cd .. && \
   rm -Rf /protobuf-2.5.0
 
+# Install jemalloc
+RUN wget https://github.com/jemalloc/jemalloc/releases/download/$JEMALLOC_VER/jemalloc-$JEMALLOC_VER.tar.bz2 && \
+  tar -xvf jemalloc-$JEMALLOC_VER.tar.bz2 && \
+  rm jemalloc-$JEMALLOC_VER.tar.bz2 && \
+  cd jemalloc-$JEMALLOC_VER && \
+  ./autogen.sh && \
+  ./configure --enable-prof --enable-prof-libunwind --prefix=/usr && \
+  make && \
+  make install && \
+  cd .. && \
+  rm -Rf /jemalloc-$JEMALLOC_VER
+
+# Intall perf for kernel 3.13
+# Also uses libunwind
+RUN apt-get install -y flex bison libelf-dev libaudit-dev libdw-dev binutils-dev && \
+  wget https://github.com/torvalds/linux/archive/v3.13.tar.gz && \
+  tar -xvzf v3.13.tar.gz && rm v3.13.tar.gz && \
+  cd linux-3.13/tools/perf && make && make install && \
+  cp perf /usr/bin && \
+  cp libperf.a /usr/lib && \
+  cd / && rm -Rf /linux-3.13
+
 # Copy in Mesos v0.22.1 libs
 ADD assets/libmesos-0.22.1.so /usr/lib/
 ADD assets/libmesos.la /usr/lib/
+ADD assets/bin/perfj /usr/bin/
+ADD assets/lib/perfj-1.0.jar /usr/lib/
 
 # Finish & Clean up
 RUN ln -s /usr/lib/libmesos-0.22.1.so /usr/lib/libmesos.so && \
@@ -91,4 +129,6 @@ RUN ln -s /usr/lib/libmesos-0.22.1.so /usr/lib/libmesos.so && \
     rm -rf /var/cache/* && \
     rm -rf /var/log/* && \
     rm -rf /usr/include/*
-    
+
+# Add env variables for bloomberg
+ENV CPLUS_INCLUDE_PATH=/usr/local/include/bsl:/usr/local/include/bdl

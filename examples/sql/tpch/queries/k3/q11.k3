@@ -38,7 +38,7 @@ trigger q11_stage1: () = \_ -> (
 
 trigger q11_stage2: () = \_ -> (
   local_aggs =
-    (s_n_ps.groupBy
+    (s_n_ps.group_by
       (\x -> x.elem.key)
       (\a -> \e -> a + e.elem.value)
       0.0);

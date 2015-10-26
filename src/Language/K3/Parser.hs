@@ -100,7 +100,7 @@ stitchK3 includePaths s = do
 parseK3 :: Bool -> [FilePath] -> String -> IO (Either String (K3 Declaration))
 parseK3 noFeed includePaths s = do
   searchPaths   <- if null includePaths then getSearchPath else return includePaths
-  subFiles      <- processIncludes searchPaths (lines s) []
+  subFiles      <- processIncludes searchPaths (defaultIncludes ++ lines s) []
   subFileCtnts  <- trace (unwords ["subfiles:", show subFiles]) $ mapM readFile subFiles
   let fileContents = map (False,) subFileCtnts ++ [(True,s)]
   parseK3WithIncludes noFeed fileContents $ DC.role defaultRoleName []
@@ -128,7 +128,7 @@ parseK3WithIncludes noFeed fileContents initProg = do
 stitchK3Includes :: Bool -> [FilePath] -> [String] -> K3 Declaration -> IO (Either String (K3 Declaration))
 stitchK3Includes noFeed includePaths includes prog = do
   searchPaths   <- if null includePaths then getSearchPath else return includePaths
-  subFiles      <- processIncludes searchPaths includes []
+  subFiles      <- processIncludes searchPaths (defaultIncludes ++ includes) []
   subFileCtnts  <- trace (unwords ["subfiles:", show subFiles]) $ mapM readFile subFiles
   let fileContents = map (False,) subFileCtnts
   iprogE <- parseK3WithIncludes noFeed fileContents $ DC.role defaultRoleName []
@@ -553,14 +553,45 @@ eTuplePrefix = choice [try unit, try eNested, eTupleOrSend]
                           elements <- parens $ commaSep1 qualifiedExpr
                           msuffix <- optional sendSuffix
                           mkTupOrSend elements msuffix
-        sendSuffix    = symbol "<-" *> nonSeqExpr
 
-        mkTupOrSend [e] Nothing    = return $ stripSpan <$> e
-        mkTupOrSend [e] (Just arg) = return $ EC.binop OSnd e arg
-        mkTupOrSend l Nothing      = return $ EC.tuple l
-        mkTupOrSend l (Just arg)   = EC.binop OSnd <$> (EUID # return (EC.tuple l)) <*> pure arg
+        sendSuffix :: K3Parser (K3 Expression, Maybe (Either (K3 Literal) (Either (K3 Literal) (K3 Literal))))
+        sendSuffix = (,) <$> (symbol "<-" *> nonSeqExpr) <*> optional delay
 
-        stripSpan e               = maybe e (e @-) $ e @~ isESpan
+        delay :: K3Parser (Either (K3 Literal) (Either (K3 Literal) (K3 Literal)))
+        delay = choice $ map try [delayOverrideEdge, delayOverride, delayOnly]
+
+        delayOnly :: K3Parser (Either (K3 Literal) (Either (K3 Literal) (K3 Literal)))
+        delayOnly = Left <$> (keyword "delay" *> delayValue)
+
+        delayOverride :: K3Parser (Either (K3 Literal) (Either (K3 Literal) (K3 Literal)))
+        delayOverride = Right . Left  <$> ((keyword "delay" *> keyword "override") *> delayValue)
+
+        delayOverrideEdge :: K3Parser (Either (K3 Literal) (Either (K3 Literal) (K3 Literal)))
+        delayOverrideEdge = Right . Right <$> ((keyword "delay" *> keyword "override" *> keyword "edge") *> delayValue)
+
+        mkTupOrSend [e] Nothing              = return $ stripSpan <$> e
+        mkTupOrSend [e] (Just (arg, delayO)) = mkDelay (EC.binop OSnd e arg) delayO
+        mkTupOrSend l Nothing                = return $ EC.tuple l
+        mkTupOrSend l (Just (arg, delayO))   = (EC.binop OSnd <$> (EUID # return (EC.tuple l)) <*> pure arg) >>= \e -> mkDelay e delayO
+
+        delayValue :: K3Parser (K3 Literal)
+        delayValue = mkNumber <$> integerOrDouble <*> (choice $ map try $ [symbol "s", symbol "ms", symbol "us"])
+          where mkNumber x units = case x of
+                                     Left i  -> LC.int $ scale units $ fromIntegral i
+                                     Right d -> LC.int $ scale units $ round d
+                scale u i = case u of
+                              "s" -> i * 1000000
+                              "ms" -> i * 1000
+                              _ -> i
+
+        mkDelay :: K3 Expression -> Maybe (Either (K3 Literal) (Either (K3 Literal) (K3 Literal))) -> ExpressionParser
+        mkDelay e Nothing = return e
+        mkDelay e (Just (Left l@(tag -> LInt _)))          = return (e @+ (EProperty $ Left ("Delay", Just l)))
+        mkDelay e (Just (Right (Left l@(tag -> LInt _))))  = return (e @+ (EProperty $ Left ("DelayOverride", Just l)))
+        mkDelay e (Just (Right (Right l@(tag -> LInt _)))) = return (e @+ (EProperty $ Left ("DelayOverrideEdge", Just l)))
+        mkDelay _ (Just _)                                 = fail "Invalid send delay constant"
+
+        stripSpan e = maybe e (e @-) $ e @~ isESpan
 
 eRecord :: ExpressionParser
 eRecord = exprError "record" $ EC.record <$> braces idQExprList
@@ -835,7 +866,7 @@ tProperties = nproperties $ TProperty . Left
 {- Metaprogramming -}
 stTerm :: K3Parser SpliceType
 stTerm = choice $ map try [ stLabel, stType, stExpr, stDecl, stLiteral
-                          , stLabelType, stLabelExpr, stLabelLit
+                          , stLabelType, stLabelExpr, stLabelLit, stLTL
                           , stRecord, stList ]
   where
     stLabel     = STLabel     <$ keyword "label"
@@ -846,12 +877,14 @@ stTerm = choice $ map try [ stLabel, stType, stExpr, stDecl, stLiteral
     stLabelType = mkLabelType <$ keyword "labeltype"
     stLabelExpr = mkLabelExpr <$ keyword "labelexpr"
     stLabelLit  = mkLabelLit  <$ keyword "labellit"
+    stLTL       = mkLTL       <$ keyword "labeltylit"
     stList      = spliceListT   <$> brackets stTerm
     stRecord    = spliceRecordT <$> braces (commaSep1 stField)
     stField     = (,) <$> identifier <* colon <*> stTerm
     mkLabelType = spliceRecordT [(spliceVIdSym, STLabel), (spliceVTSym, STType)]
     mkLabelExpr = spliceRecordT [(spliceVIdSym, STLabel), (spliceVESym, STExpr)]
     mkLabelLit  = spliceRecordT [(spliceVIdSym, STLabel), (spliceVLSym, STLiteral)]
+    mkLTL       = spliceRecordT [(spliceVIdSym, STLabel), (spliceVTSym, STType), (spliceVLSym, STLiteral)]
 
 stVar :: K3Parser TypedSpliceVar
 stVar = try (flip (,) <$> identifier <* colon <*> stTerm)
@@ -862,23 +895,28 @@ spliceParameterDecls = brackets (commaSep stVar)
 -- TODO: strip literal uid/span
 svTerm :: K3Parser SpliceValue
 svTerm = choice $ map try [ sVar
-                          , svTypeDict, svExprDict, svLiteralDict
-                          , sLabel, sType, sExpr, sDecl, sLiteral, sLabelType, sRecord, sList ]
+                          , svTypeDict, svExprDict, svLiteralDict, svTylitDict
+                          , svNamedTypeDict, svNamedExprDict, svNamedLiteralDict, svNamedTermDict
+                          , sLabel, sType, sExpr, sDecl, sLiteral, sLabelType, sRecord, sList, sLitRange ]
   where
     sVar        = SVar                  <$> identifier
-    sLabel      = SLabel                <$> wrap "[#"  "]" identifier
-    sType       = SType . stripTUIDSpan <$> wrap "[:"  "]" typeExpr
-    sExpr       = SExpr . stripEUIDSpan <$> wrap "[$"  "]" expr
-    sLiteral    = SLiteral              <$> wrap "[$#" "]" literal
-    sDecl       = mkDecl                =<< wrap "[$^" "]" declaration
-    sLabelType  = mkLabelType           <$> wrap "[&" "]" ((,) <$> identifier <* colon <*> typeExpr)
-    sRecord     = spliceRecord          <$> wrap "[%" "]" (commaSep1 ((,) <$> identifier <* colon <*> svTerm))
-    sList       = spliceList            <$> wrap "[*" "]" (commaSep1 svTerm)
+    sLabel      = SLabel                <$> wrap "[#"  "]"  identifier
+    sType       = SType . stripTUIDSpan <$> wrap "[:"  "]"  typeExpr
+    sExpr       = SExpr . stripEUIDSpan <$> wrap "[$"  "]"  expr
+    sLiteral    = SLiteral              <$> wrap "[$#" "]"  literal
+    sDecl       = mkDecl                =<< wrap "[$^" "]"  declaration
+    sLabelType  = mkLabelType           <$> wrap "[&"  "]"  ((,) <$> identifier <* colon <*> typeExpr)
+    sRecord     = spliceRecord          <$> wrap "[%"  "]"  (commaSep1 ((,) <$> identifier <* colon <*> svTerm))
+    sList       = spliceList            <$> wrap "[*"  "]"  (commaSep1 svTerm)
+    sLitRange   = mkLitRange            =<< wrap "[~"  "]"  ((,) <$> literal <* symbol ".." <*> literal)
 
     mkLabelType (n,st) = spliceRecord [(spliceVIdSym, SLabel n), (spliceVTSym, SType $ stripTUIDSpan st)]
 
     mkDecl [x] = return $ SDecl $ stripDUIDSpan x
     mkDecl _   = P.parserFail "Invalid splice declaration"
+
+    mkLitRange ((tag -> LInt i), (tag -> LInt j)) | j > i = return $ spliceList [SLiteral (LC.int x) | x <- [i..j]]
+    mkLitRange _ = P.parserFail "Invalid splice range"
 
     wrap l r p = between (symbol l) (symbol r) p
 
@@ -891,6 +929,24 @@ svDict bracketSuffix valRecId valParser =
         recCtor (n, v) = spliceRecord [(spliceVIdSym, SLabel n), (valRecId, v)]
         wrap l r p = between (symbol l) (symbol r) p
 
+svDictP :: String -> K3Parser (Identifier, [(Identifier, SpliceValue)]) -> K3Parser SpliceValue
+svDictP bracketSuffix idvalParser =
+  mkDict <$> wrap ("[" ++ bracketSuffix) "]" (commaSep1 idvalParser)
+
+  where mkDict nvl = SList $ map recCtor nvl
+        recCtor (n, vl) = spliceRecord $ [(spliceVIdSym, SLabel n)] ++ vl
+        wrap l r p = between (symbol l) (symbol r) p
+
+svNamedDict :: String -> K3Parser SpliceValue -> K3Parser SpliceValue
+svNamedDict nameSuffix valParser =
+  mkDict <$> wrap "[" "]"
+         ((,) <$> (identifier <* symbol nameSuffix)
+              <*> (commaSep1 ((,) <$> identifier <* symbol "=>" <*> valParser)))
+
+  where mkDict (recId, nl) = SList $ map (recCtor recId) nl
+        recCtor i (n, v) = spliceRecord [(spliceVIdSym, SLabel n), (i, v)]
+        wrap l r p = between (symbol l) (symbol r) p
+
 svTypeDict :: K3Parser SpliceValue
 svTypeDict = svDict ":>" spliceVTSym (SType . stripTUIDSpan <$> typeExpr)
 
@@ -899,6 +955,23 @@ svExprDict = svDict "$>" spliceVESym (SExpr . stripEUIDSpan <$> expr)
 
 svLiteralDict :: K3Parser SpliceValue
 svLiteralDict = svDict "$#>" spliceVLSym (SLiteral <$> literal)
+
+svTylitDict :: K3Parser SpliceValue
+svTylitDict = svDictP ":#>" ((,) <$> identifier <* symbol "=>" <*> tylitP)
+  where tylitP = mkTyLit <$> (SType . stripTUIDSpan <$> typeExpr) <* colon <*> (SLiteral <$> literal)
+        mkTyLit a b = [(spliceVTSym, a), (spliceVLSym, b)]
+
+svNamedTypeDict :: K3Parser SpliceValue
+svNamedTypeDict = svNamedDict ":>" (SType . stripTUIDSpan <$> typeExpr)
+
+svNamedExprDict :: K3Parser SpliceValue
+svNamedExprDict = svNamedDict "$>" (SExpr . stripEUIDSpan <$> expr)
+
+svNamedLiteralDict :: K3Parser SpliceValue
+svNamedLiteralDict = svNamedDict "$#>" (SLiteral <$> literal)
+
+svNamedTermDict :: K3Parser SpliceValue
+svNamedTermDict = svNamedDict ">" svTerm
 
 spliceParameter :: K3Parser (Maybe (Identifier, SpliceValue))
 spliceParameter = try ((\a b -> Just (a,b)) <$> identifier <* symbol "=" <*> parseInMode Splice svTerm)
@@ -931,7 +1004,7 @@ effectSignature asAttrMem = mkSigAnn =<< (keyword "with" *> keyword "effects" *>
       [DEffect $ Left f] ++ maybe [DProvenance $ Left $ provOfEffect [] f] (\p -> [DProvenance $ Left p]) rOpt
 
     provOfEffect args (tnc -> (FS.FLambda i, [_, _, sf])) = PC.plambda i [] $ provOfEffect (args++[i]) sf
-    provOfEffect args _ = PC.pderived $ map PC.pfvar args
+    provOfEffect args _ = PC.pderived $ map (\i -> PC.pfvar i Nothing) args
 
 effTerm :: Bool -> K3Parser (K3 FS.Effect)
 effTerm asAttrMem = effApply fTerm <?> "effect term"
@@ -991,8 +1064,8 @@ provTerm =  pApply pTerm <?> "provenance term"
 
     mkTerm p psfxOpt = maybe p ($ p) psfxOpt
 
-    mkVar "fresh" = withEffectID $ \eid -> PC.pfvar ("fresh"++ show eid)
-    mkVar       i = return $ PC.pfvar i
+    mkVar "fresh" = withEffectID $ \eid -> PC.pfvar ("fresh"++ show eid) Nothing
+    mkVar       i = return $ PC.pfvar i Nothing
 
     mkPrj    p n = PC.pproject n p Nothing
     mkRec    p n = PC.precord n p
@@ -1066,8 +1139,9 @@ equateQExpr = symbol "=" *> qualifiedExpr
 endpoint :: Bool -> K3Parser EndpointBuilder
 endpoint isSource = if isSource
                       then choice $ [ value
-                                    , try $ filemux
+                                    , try filemux
                                     , try $ file True "fileseq" FileSeqEP eVariable
+                                    , try polyfile
                                     ] ++ common
                       else choice common
   where common = [builtin isSource, file isSource "file" FileEP eTerminal, network isSource]
@@ -1086,7 +1160,9 @@ file :: Bool -> String -> (String -> Bool -> String -> EndpointSpec) -> Expressi
      -> K3Parser EndpointBuilder
 file isSource sym ctor prsr = mkFileSrc <$> (symbol sym *> prsr) <*> textOrBinary <*> format
   where mkFileSrc argE asTxt formatE n t = do
-          spec argE asTxt formatE >>= \s -> return $ endpointMethods isSource s argE formatE n t
+          s <- spec argE asTxt formatE
+          return $ endpointMethods isSource s argE formatE n t
+
         spec argE asTxt formatE = (\a f -> ctor a asTxt f) <$> S.exprS argE <*> S.symbolS formatE
         textOrBinary = (symbol "text" *> return True) <|> (symbol "binary" *> return False)
 
@@ -1107,11 +1183,22 @@ filemux = mkFMuxSrc <$> syms ["filemxsq", "filemux"] <*> eVariable <*> textOrBin
       else if s == "filemxsq" then FileMuxseqEP
       else fail "Invalid file mux kind"
 
+polyfile :: K3Parser EndpointBuilder
+polyfile = mkPFSrc <$> try (symbol "polyfile") <*> eVariable <*> textOrBinary <*> format <*> eTerminal
+  where
+    textOrBinary = (symbol "text" *> return True) <|> (symbol "binary" *> return False)
+    mkPFSrc sym argE asTxt formatE orderE n t = do
+      s <- (\a f o -> PolyFileMuxEP a asTxt f o) <$> S.exprS argE <*> S.symbolS formatE <*> S.exprS orderE
+      return $ endpointMethods True s argE formatE n t
+
+
 network :: Bool -> K3Parser EndpointBuilder
 network isSource = mkNetwork <$> (symbol "network" *> eTerminal) <*> textOrBinary <*> format
   where textOrBinary = (symbol "text" *> return True) <|> (symbol "binary" *> return False)
-        mkNetwork addrE asText formatE n t =
-          networkSpec addrE asText formatE >>= \s -> return $ endpointMethods isSource s addrE formatE n t
+        mkNetwork addrE asText formatE n t = do
+          s <- networkSpec addrE asText formatE
+          return $ endpointMethods isSource s addrE formatE n t
+
         networkSpec addrE asText formatE = (\a f -> NetworkEP a asText f) <$> S.exprS addrE <*> S.symbolS formatE
 
 builtinChannels :: ExpressionParser
@@ -1119,7 +1206,7 @@ builtinChannels = choice [ch "stdin", ch "stdout", ch "stderr"]
   where ch s = try (symbol s >> return (EC.constant $ CString s))
 
 format :: ExpressionParser
-format = choice [fmt "k3", fmt "k3b", fmt "k3yb", fmt "k3ybt", fmt "csv", fmt "psv", fmt "k3x"]
+format = choice [fmt "k3", fmt "k3b", fmt "k3yb", fmt "k3ybt", fmt "csv", fmt "psv", fmt "k3x", fmt "raw"]
   where fmt s = try (symbol s >> return (EC.constant $ CString s))
 
 {- Declaration helpers -}

@@ -18,45 +18,54 @@ class StorageManager {
       files_ = make_shared<ConcurrentMap<pair<Address, Identifier>, shared_ptr<FileHandle>>> ();
       logger_ = spdlog::get("engine");
   }
-  void openFile(Address peer, Identifier id, std::string path, 
-                      StorageFormat fmt, CodecFormat codec, IOMode io);
+
+  ~StorageManager() {
+      files_->apply([](auto& filemap){
+        for (auto elem : filemap) { elem.second->close(); }
+      });
+  }
+
+  void openFile(Address peer, Identifier id, std::string path,
+                StorageFormat fmt, CodecFormat codec, IOMode io);
+
   void closeFile(Address peer, Identifier id);
 
   // Reading
   bool hasRead(Address peer, Identifier id);
+
   template <class T>
   T doRead(Address peer, Identifier id) {
     try {
-      auto val = files_->lookup(make_pair(peer, id))->doRead();
-      auto cdec = Codec::getCodec<T>(val->format());
-      auto native = cdec->unpack(*val);
-      T t = std::move(*native->template as<T>());
-      return t;
+      auto handle = files_->lookup(make_pair(peer, id));
+      auto pval = handle->doRead();
+      return std::move(*unpack<T>(std::move(pval)));
     }
     catch (std::ios_base::failure e) {
       logger_->error ("ERROR Reading from {}", id);
       throw std::runtime_error ("File I/O Error. Program is Halting.");
     }
   }
- 
+
   template <class T>
   vector<T> doBlockRead(Address peer, Identifier id, int max_blocksize) {
     vector<T> vals;
     try {
       auto file = files_->lookup(make_pair(peer, id));
       for (int i = 0; i < max_blocksize; i++) {
-        auto val = file->doRead(); 
-        auto cdec = Codec::getCodec<T>(val->format());
-        auto native = cdec->unpack(*val);
-        T t = std::move(*native->template as<T>());
-        vals.push_back(std::move(t));
+        if (file->hasRead()) {
+          auto val = file->doRead();
+          auto t = unpack<T>(std::move(val));
+          vals.push_back(std::move(*t));
+        } else {
+          break;
+        }
       }
     }
     catch (std::exception e)  {
       logger_->error ("ERROR Reading from {}", id);
       throw std::runtime_error ("File I/O Error. Program is Halting.");
     }
-    return vals;
+    return std::move(vals);
   }
 
   // Writing
@@ -65,25 +74,22 @@ class StorageManager {
   template <class T>
   void doWrite(Address peer, Identifier id, const T& val) {
     try {
-      // TODO(jbw) avoid copies when creating the native-value wrappers
       auto file = files_->lookup(make_pair(peer, id));
-      TNativeValue<T> nv(val);
-      file->doWrite<T>(nv);
+      file->doWrite(val);
     }
     catch (std::ios_base::failure e) {
-      logger_->error ("ERROR Writing to {}", id);
+      logger_->error ("ERROR Writing to {}: {}", id, e.what());
       throw std::runtime_error ("File I/O Error. Program is Halting.");
     }
   }
-  
-  template <class T> 
+
+  template <class T>
   void doBlockWrite(Address peer, Identifier id, const vector<T>& vals, CodecFormat fmt) {
       // TODO(jbw) avoid copies when creating the native-value wrappers
       try  {
         auto file = files_->lookup(make_pair(peer, id));
         for (const auto& elem : vals) {
-          TNativeValue<T> nv(elem);
-          file->doWrite<T>(nv);
+          file->doWrite<T>(elem);
         }
       }
       catch (std::exception e)  {

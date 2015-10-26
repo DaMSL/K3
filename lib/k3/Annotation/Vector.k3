@@ -1,31 +1,65 @@
-annotation Vector given type a, b, c
+annotation Vector given type a, b, c, d
 {
-  provides lifted peek : () -> option content
+  provides lifted size : () -> int
     with effects \_ -> R[self]
 
   @:CArgs 2
-  provides lifted peek_with : (() -> a) -> (content -> a) -> a
-    with effects \f -> \g -> [R[self]; f content; g content]
+  provides lifted peek : (() -> a) -> (content -> a) -> a
+    with effects \f -> \g -> [R[self]; f none; g content]
 
-  provides lifted at: int -> option content
+  provides lifted at : int -> content
     with effects \i -> [R[i]; R[self]]
 
+  @:CArgs 3
+  provides lifted safe_at : int -> (() -> a) -> (content -> a) -> a
+    with effects \i -> \f -> \g -> [R[i]; R[self]; f none; g content]
+
   @:CArgs 2
-  provides lifted at_with: int -> (content -> a) -> a
+  provides lifted unsafe_at : int -> (content -> a) -> a
     with effects \i -> \f -> [R[i]; R[self]; f content]
+
+  ///////////////////////////////////////////////////////
+  // Modifiers.
+
+  @:CArgs 2
+  provides lifted set : int -> content -> ()
+    with effects \i -> \elem -> [R[self]; R[i]; R[elem]; W[self]]
+
+  provides lifted set_all : content -> ()
+    with effects \elem -> [R[self]; R[elem]; W[self]]
+
+  @:CArgs 2
+  provides lifted swap : int -> content -> content
+    with effects \i -> \c -> [R[i]; R[c]; W[self]]
 
   provides lifted insert : content -> ()
     with effects \elem -> [R[self]; R[elem]; W[self]]
 
-  provides lifted erase : content -> ()
-    with effects \elem -> [R[self]; R[elem]; W[self]]
+  provides lifted extend : self -> ()
+    with effects \col -> [R[self]; R[col]; W[self]]
 
   @:CArgs 2
   provides lifted update : content -> (content -> ())
     with effects \oldElem -> \newElem -> [R[self]; R[oldElem]; R[newElem]; W[self]]
 
-  provides lifted size : () -> int
-    with effects \_ -> R[self]
+  provides lifted erase : content -> ()
+    with effects \elem -> [R[self]; R[elem]; W[self]]
+
+  @:CArgs 2
+  provides lifted insert_at : int -> content -> ()
+    with effects \i -> \c -> [R[i]; R[c]; W[self]]
+
+  @:CArgs 3
+  provides lifted update_at : int -> (content -> content) -> ()
+    with effects \idx -> \newElem -> [R[self]; R[idx]; R[newElem]; W[self]]
+
+  @:CArgs 2
+  provides lifted erase_at : int -> content
+    with effects \i -> \c -> [R[i]; R[c]; W[self]]
+
+
+  ///////////////////////////////////////////////////
+  // Bulk transformations.
 
   @:Transformer
   provides lifted combine : self -> self
@@ -40,7 +74,7 @@ annotation Vector given type a, b, c
     with effects \iterF -> [R[self]; ([R[content]; iterF content])*]
 
   @:Transformer
-  provides lifted map : (content -> a) -> collection {elem : a} @Collection
+  provides lifted map : (content -> a) -> collection {elem : a} @Vector
     with effects \mapF -> [R[self]; ([R[content]; mapF content])*]
 
   @:Transformer
@@ -52,40 +86,50 @@ annotation Vector given type a, b, c
     with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; ((foldF z) content)])*]
 
   @:{Transformer, CArgs 3}
-  provides lifted groupBy : (content -> a) -> (b -> content -> b) -> b
-                             -> collection { key : a, value : b } @Collection
+  provides lifted group_by : (content -> a) -> (b -> content -> b) -> b
+                              -> collection { key : a, value : b } @Vector
     with effects
       \gbF -> \gaccF -> \z ->
         [R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
 
   @:{Transformer, CArgs 4}
-  provides lifted groupByContiguous : (content -> a) -> (b -> content -> b) -> b -> int
-                                      -> collection { key : a, value : b } @Collection
+  provides lifted group_by_contiguous : (content -> int) -> (a -> content -> a) -> a -> int
+                                         -> collection { key : int, value : a } @Vector
     with effects
       \gbF -> \gaccF -> \z -> \s ->
-        [R[self]; R[z]; ([R[content]; gbF content; gaccF content])*]
+        [R[self]; R[z]; R[s]; ([R[content]; gbF content; gaccF content])*]
 
   @:{Transformer, CArgs 3}
-  provides lifted join : collection {elem: a} @Collection
-                        -> (content -> {elem: a} -> bool) -> (content -> {elem: a} -> c)
-                        -> collection {elem: c} @Collection
+  provides lifted join : collection {elem: a} @Vector
+                          -> (content -> {elem: a} -> bool) -> (content -> {elem: a} -> c)
+                          -> collection {elem: c} @Vector
     with effects \other -> \matchF -> \outputF ->
                    [R[self]; ([R[other]; R[content]; matchF content none; outputF content none])*]
 
   @:{Transformer, CArgs 4}
-  provides lifted equijoin : collection {elem: a} @Collection
-                           -> (content -> b) -> ({elem:a} -> b) -> (content -> {elem: a} -> c)
-                           -> collection {elem: c} @Collection
+  provides lifted equijoin : collection {elem: a} @Vector
+                              -> (content -> b) -> ({elem:a} -> b) -> (content -> {elem: a} -> c)
+                              -> collection {elem: c} @Vector
+    with effects \other -> \matchLF -> \matchRF -> \outputF ->
+                   [R[self]; ([R[other]; R[content]; matchLF content; matchRF none; outputF content none])*]
+
+  @:{Transformer, CArgs 3}
+  provides lifted join_kv : collection {key: a, value: b} @Vector
+                             -> (content -> {key: a, value: b} -> bool) -> (content -> {key: a, value: b} -> c)
+                             -> collection {elem: c} @Vector
+    with effects \other -> \matchF -> \outputF ->
+                   [R[self]; ([R[other]; R[content]; matchF content none; outputF content none])*]
+
+  @:{Transformer, CArgs 4}
+  provides lifted equijoin_kv : collection {key: a, value: b} @Vector
+                                 -> (content -> c) -> ({key: a, value: b} -> c) -> (content -> {key: a, value: b} -> d)
+                                 -> collection {elem: d} @Vector
     with effects \other -> \matchLF -> \matchRF -> \outputF ->
                    [R[self]; ([R[other]; R[content]; matchLF content; matchRF none; outputF content none])*]
 
   @:Transformer
-  provides lifted ext : (content -> collection {elem : a} @Collection)
-                         -> collection {elem : a} @ {Collection}
+  provides lifted ext : (content -> collection {elem : a} @Vector)
+                         -> collection {elem : a} @Vector
     with effects \extF -> [R[self]; ([R[content]; extF content])*]
-
-  @:{Transformer, CArgs 3}
-  provides lifted sample : (a -> content -> a) -> a -> int -> a
-    with effects \sampleF -> \z -> \ns -> [R[self]; R[z]; R[ns]; ([R[content]; (sampleF z) content])*]
 
 }

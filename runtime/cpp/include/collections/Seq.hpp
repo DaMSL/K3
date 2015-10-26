@@ -23,19 +23,17 @@ class Seq : public ListDS<K3::Seq, Elem> {
   Seq(Super&& c) : Super(std::move(c)) {}
 
   // Seq specific functions
+  unit_t pop(unit_t) {
+    Super::getContainer().pop_front();
+    return unit_t{};
+  }
+
   template <class F>
   Seq sort(F comp) const {
     auto l(Super::getConstContainer());
-    auto f = [&](Elem& a, Elem& b) mutable { return comp(a)(b) < 0; };
+    auto f = [&](Elem& a, Elem& b) mutable { return comp(a, b) < 0; };
     l.sort(f);
     return Seq(Super(std::move(l)));
-  }
-
-  Elem at(int i) const {
-    auto& l = Super::getConstContainer();
-    auto it = l.begin();
-    std::advance(it, i);
-    return *it;
   }
 
   template<class Archive>

@@ -1,10 +1,10 @@
 #include "storage/StorageManager.hpp"
 
 namespace K3 {
-using std::pair; 
 
+using std::pair;
 
-void StorageManager::openFile (Address peer, Identifier id, std::string path, 
+void StorageManager::openFile (Address peer, Identifier id, std::string path,
                       StorageFormat fmt, CodecFormat cfmt, IOMode io) {
   pair<Address, Identifier> key = std::make_pair (peer, id);
 

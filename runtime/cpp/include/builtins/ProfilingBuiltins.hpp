@@ -24,27 +24,6 @@
 
 namespace K3 {
 
-class ProfilingBuiltins {
- public:
-  ProfilingBuiltins();
-  // PCM
-  unit_t pcmStart(unit_t);
-  unit_t pcmStop(unit_t);
-  // TCMalloc
-  unit_t tcmallocStart(unit_t);
-  unit_t tcmallocStop(unit_t);
-  // JEMalloc
-  unit_t jemallocStart(unit_t);
-  unit_t jemallocStop(unit_t);
-  unit_t jemallocDump(unit_t);
-
- protected:
-#ifdef K3_PCM
-  PCM *pcm_instance_;
-  shared_ptr<SystemCounterState> pcm_initial_state_;
-#endif
-};
-
 class __heap_profiler {
  public:
   __heap_profiler() { heap_profiler_done.clear(); }
@@ -82,6 +61,27 @@ class __heap_profiler {
       heap_profiler_thread->interrupt();
     }
   }
+};
+
+class ProfilingBuiltins: public __heap_profiler {
+ public:
+  ProfilingBuiltins();
+  // PCM
+  unit_t pcmStart(unit_t);
+  unit_t pcmStop(unit_t);
+  // TCMalloc
+  unit_t tcmallocStart(unit_t);
+  unit_t tcmallocStop(unit_t);
+  // JEMalloc
+  unit_t jemallocStart(unit_t);
+  unit_t jemallocStop(unit_t);
+  unit_t jemallocDump(unit_t);
+
+ protected:
+#ifdef K3_PCM
+  PCM *pcm_instance_;
+  shared_ptr<SystemCounterState> pcm_initial_state_;
+#endif
 };
 
 }  // namespace K3

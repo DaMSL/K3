@@ -100,8 +100,8 @@ declare add_delta_to_int : { _r1_:ind collection { key:{ _r1_:int, _r2_:int, _r3
           if not (lookup_value == empty { key:{ _r1_:int, _r2_:int, _r3_:int }, value:int } @ { Collection })
           then
             let update_value = __map_val +
-              bind case (lookup_value.peek()) of { Some x -> x }
-                                                 { None -> error () } as {key:__1, value:__2}
+              bind (lookup_value.peek (\_ -> error ()) (\x -> x))
+              as {key:__1, value:__2}
               in __2
             in
             (bind target_map as ind __x in __x).insert {key:vid, value:update_value}
@@ -112,8 +112,7 @@ declare add_delta_to_int : { _r1_:ind collection { key:{ _r1_:int, _r2_:int, _r3
                 key:{ _r1_:int, _r2_:int, _r3_:int }, value:int
                 } @ { Collection }
               then 0
-              else bind case (lookup_value.peek ()) of { Some x -> x }
-                                                       { None -> error () }
+              else bind (lookup_value.peek (\_ -> error ()) (\x -> x))
                    as {key:__1, value:__2} in __2
             in
             (bind target_map as ind __x in __x).insert {key:vid, value:update_value}));

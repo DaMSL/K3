@@ -61,7 +61,7 @@ trigger q19: () = \_ -> (
     (((lineitem.filter
                  valid_lineitem_prejoin
                )
-               .groupBy
+               .group_by
                  (\l -> {partkey: l.l_partkey, quantity: l.l_quantity})
                  (\a -> \e -> a + (e.l_extendedprice * (1.0 - e.l_discount)))
                  0.0

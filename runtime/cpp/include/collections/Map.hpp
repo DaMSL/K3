@@ -61,18 +61,28 @@ class Map {
     I i;
   };
 
-  shared_ptr<R> peek(const unit_t&) const {
-    shared_ptr<R> res(nullptr);
-    auto it = container.begin();
-    if (it != container.end()) {
-      res = std::make_shared<R>(it->second);
-    }
-    return res;
+  // Functionality
+  int size(const unit_t&) const {
+    return container.size();
   }
 
-  template<typename F, typename G>
-  auto peek_with(F f, G g) const {
+  template <class F, class G>
+  auto peek(F f, G g) const {
     auto it = container.begin();
+    if (it == container.end()) {
+      return f(unit_t{});
+    } else {
+      return g(*it);
+    }
+  }
+
+  bool member(const R& r) const {
+    return container.find(r.key) != container.end();
+  }
+
+  template <class F, class G>
+  auto lookup(R const& r, F f, G g) const {
+    auto it = container.find(r.key);
     if (it == container.end()) {
       return f(unit_t {});
     } else {
@@ -80,20 +90,26 @@ class Map {
     }
   }
 
-  using iterator = map_iterator<typename Container::iterator>;
-  using const_iterator = map_iterator<typename Container::const_iterator>;
-
-  iterator begin() { return iterator(container.begin()); }
-
-  iterator end() { return iterator(container.end()); }
-
-  const_iterator begin() const { return const_iterator(container.cbegin()); }
-
-  const_iterator end() const { return const_iterator(container.cend()); }
-
   template <class Q>
   unit_t insert(Q&& q) {
     container[q.key] = std::forward<Q>(q);
+    return unit_t();
+  }
+
+  unit_t update(const R& rec1, const R& rec2) {
+    auto it = container.find(rec1.key);
+    if (it != container.end()) {
+      container.erase(it);
+      container[rec2.key] = rec2;
+    }
+    return unit_t();
+  }
+
+  unit_t erase(const R& rec) {
+    auto it = container.find(rec.key);
+    if (it != container.end()) {
+      container.erase(it);
+    }
     return unit_t();
   }
 
@@ -103,7 +119,7 @@ class Map {
     if (existing == std::end(container)) {
       container[rec.key] = rec;
     } else {
-      existing->second = f(std::move(existing->second))(rec);
+      container[rec.key] = f(std::move(existing->second), rec);
     }
 
     return unit_t{};
@@ -121,55 +137,15 @@ class Map {
     return unit_t{};
   }
 
-  unit_t erase(const R& rec) {
-    auto it = container.find(rec.key);
-    if (it != container.end()) {
-      container.erase(it);
-    }
-    return unit_t();
-  }
+  //////////////////////////////////////////////////////////////
+  // Bulk transformations.
 
-  unit_t update(const R& rec1, const R& rec2) {
-    auto it = container.find(rec1.key);
-    if (it != container.end()) {
-      container.erase(it);
-      container[rec2.key] = rec2;
-    }
-    return unit_t();
-  }
-
-  template <typename Fun, typename Acc>
-  Acc fold(Fun f, Acc acc) const {
-    for (const auto& p : container) {
-      acc = f(std::move(acc))(p.second);
-    }
-    return acc;
-  }
-
-  template <typename Fun>
-  auto map(Fun f) const -> Map<RT<Fun, R>> {
-    Map<RT<Fun, R>> result;
-    for (const auto& p : container) {
-      result.insert(f(p.second));
-    }
-    return result;
-  }
-
-  template <typename Fun>
-  unit_t iterate(Fun f) const {
-    for (const auto& p : container) {
-      f(p.second);
-    }
-    return unit_t();
-  }
-
-  template <typename Fun>
-  Map<R> filter(Fun predicate) const {
-    Map<R> result;
-    for (const auto& p : container) {
-      if (predicate(p.second)) {
-        result.insert(p.second);
-      }
+  Map combine(const Map& other) const {
+    // copy this DS
+    Map result = Map(*this);
+    // copy other DS
+    for (const auto& p : other.container) {
+      result.container[p.first] = p.second;
     }
     return result;
   }
@@ -187,20 +163,46 @@ class Map {
     return std::make_tuple(Map(beg, mid), Map(mid, end));
   }
 
-  Map combine(const Map& other) const {
-    // copy this DS
-    Map result = Map(*this);
-    // copy other DS
-    for (const auto& p : other.container) {
-      result.container[p.first] = p.second;
+  template <typename Fun>
+  unit_t iterate(Fun f) const {
+    for (const auto& p : container) {
+      f(p.second);
+    }
+    return unit_t();
+  }
+
+  template <typename Fun>
+  auto map(Fun f) const -> Map<RT<Fun, R>> {
+    Map<RT<Fun, R>> result;
+    for (const auto& p : container) {
+      result.insert(f(p.second));
     }
     return result;
   }
 
+  template <typename Fun>
+  Map<R> filter(Fun predicate) const {
+    Map<R> result;
+    for (const auto& p : container) {
+      if (predicate(p.second)) {
+        result.insert(p.second);
+      }
+    }
+    return result;
+  }
+
+  template <typename Fun, typename Acc>
+  Acc fold(Fun f, Acc acc) const {
+    for (const auto& p : container) {
+      acc = f(std::move(acc), p.second);
+    }
+    return acc;
+  }
+
   template <typename F1, typename F2, typename Z>
-  Map<R_key_value<RT<F1, R>, Z>> groupBy(F1 grouper, F2 folder,
-                                         const Z& init) const {
-    // Create a std::map to hold partial results
+  Map<R_key_value<RT<F1, R>, Z>> group_by(F1 grouper, F2 folder, const Z& init) const
+  {
+    // Create a std::unordered_map to hold partial results
     typedef RT<F1, R> K;
     std::unordered_map<K, Z> accs;
 
@@ -209,7 +211,7 @@ class Map {
       if (accs.find(key) == accs.end()) {
         accs[key] = init;
       }
-      accs[key] = folder(std::move(accs[key]))(it.second);
+      accs[key] = folder(std::move(accs[key]), it.second);
     }
 
     Map<R_key_value<K, Z>> result;
@@ -220,73 +222,44 @@ class Map {
     return result;
   }
 
+  template <class F1, class F2, class Z>
+  Map<R_key_value<RT<F1, R>, Z>>
+  group_by_contiguous(F1 grouper, F2 folder, const Z& zero, const int& size) const
+  {
+    auto table = std::vector<Z>(size, zero);
+    for (const auto& elem : container) {
+      auto key = grouper(elem);
+      table[key] = folder(std::move(table[key]), elem);
+    }
+
+    Map<R_key_value<RT<F1, R>, Z>> result;
+    for (auto i = 0; i < table.size(); ++i) {
+      // move out of the map as we iterate
+      result.insert(R_key_value<int, Z>{i, std::move(table[i])});
+    }
+    return result;
+  }
+
   template <class Fun>
   auto ext(Fun expand) const -> Map<typename RT<Fun, R>::ElemType> {
     typedef typename RT<Fun, R>::ElemType T;
     Map<T> result;
     for (const auto& it : container) {
-      for (auto& it2 : expand(it.second).container) {
-        result.insert(it2.second);
+      for (auto&& it2 : expand(it.second).container) {
+        result.insert(std::move(it2.second));
       }
     }
-
     return result;
   }
 
-  int size(unit_t) const { return container.size(); }
+  // Iterators.
+  using iterator = map_iterator<typename Container::iterator>;
+  using const_iterator = map_iterator<typename Container::const_iterator>;
 
-  // lookup ignores the value of the argument
-  shared_ptr<R> lookup(const R& r) const {
-    auto it = container.find(r.key);
-    if (it != container.end()) {
-      return std::make_shared<R>(it->second);
-    } else {
-      return nullptr;
-    }
-  }
-
-  bool member(const R& r) const {
-    return container.find(r.key) != container.end();
-  }
-
-  template <class F>
-  unit_t lookup_with(R const& r, F f) const {
-    auto it = container.find(r.key);
-    if (it != container.end()) {
-      return f(it->second);
-    }
-
-    return unit_t{};
-  }
-
-  template <class F, class G>
-  auto lookup_with2(R const& r, F f, G g) const {
-    auto it = container.find(r.key);
-    if (it == container.end()) {
-      return f(unit_t{});
-    } else {
-      return g(it->second);
-    }
-  }
-
-  template <class F>
-  auto lookup_with3(R const& r, F f) const {
-    auto it = container.find(r.key);
-    if (it != container.end()) {
-      return f(it->second);
-    }
-    throw std::runtime_error("No match on Map.lookup_with3");
-  }
-
-  template <class F, class G>
-  auto lookup_with4(R const& r, F f, G g) const {
-    auto it = container.find(r.key);
-    if (it == container.end()) {
-      return f(unit_t {});
-    } else {
-      return g(it->second);
-    }
-  }
+  iterator begin() { return iterator(container.begin()); }
+  iterator end() { return iterator(container.end()); }
+  const_iterator begin() const { return const_iterator(container.cbegin()); }
+  const_iterator end() const { return const_iterator(container.cend()); }
 
   bool operator==(const Map& other) const {
     return container == other.container;

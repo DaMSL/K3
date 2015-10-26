@@ -4,6 +4,8 @@
 #include <regex>
 
 #include "Common.hpp"
+#include "serialization/Codec.hpp"
+#include "types/Value.hpp"
 
 namespace K3 {
 
@@ -19,6 +21,17 @@ class StringBuiltins {
   template <class S>
   S slice_string(const S& s, int x, int y);
   int strcomp(const string_impl& s1, const string_impl& s2);
+  template <class T>
+  T parsePSV(const string_impl& s1) {
+    auto bs = BaseStringRefPackedValue(s1, CodecFormat::PSV);
+    return *unpack<T>(bs);
+  }
+  template <class T>
+  T parseYAS(const string_impl& s1) {
+    auto bs = BaseStringRefPackedValue(s1, CodecFormat::YASBinary);
+    T t = *unpack<T>(bs);
+    return t;
+  }
 };
 
 template <class S>

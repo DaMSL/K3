@@ -9,6 +9,7 @@
 #include <yas/buffers.hpp>
 
 #include "Common.hpp"
+#include "types/BaseString.hpp"
 
 namespace K3 {
 
@@ -44,7 +45,8 @@ class PackedValue {
 // Native Value Implementation
 template <class T>
 T* NativeValue::as() {
-  return static_cast<T*>(this->materialize());
+  auto p = static_cast<T*>(this->materialize());
+  return p;
 }
 
 template <class T>
@@ -85,9 +87,30 @@ class StringPackedValue : public PackedValue {
   CodecFormat format() const;
   virtual const char* buf() const;
   virtual size_t length() const;
+  string steal();
 
- protected:
-  std::unique_ptr<string> string_;
+  string string_;
+};
+
+class BaseStringPackedValue : public PackedValue {
+ public:
+  BaseStringPackedValue(base_string&& b, CodecFormat format);
+  CodecFormat format() const;
+  virtual const char* buf() const;
+  virtual size_t length() const;
+  base_string steal();
+
+  base_string string_;
+};
+
+class BaseStringRefPackedValue : public PackedValue {
+ public:
+  BaseStringRefPackedValue(const base_string& b, CodecFormat format);
+  CodecFormat format() const;
+  virtual const char* buf() const;
+  virtual size_t length() const;
+
+  const base_string& string_;
 };
 
 // YAS-shared-buffer-based

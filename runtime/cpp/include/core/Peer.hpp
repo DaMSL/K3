@@ -8,6 +8,9 @@
 #include <chrono>
 #include <vector>
 
+#ifdef _WIN32
+#include <winsock2.h>
+#endif //_WIN32
 #include <spdlog/spdlog.h>
 #include <yaml-cpp/yaml.h>
 
@@ -32,7 +35,9 @@ class Peer {
   // Utilities
   bool finished();
   Address address();
-  shared_ptr<ProgramContext> getContext();
+  ProgramContext& getContext() {
+    return *context_;
+  }
   void printStatistics();
 
  protected:

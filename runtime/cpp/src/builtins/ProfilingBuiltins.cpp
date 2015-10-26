@@ -50,13 +50,13 @@ unit_t ProfilingBuiltins::tcmallocStart(unit_t) {
 #ifdef K3_TCMALLOC
   HeapProfilerStart("K3");
 #ifdef K3_HEAP_SERIES
-  auto init = []() {
+  auto init = [this]() {
     auto start = time_milli();
-    auto start_str = to_string((start - (start % 250)) % 100000);
+    auto start_str = std::to_string((start - (start % 250)) % 100000);
     return std::string("K3." + start_str + ".");
   };
   auto body = [](std::string& name, int i) {
-    std::string heapName = name + to_string(i);
+    std::string heapName = name + std::to_string(i);
     HeapProfilerDump(heapName.c_str());
   };
   heap_series_start(init, body);
@@ -85,16 +85,16 @@ unit_t ProfilingBuiltins::jemallocStart(unit_t) {
   bool enable = true;
   mallctl("prof.active", NULL, 0, &enable, sizeof(enable));
 #ifdef K3_HEAP_SERIES
-  auto init = []() {
+  auto init = [this]() {
     const char* hp_prefix;
     size_t hp_sz = sizeof(hp_prefix);
     mallctl("opt.prof_prefix", &hp_prefix, &hp_sz, NULL, 0);
     auto start = time_milli();
-    auto start_str = to_string((start - (start % 250)) % 100000);
+    auto start_str = std::to_string((start - (start % 250)) % 100000);
     return std::string(hp_prefix) + "." + start_str + ".0.t";
   };
   auto body = [](std::string& name, int i) {
-    std::string heapName = name + to_string(i) + ".heap";
+    std::string heapName = name + std::to_string(i) + ".heap";
     const char* hnPtr = heapName.c_str();
     mallctl("prof.dump", NULL, 0, &hnPtr, sizeof(hnPtr));
   };

@@ -21,14 +21,35 @@ annotation VMap given type a,b
   provides lifted total_size : () -> int
     with effects \_ -> R[self]
 
-  //////////////////////////////
-  // Exact version operations.
+  /////////////////////////////////////////
+  // Exact version map retrieval.
 
-  provides lifted peek : int -> option content
-    with effects \version -> [R[version]; R[self]]
+  @:CArgs 3
+  provides lifted peek : int -> (() -> a) -> (content -> a) -> a
+    with effects \version -> \f -> \g -> [R[self]; R[version]; f content; g content]
+
+  @:CArgs 2
+  provides lifted member : int -> content -> bool
+    with effects \version -> \elem -> [R[version]; R[self]; R[elem]]
+
+  @:CArgs 4
+  provides lifted lookup : int -> content -> (() -> a) -> (content -> a) -> a
+    with effects \version -> \elem -> \noneF -> \someF -> [R[self]; R[version]; R[elem]; noneF content; someF content]
+
+
+  /////////////////////////////////////////
+  // Exact version map modification.
 
   @:CArgs 2
   provides lifted insert : int -> content -> ()
+    with effects \version -> \elem -> [R[version]; R[self]; R[elem]; W[self]]
+
+  @:CArgs 3
+  provides lifted update : int -> content -> content -> ()
+    with effects \version -> \oldElem -> \newElem -> [R[version]; R[self]; R[oldElem]; R[newElem]; W[self]]
+
+  @:CArgs 2
+  provides lifted erase : int -> content -> ()
     with effects \version -> \elem -> [R[version]; R[self]; R[elem]; W[self]]
 
   @:CArgs 3
@@ -39,133 +60,89 @@ annotation VMap given type a,b
   provides lifted upsert_with : int -> content -> (() -> content) -> (content -> content) -> ()
     with effects \version -> \elem -> \f -> \g -> [R[version]; R[self]; R[elem]; f content; g content; W[self]]
 
-  @:CArgs 2
-  provides lifted erase : int -> content -> ()
-    with effects \version -> \elem -> [R[version]; R[self]; R[elem]; W[self]]
-
-  @:CArgs 3
-  provides lifted update : int -> content -> content -> ()
-    with effects \version -> \oldElem -> \newElem -> [R[version]; R[self]; R[oldElem]; R[newElem]; W[self]]
-
-  // Returns if a value at the exact version is present in the VMap.
-  @:CArgs 2
-  provides lifted member : int -> content -> bool
-    with effects \version -> \elem -> [R[version]; R[self]; R[elem]]
-
-  @:CArgs 2
-  provides lifted lookup : int -> content -> option content
-    with effects \version -> \elem -> [R[version]; R[self]; R[elem]]
-
-  @:CArgs 3
-  provides lifted lookup_with : int -> content -> (content -> ()) -> ()
-    with effects \version -> \elem -> \lookupF -> [R[version]; R[self]; R[elem]; lookupF content]
-
-  @:CArgs 4
-  provides lifted lookup_with2 : int -> content -> (() -> ()) -> (content -> ()) -> ()
-    with effects \version -> \elem -> \noneF -> \someF -> [R[version]; R[self]; R[elem]; noneF content; someF content]
-
-  @:CArgs 3
-  provides lifted lookup_with3 : int -> content -> (content -> a) -> a
-    with effects \version -> \elem -> \lookupF -> [R[self]; R[version]; R[elem]; lookupF content]
-
-  @:CArgs 4
-  provides lifted lookup_with4 : int -> content -> (() -> a) -> (content -> a) -> a
-    with effects \version -> \elem -> \noneF -> \someF -> [R[self]; R[version]; R[elem]; noneF content; someF content]
-
 
   //////////////////////////////////////////////////
   // Frontier-based map retrieval operations.
   // These apply to the nearest version specified.
 
-  @:CArgs 2
-  provides lifted lookup_before : int -> content -> option content
-    with effects \version -> \elem -> [R[version]; R[self]; R[elem]]
-
-  @:CArgs 3
-  provides lifted lookup_with_before : int -> content -> (content -> ()) -> ()
-    with effects \version -> \elem -> \lookupF -> [R[version]; R[self]; R[elem]; lookupF content]
-
   @:CArgs 4
-  provides lifted lookup_with2_before : int -> content -> (() -> ()) -> (content -> ()) -> ()
-    with effects \version -> \elem -> \noneF -> \someF -> [R[version]; R[self]; R[elem]; noneF content; someF content]
-
-  @:CArgs 3
-  provides lifted lookup_with3_before : int -> content -> (content -> a) -> a
-    with effects \version -> \elem -> \lookupF -> [R[version]; R[self]; R[elem]; lookupF content]
-
-  @:CArgs 4
-  provides lifted lookup_with4_before : int -> content -> (() -> a) -> (content -> a) -> a
+  provides lifted lookup_before : int -> content -> (() -> a) -> (content -> a) -> a
     with effects \version -> \elem -> \noneF -> \someF -> [R[self]; R[version]; R[elem]; noneF content; someF content]
 
   // Non-inclusive modifications of all values before the given version.
   @:CArgs 2
-  provides lifted erase_prefix : int -> content -> ()
+  provides lifted erase_before : int -> content -> ()
     with effects \version -> \elem -> [R[version]; R[self]; R[elem]; W[self]]
 
   // Inclusive update of all values greater than the given version.
   @:CArgs 3
-  provides lifted update_suffix : int -> content -> (int -> content -> content) -> ()
+  provides lifted update_after : int -> content -> (int -> content -> content) -> ()
     with effects \version -> \elem -> \updateF -> [R[version]; R[self]; R[elem]; ((updateF none) content)*; W[self]]
 
 
   ///////////////////////////////////////////////
   // Most-recent version operations.
 
-  provides lifted peek_now : () -> option content
-    with effects \_ -> [R[self]]
-
-
-  /////////////////////////////////////////////////////////////////////////////
-  // Transformers.
-  // Note these do not include the transformer property with fusion
-  // being unsupported on VMaps.
-  // Other than combine and split, these also operate on a frontier of values.
-
-  provides lifted combine : self -> self
-    with effects \other -> [R[self]; R[other]]
-
-  provides lifted split   : () -> (self, self)
-    with effects \_ -> R[self]
-
-  @:{CArgs 2}
-  provides lifted iterate : int -> (content -> ()) -> ()
-    with effects \version -> \iterF -> [R[version]; R[self]; ([R[content]; iterF content])*]
-
-  @:{CArgs 2}
-  provides lifted map     : int -> (content -> {key: a, value: b}) -> collection {key: a, value: b} @VMap
-    with effects \version -> \mapF -> [R[version]; R[self]; ([R[content]; mapF content])*]
-
-  @:{CArgs 2}
-  provides lifted filter  : int -> (content -> bool) -> self
-    with effects \version -> \filterF -> [R[version]; R[self]; ([R[content]; filterF content])*]
-
-  @:{CArgs 3}
-  provides lifted fold    : int -> (a -> (content -> a)) -> a -> a
-    with effects \version -> \foldF -> \z -> [R[version]; R[self]; R[z]; ([R[content]; ((foldF z) content)])*]
-
-  @:{CArgs 4}
-  provides lifted groupBy : int -> (content -> a) -> (b -> content -> b) -> b
-                             -> collection { key : a, value : b } @VMap
-    with effects
-      \version -> \gbF -> \gaccF -> \z ->
-        [R[version]; R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
-
-  @:{CArgs 2}
-  provides lifted ext : int -> (content -> collection {key : a, value: b} @VMap)
-                         -> collection {key : a, value: b} @VMap
-    with effects \version -> \extF -> [R[version]; R[self]; ([R[content]; extF content])*]
-
+  @:CArgs 2
+  provides lifted peek_now : (() -> a) -> (content -> a) -> a
+    with effects \f -> \g -> [R[self]; R[version]; f content; g content]
 
   //////////////////////////////
   //
   // Multi-version methods.
 
-  @:{CArgs 2}
-  provides lifted fold_all : (a -> (int -> (content -> a))) -> a -> a
+  @:CArgs 2
+  provides lifted fold_all : (a -> int -> content -> a) -> a -> a
     with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; (((foldF z) none) content)])*]
 
   // Non-inclusive modifications of all values before the given version.
-  provides lifted erase_prefix_all : int -> ()
+  provides lifted erase_all_before : int -> ()
     with effects \version -> [R[version]; R[self]; W[self]]
 
+
+  /////////////////////////////////////////////////////////////////////////////
+  // Transformers.
+  // Note these do not include the transformer property (e.g., for fusion).
+  // Other than combine and split, these also operate on a frontier of values.
+
+  provides lifted combine : self -> self
+    with effects \other -> [R[self]; R[other]]
+
+  provides lifted split : () -> (self, self)
+    with effects \_ -> R[self]
+
+  @:CArgs 2
+  provides lifted iterate : int -> (content -> ()) -> ()
+    with effects \version -> \iterF -> [R[version]; R[self]; ([R[content]; iterF content])*]
+
+  @:CArgs 2
+  provides lifted map : int -> (content -> {key: a, value: b}) -> collection {key: a, value: b} @VMap
+    with effects \version -> \mapF -> [R[version]; R[self]; ([R[content]; mapF content])*]
+
+  @:CArgs 2
+  provides lifted filter : int -> (content -> bool) -> self
+    with effects \version -> \filterF -> [R[version]; R[self]; ([R[content]; filterF content])*]
+
+  @:CArgs 3
+  provides lifted fold : int -> (a -> (content -> a)) -> a -> a
+    with effects \version -> \foldF -> \z -> [R[version]; R[self]; R[z]; ([R[content]; ((foldF z) content)])*]
+
+  @:CArgs 4
+  provides lifted group_by : int -> (content -> a) -> (b -> content -> b) -> b
+                              -> collection { key : a, value : b } @VMap
+    with effects
+      \version -> \gbF -> \gaccF -> \z ->
+        [R[version]; R[self]; R[z]; ([R[content]; gbF content; ((gaccF z) content)])*]
+
+  @:CArgs 5
+  provides lifted group_by_contiguous : int -> (content -> int) -> (a -> content -> a) -> a -> int
+                                         -> collection { key : int, value : a } @VMap
+    with effects
+      \version -> \gbF -> \gaccF -> \z -> \s ->
+        [R[version]; R[self]; R[z]; R[s]; ([R[content]; gbF content; gaccF content])*]
+
+  @:CArgs 2
+  provides lifted ext : int -> (content -> collection {key : a, value: b} @VMap)
+                         -> collection {key : a, value: b} @VMap
+    with effects \version -> \extF -> [R[version]; R[self]; ([R[content]; extF content])*]
 }

@@ -1,0 +1,124 @@
+include "Annotation/Collection.k3"
+include "Annotation/BulkFlatCollection.k3"
+include "Annotation/Maps/IntMap.k3"
+include "Annotation/Set.k3"
+include "Core/Builtins.k3"
+include "Core/Profile.k3"
+
+// TODO handle @:TPCHDate
+typedef lineitem_r = {
+      l_orderkey         : int,
+      l_partkey          : int,
+      l_suppkey          : int,
+      l_linenumber       : int,
+      l_quantity         : real,
+      l_extendedprice    : real,
+      l_discount         : real,
+      l_tax              : real,
+      l_returnflag       : string,
+      l_linestatus       : string,
+      l_shipdate         : int @::TPCHDate,
+      l_commitdate       : int @::TPCHDate,
+      l_receiptdate      : int @::TPCHDate,
+      l_shipinstruct     : string,
+      l_shipmode         : string,
+      l_comments         : string
+}
+
+// Globals and Loader
+declare lineitem_local: mut collection {elem: lineitem_r} @Collection
+declare lineitem_empty: collection {elem: lineitem_r} @Collection
+declare lineitemLoaderPE: collection {path: string} @Collection -> collection {elem: lineitem_r} @Collection -> ()
+declare files: collection {path: string} @Collection
+
+declare lineitem_bfc : mut collection lineitem_r @BulkFlatCollection
+declare lineitem_bfc2 : mut collection lineitem_r @BulkFlatCollection
+
+declare receivers: collection {addr: address} @Collection
+declare batch_size: int = 100000
+
+declare total_count: mut int = 0
+trigger convert: () = \_ -> (
+ lineitemLoaderPE files lineitem_local;
+ print ("Lineitem: " ++ (itos (lineitem_local.size())));
+ let last_batch =
+   lineitem_local.fold (\acc -> \e -> (
+     if acc.size() < batch_size
+     then (
+       acc.insert e;
+       acc
+     )
+     else (
+       let bfc = empty lineitem_r @BulkFlatCollection
+       in (
+         total_count = total_count + acc.size();
+         bfc.append acc;
+         (sink1, me) <- bfc.save();
+         (let emp = empty {elem: lineitem_r} @Collection
+           in emp.insert e; emp
+        )
+       )
+     )
+   )) lineitem_empty
+  in (
+    let bfc = empty lineitem_r @BulkFlatCollection
+    in (
+      total_count = total_count + last_batch.size();
+      bfc.append last_batch;
+      (sink1, me) <- bfc.save();
+      (stop, me) <- ()
+    )
+  )
+)
+
+trigger stop: () = \_ -> (
+  print ("Total : " ++ (itos total_count));
+  haltEngine()
+)
+
+trigger read_start: () = \_ -> (
+  openFile me "input" "/local/data/batches.in" "raw" false "r";
+  (read_loop, me) <- 0
+)
+
+trigger read_loop: int = \i -> (
+  if hasRead me "input"
+  then (
+    (receive, (receivers.at  i).addr) <- doRead me "input";
+    (read_loop, me) <- if i+1 < receivers.size() then i+1 else 0
+  )
+  else (
+    receivers.iterate (\p -> (punc, p.addr) <- () )
+  )
+)
+
+declare local_rows: mut int = 0
+trigger receive: string = \s -> (
+  let bfc =  (empty lineitem_r @BulkFlatCollection)
+  in (
+    bfc.load(s);
+    local_rows = local_rows + (bfc.fold (\a -> \_ -> a + 1) 0)
+  )
+)
+
+declare master: address = 127.0.0.1:30000
+trigger punc: () = \_ -> (
+  (done, master) <- local_rows 
+)
+
+declare total: mut int = 0
+trigger done: int = \i -> (
+  total = total + i;
+  (
+    print ("Total: " ++ (itos total));
+    peers.iterate (\p -> (stop, p.addr) <- ())
+  ) @OnCounter(id=[# done], eq=[$ receivers.size ()], reset=[$ false], profile=[$ false])
+)
+
+source s1: () = value ()
+feed s1 |> convert
+
+source s2: () = value ()
+feed s2 |> read_start
+
+sink sink1: string = file "/local/data/batches.out" binary raw

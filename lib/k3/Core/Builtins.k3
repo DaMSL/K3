@@ -103,10 +103,21 @@ with effects \_ -> \_ -> \_ -> \_ -> \_ -> \_ -> io
 declare hasRead: address -> string ->  bool
 with effects \_ -> \_ -> io
 
+@:ErrorFn
+declare parseYAS: forall a. string -> a
+
+@:ErrorFn
+declare parseCSV: forall a. string -> a
+
 // doRead: address -> channel id -> string
-@:CArgs 2
-declare doRead: address -> string -> string
+@:{CArgs 2, ErrorFn}
+declare doRead: forall a. address -> string -> a
 with effects \_ -> \_ -> io
+
+// doRead: address -> channel id -> string
+@:{CArgs 3, ErrorFn}
+declare doBlockRead: forall a. address -> string -> int -> collection { elem: a} @Collection
+with effects \_ -> \_ -> \_ -> io
 
 //// doReadBlock: channel id -> block size -> block
 //@:CArgs 2
@@ -182,7 +193,7 @@ declare sqrt : real -> real
 
 // Collection enumeration [0,1,..n-1]
 @:ErrorFn
-declare range : int -> collection {i : int} @ { Seq }
+declare range : int -> collection {elem : int} @Seq
   with effects \x -> R[x]
 
 ///////////////////////
@@ -235,6 +246,6 @@ declare haltEngine : () -> ()
 // Terminate engine once queues are empty
 declare drainEngine : () -> ()
 
-// Sleep the engine (microseconds)
+// Sleep the engine (milliseconds)
 declare sleep : int -> ()
 with effects  \_ -> io

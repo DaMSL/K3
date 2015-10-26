@@ -3,6 +3,7 @@
 
 #include <tuple>
 #include <unordered_map>
+#include <type_traits>
 
 #include "boost/serialization/vector.hpp"
 #include "boost/serialization/set.hpp"
@@ -25,7 +26,8 @@ using std::tuple;
 using std::unordered_map;
 
 // Utility to give the return type of a Function F expecting an Element E as an argument:
-template <class F, class E> using RT = decltype(std::declval<F>()(std::declval<E>()));
+//template <class F, class E> using RT = decltype(std::declval<F>()(std::declval<E>()));
+template <class F, typename... Args> using RT = typename std::result_of<F(Args...)>::type;
 
 // A Generic STL based dataspace.
 template <template <typename> class Derived, template<typename...> class STLContainer, class Elem>
@@ -47,17 +49,12 @@ class STLDS {
   }
 
   // Functionality
-  shared_ptr<Elem> peek(unit_t) const {
-    shared_ptr<Elem> res(nullptr);
-    const_iterator it = container.begin();
-    if (it != container.end()) {
-      res = std::make_shared<Elem>(*it);
-    }
-    return res;
+  int size(const unit_t&) const {
+    return container.size();
   }
 
   template <class F, class G>
-  auto peek_with(F f, G g) const {
+  auto peek(F f, G g) const {
     auto it = container.begin();
     if (it == container.end()) {
       return f(unit_t{});
@@ -66,18 +63,26 @@ class STLDS {
     }
   }
 
+  Elem at(int i) const {
+    auto it = container.begin();
+    std::advance(it, i);
+    return *it;
+  }
+
+  template<class F, class G>
+  auto safe_at(int i, F f, G g) const {
+    if ( i < container.size() ) {
+      auto it = container.begin();
+      std::advance(it, i);
+      return g(*it);
+    } else {
+      return f(unit_t {});
+    }
+  }
+
   template <class T>
   unit_t insert(T &&e) {
     container.insert(container.end(), std::forward<T>(e));
-    return unit_t();
-  }
-
-  unit_t erase(const Elem& v) {
-    iterator it;
-    it = std::find(container.begin(), container.end(), v);
-    if (it != container.end()) {
-      container.erase(it);
-    }
     return unit_t();
   }
 
@@ -89,7 +94,8 @@ class STLDS {
   }
 
   unit_t extend(const STLDS& other) {
-    for (auto& e : other.getConstContainer()) {
+    auto &c = other.getConstContainer();
+    for (auto& e : c) {
       insert(e);
     }
     return unit_t();
@@ -97,17 +103,24 @@ class STLDS {
 
   template <class T>
   unit_t update(const Elem& v, T&& v2) {
-    iterator it;
-    it = std::find(container.begin(), container.end(), v);
+    iterator it = std::find(container.begin(), container.end(), v);
     if (it != container.end()) {
       *it = std::forward<T>(v2);
     }
     return unit_t();
   }
 
-  int size(const unit_t&) const {
-    return container.size();
+  unit_t erase(const Elem& v) {
+    iterator it = std::find(container.begin(), container.end(), v);
+    if (it != container.end()) {
+      container.erase(it);
+    }
+    return unit_t();
   }
+
+
+  ///////////////////////////////////////////////////
+  // Bulk transformations.
 
   Derived<Elem> combine(const STLDS& other) const {
     Derived<Elem> result;
@@ -162,13 +175,14 @@ class STLDS {
   template<typename Fun, typename Acc>
   Acc fold(Fun f, Acc acc) const {
     for (const Elem &e : container) {
-      acc = f(std::move(acc))(e);
+      acc = f(std::move(acc), e);
     }
     return acc;
   }
 
   template<typename F1, typename F2, typename Z>
-  Derived<R_key_value<RT<F1, Elem>, Z>> groupBy(F1 grouper, F2 folder, const Z& init) const {
+  Derived<R_key_value<RT<F1, Elem>, Z>> group_by(F1 grouper, F2 folder, const Z& init) const
+  {
     // Create a map to hold partial results
     typedef RT<F1, Elem> K;
     unordered_map<K, Z> accs;
@@ -179,7 +193,7 @@ class STLDS {
         accs[key] = init;
       }
 
-      accs[key] = folder(std::move(accs[key]))(elem);
+      accs[key] = folder(std::move(accs[key]), elem);
     }
 
     // Build the R_key_value records and insert them into result
@@ -191,24 +205,31 @@ class STLDS {
     return result;
   }
 
-  template <class Fun>
-  auto ext(Fun expand) const -> Derived<typename RT<Fun, Elem>::ElemType> {
-    typedef typename RT<Fun, Elem>::ElemType T;
-    Derived<T> result;
-    for (const Elem& elem : container) {
-      for (T& elem2 : expand(elem).container) {
-        result.insert(std::move(elem2));
-      }
+  template <class G, class F, class Z>
+  Derived<R_key_value<RT<G, Elem>, Z>>
+  group_by_contiguous(G grouper, F folder, const Z& zero, const int& size) const
+  {
+    auto table = std::vector<Z>(size, zero);
+    for (const auto& elem : container) {
+      auto key = grouper(elem);
+      table[key] = folder(std::move(table[key]), elem);
     }
+    // Build the R_key_value records and insert them into result
+    Derived<R_key_value<RT<G, Elem>, Z>> result;
+    for (auto i = 0; i < table.size(); ++i) {
+      // move out of the map as we iterate
+      result.insert(R_key_value<int, Z>{i, std::move(table[i])});
+    }
+    return result;
   }
 
   template<class Other, class F, class G>
-  auto join(Derived<Other> other, F f, G g) const -> Derived<R_elem<RT<RT<G, Elem>, Other>>> const {
-    Derived<R_elem<RT<RT<G, Elem>, Other>>> result;
+  Derived<R_elem<RT<G, Elem, Other>>> join(Derived<Other> other, F f, G g) const {
+    Derived<R_elem<RT<G, Elem, Other>>> result;
     for (const auto& elem : container) {
       for (const auto& otherelem : other.getConstContainer()) {
-        if ( f(elem)(otherelem) ) {
-          result.insert(R_elem<RT<RT<G, Elem>, Other>> { g(elem)(otherelem) });
+        if ( f(elem, otherelem) ) {
+          result.insert(R_elem<RT<G, Elem, Other>> { g(elem, otherelem) });
         }
       }
     }
@@ -216,8 +237,8 @@ class STLDS {
   }
 
   template<class Other, class F, class G, class H>
-  auto equijoin(Derived<Other> other, F f, G g, H h) const -> Derived<R_elem<RT<RT<H, Elem>, Other>>> const {
-    Derived<R_elem<RT<RT<H, Elem>, Other>>> result;
+  Derived<R_elem<RT<H, Elem, Other>>> equijoin(Derived<Other> other, F f, G g, H h) const {
+    Derived<R_elem<RT<H, Elem, Other>>> result;
 
     // Build.
     unordered_map<RT<F, Elem>, std::multiset<Elem>> lhsHT;
@@ -232,7 +253,7 @@ class STLDS {
       auto it = lhsHT.find(key);
       if ( it != lhsHT.end() ) {
         for (const auto& probeelem : it->second) {
-          result.insert(R_elem<RT<RT<H, Elem>, Other>> { h(probeelem)(otherelem) });
+          result.insert(R_elem<RT<H, Elem, Other>> { h(probeelem, otherelem) });
         }
       }
     }
@@ -240,52 +261,42 @@ class STLDS {
   }
 
   template<class Other, class F, class G>
-  auto joinKV(Derived<Other> other, F f, G g) const -> Derived<R_elem<RT<RT<G, Elem>, Other>>> const {
+  Derived<R_elem<RT<G, Elem, Other>>> join_kv(Derived<Other> other, F f, G g) const {
     return join<Other,F,G>(other, f, g);
   }
 
   template<class Other, class F, class G, class H>
-  auto equijoinKV(Derived<Other> other, F f, G g, H h) const -> Derived<R_elem<RT<RT<H, Elem>, Other>>> const {
+  Derived<R_elem<RT<H, Elem, Other>>> equijoin_kv(Derived<Other> other, F f, G g, H h) const {
     return equijoin<Other,F,G,H>(other, f, g, h);
   }
 
+  template <class Fun>
+  auto ext(Fun expand) const -> Derived<typename RT<Fun, Elem>::ElemType> {
+    typedef typename RT<Fun, Elem>::ElemType T;
+    Derived<T> result;
+    for (const Elem& elem : container) {
+      for (T&& elem2 : expand(elem).container) {
+        result.insert(std::move(elem2));
+      }
+    }
+  }
 
   // Iterators
   using iterator = typename Container::iterator;
   using const_iterator = typename Container::const_iterator;
   //using reverse_iterator = typename Container::reverse_iterator;
 
-  iterator begin() {
-    return container.begin();
-  }
+  iterator begin() { return container.begin(); }
+  iterator end() { return container.end(); }
 
-  iterator end() {
-    return container.end();
-  }
+  const_iterator begin() const { return container.cbegin(); }
+  const_iterator end() const { return container.cend(); }
 
-  const_iterator begin() const {
-    return container.cbegin();
-  }
+  const_iterator cbegin() const { return container.cbegin(); }
+  const_iterator cend() const { return container.cend(); }
 
-  const_iterator end() const {
-    return container.cend();
-  }
-
-  const_iterator cbegin() const {
-    return container.cbegin();
-  }
-
-  const_iterator cend() const {
-    return container.cend();
-  }
-
-  //reverse_iterator rbegin() {
-  //  return container.rbegin();
-  //}
-
-  //reverse_iterator rend() {
-  //  return container.rend();
-  //}
+  //reverse_iterator rbegin() { return container.rbegin(); }
+  //reverse_iterator rend() { return container.rend(); }
 
 
   bool operator==(const STLDS& other) const {

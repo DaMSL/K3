@@ -1,0 +1,277 @@
+include "Annotation/FlatPolyBuffer.k3"
+include "Core/Builtins.k3"
+
+
+control ConvertPSVToFPB [on_batch_fn: expr, batch_size: expr, batch_buffer: expr, sink_trig: expr]
+{
+ ?loader ?files (?col : collection ?t)
+ => print "Loading files:";
+    ($.[files].iterate (\f -> print ("  " ++ f.path)));
+    $.[loader] $.[files] $.[col];
+    print ("Loaded: " ++ (itos ($.[col].size())) ++ " tuples.");
+    let last_batch =
+      $.[col].fold
+        (\acc -> \e -> (
+          if acc.size() < $[batch_size]
+          then ((acc.insert e); acc)
+          else ( (tuple_count = tuple_count + (acc.size()));
+                 (batch_count = batch_count + 1);
+                 ($[on_batch_fn] acc);
+                 (($[sink_trig], me) <- $[batch_buffer].save());
+                 ($[batch_buffer].clear());
+                 let emp = empty $::[t] @Collection in
+                 ((emp.insert e); emp)
+               )
+        )) empty $::[t] @Collection
+    in
+    ( (tuple_count = tuple_count + (last_batch.size()));
+      (batch_count = batch_count + 1);
+      ($[on_batch_fn] last_batch);
+      (($[sink_trig], me) <- $[batch_buffer].save());
+      ($[batch_buffer].clear());
+      (print ("Saved: " ++ (itos tuple_count) ++ " tuples."));
+       print ("Saved: " ++ (itos batch_count) ++ " batches.") )
+ +> {
+    declare tuple_count: mut int = 0
+    declare batch_count: mut int = 0
+ }
+}
+
+// Types with booleans
+typedef customer_rb = { ra:bool, rb:int, rc:string, rd:string, re:int, rf:string, rg:real, rh:string, ri:string }
+typedef lineitem_rb = { ra:bool, rb:int, rc:int, rd:int, re:int, rf:real, rg:real, rh:real, ri:real, rj:string,
+                        rk:string, rl:int, rm:int, rn:int, ro:string, rp:string, rq:string }
+typedef orders_rb = { ra:bool, rb:int, rc:int, rd:string, re:real, rf:int, rg:string, rh:string, ri:int, rj:string }
+typedef part_rb = { ra:bool, rb:int, rc:string, rd:string, re:string, rf:string, rg:int, rh:string, ri:real, rj:string }
+typedef partsupp_rb = { ra:bool, rb:int, rc:int, rd:int, re:real, rf:string }
+typedef supplier_rb = { ra:bool, rb:int, rc:string, rd:string, re:int, rf:string, rg:real, rh:string }
+
+
+typedef customer_r = { rb:int, rc:string, rd:string, re:int, rf:string, rg:real, rh:string, ri:string }
+typedef lineitem_r = { rb:int, rc:int, rd:int, re:int, rf:real, rg:real, rh:real, ri:real, rj:string,
+                        rk:string, rl:int, rm:int, rn:int, ro:string, rp:string, rq:string }
+typedef orders_r = {  rb:int, rc:int, rd:string, re:real, rf:int, rg:string, rh:string, ri:int, rj:string }
+typedef part_r = {  rb:int, rc:string, rd:string, re:string, rf:string, rg:int, rh:string, ri:real, rj:string }
+typedef partsupp_r = { rb:int, rc:int, rd:int, re:real, rf:string }
+typedef supplier_r = { rb:int, rc:string, rd:string, re:int, rf:string, rg:real, rh:string }
+
+typedef lineitem_bag    = collection lineitem_r    @Collection
+typedef customer_bag    = collection customer_r    @Collection
+typedef orders_bag      = collection orders_r      @Collection
+typedef supplier_bag    = collection supplier_r    @Collection
+typedef partsupp_bag    = collection partsupp_r    @Collection
+typedef part_bag        = collection part_r        @Collection
+typedef tpch_agenda_bag = collection tpch_agenda_r @Collection
+
+@:CArgs 2
+declare lineitemLoaderP : collection {path: string} @Collection -> lineitem_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare customerLoaderP : collection {path: string} @Collection -> customer_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare ordersLoaderP : collection {path: string} @Collection -> orders_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare supplierLoaderP : collection {path: string} @Collection -> supplier_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare partsuppLoaderP : collection {path: string} @Collection -> partsupp_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare partLoaderP : collection {path: string} @Collection -> part_bag -> ()
+  with effects \_ -> \_ -> io
+
+
+declare sentinel_tag : int = 0
+declare customer_tag : int = 1
+declare lineitem_tag : int = 2
+declare orders_tag :   int = 3
+declare part_tag :     int = 4
+declare partsupp_tag : int = 5
+declare supplier_tag : int = 6
+
+typedef poly_tpch = collection {elem : ()} @FlatPolyBuffer(
+  variants=[:#>
+    sentinel => { elem:() } : 0,
+    customer => customer_rb  : 1,
+    lineitem => lineitem_rb  : 2, 
+    orders   =>  orders_rb   : 3,
+    part     =>  part_rb     : 4, 
+    partsupp => partsupp_rb  : 5, 
+    supplier => supplier_rb  : 6
+  ])
+
+declare files    : collection {path: string} @Collection
+declare batch_sz : mut int = 100
+declare buffer   : poly_tpch
+
+declare lineitem : lineitem_bag
+declare customer : customer_bag
+declare orders   : orders_bag
+declare supplier : supplier_bag
+declare partsupp : partsupp_bag
+declare part     : part_bag
+
+declare lineitem_fpb : lineitem_bag -> () = \c -> (
+  c.iterate (\r -> buffer.append_lineitem
+    {ra:true,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh,ri:r.ri,rj:r.rj,rk:r.rk,rl:r.rl,rm:r.rm,rn:r.rn,ro:r.ro,rp:r.rp,rq:r.rq})
+)
+
+declare customer_fpb : customer_bag -> () = \c -> (
+  c.iterate (\r -> buffer.append_customer 
+    {ra:true,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh,ri:r.ri})
+)
+
+declare orders_fpb : orders_bag -> () = \c -> (
+  c.iterate (\r -> buffer.append_orders
+    {ra:true,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh,ri:r.ri,rj:r.rj})
+)
+
+declare supplier_fpb : supplier_bag -> () = \c -> (
+  c.iterate (\r -> buffer.append_supplier
+    {ra:true,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh})
+)
+
+declare partsupp_fpb : partsupp_bag -> () = \c -> (
+  c.iterate (\r -> buffer.append_partsupp
+    {ra:true,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf})
+)
+
+declare part_fpb : part_bag -> () = \c -> (
+  c.iterate (\r -> buffer.append_part
+    {ra:true,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh,ri:r.ri,rj:r.rj})
+)
+
+trigger convert_lineitem : () = \_ -> (
+  ( lineitemLoaderP files lineitem
+  ) @ConvertPSVToFPB(
+      on_batch_fn  = [$ lineitem_fpb ],
+      batch_size   = [$ batch_sz ],
+      batch_buffer = [$ buffer ],
+      sink_trig    = [$ lsink ]
+  );
+  (halt, me) <- () delay 2s
+)
+
+trigger convert_customer : () = \_ -> (
+  ( customerLoaderP files customer
+  ) @ConvertPSVToFPB(
+      on_batch_fn  = [$ customer_fpb ],
+      batch_size   = [$ batch_sz ],
+      batch_buffer = [$ buffer ],
+      sink_trig    = [$ csink ]
+  );
+  (halt, me) <- () delay 2s
+)
+
+trigger convert_orders : () = \_ -> (
+  ( ordersLoaderP files orders
+  ) @ConvertPSVToFPB(
+      on_batch_fn  = [$ orders_fpb ],
+      batch_size   = [$ batch_sz ],
+      batch_buffer = [$ buffer ],
+      sink_trig    = [$ osink ]
+  );
+  (halt, me) <- () delay 2s
+)
+
+trigger convert_supplier : () = \_ -> (
+  ( supplierLoaderP files supplier
+  ) @ConvertPSVToFPB(
+      on_batch_fn  = [$ supplier_fpb ],
+      batch_size   = [$ batch_sz ],
+      batch_buffer = [$ buffer ],
+      sink_trig    = [$ ssink ]
+  );
+  (halt, me) <- () delay 2s
+)
+
+trigger convert_partsupp : () = \_ -> (
+  ( partsuppLoaderP files partsupp
+  ) @ConvertPSVToFPB(
+      on_batch_fn  = [$ partsupp_fpb ],
+      batch_size   = [$ batch_sz ],
+      batch_buffer = [$ buffer ],
+      sink_trig    = [$ pssink ]
+  );
+  (halt, me) <- () delay 2s
+)
+
+trigger convert_part : () = \_ -> (
+  ( partLoaderP files part
+  ) @ConvertPSVToFPB(
+      on_batch_fn  = [$ part_fpb ],
+      batch_size   = [$ batch_sz ],
+      batch_buffer = [$ buffer ],
+      sink_trig    = [$ psink ]
+  );
+  (halt, me) <- () delay 2s
+)
+
+declare inorder : mut string = "in_order.csv"
+
+declare numli : mut int = 0
+declare numcs : mut int = 0
+declare numor : mut int = 0
+declare numsu : mut int = 0
+declare numps : mut int = 0
+declare numpt : mut int = 0
+
+trigger load_tpch : poly_tpch = \buf -> (
+  (buf.iterate (\tg -> \idx -> \offset ->
+      if tg == 0 then (numli = numli + 1)
+      else if tg == customer_tag then (numcs = numcs + 1)
+      else if tg == lineitem_tag then (numli = numli + 1)
+      else if tg == orders_tag then (numor = numor + 1)
+      else if tg == part_tag then (numpt = numpt + 1)
+      else if tg == partsupp_tag then (numps = numps + 1)
+      else if tg == supplier_tag then (numsu = numsu + 1)
+      else ( print ("Unknown tag " ++ (itos tg)) )
+    ))
+)
+
+trigger halt : () = \_ -> (
+  (print ("Loaded " ++
+          "  numli: " ++ (itos numli) ++ "\\n" ++
+          "  numcs: " ++ (itos numcs) ++ "\\n" ++
+          "  numor: " ++ (itos numor) ++ "\\n" ++
+          "  numsu: " ++ (itos numsu) ++ "\\n" ++
+          "  numps: " ++ (itos numps) ++ "\\n" ++
+          "  numpt: " ++ (itos numpt) ++ "\\n"
+    ));
+  haltEngine()
+)
+
+sink lsink  : string = file "plineitem.out" binary raw
+sink csink  : string = file "pcustomer.out" binary raw
+sink osink  : string = file "porders.out"   binary raw
+sink ssink  : string = file "psupplier.out" binary raw
+sink pssink : string = file "ppartsupp.out" binary raw
+sink psink  : string = file "ppart.out"     binary raw
+
+source go_lineitem : () = value ()
+feed go_lineitem |> convert_lineitem
+
+source go_customer : () = value ()
+feed go_customer |> convert_customer
+
+source go_orders : () = value ()
+feed go_orders |> convert_orders
+
+source go_supplier : () = value ()
+feed go_supplier |> convert_supplier
+
+source go_partsupp : () = value ()
+feed go_partsupp |> convert_partsupp
+
+source go_part : () = value ()
+feed go_part |> convert_part
+
+source load : poly_tpch = polyfile files binary raw inorder
+feed load |> load_tpch

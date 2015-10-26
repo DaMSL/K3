@@ -3,11 +3,17 @@
 
 #include <atomic>
 #include <vector>
-#include <map>
+#include <unordered_map>
 
+#ifdef _WIN32
+#include <winsock2.h>
+#endif //_WIN32
 #include <spdlog/spdlog.h>
 
+#include <boost/date_time/posix_time/posix_time.hpp>
+
 #include "Common.hpp"
+#include "Hash.hpp"
 #include "Options.hpp"
 #include "network/NetworkManager.hpp"
 #include "storage/StorageManager.hpp"
@@ -16,7 +22,6 @@
 #include "Peer.hpp"
 
 namespace K3 {
-
 class ProgramContext;
 class Engine {
  public:
@@ -27,11 +32,23 @@ class Engine {
   void run();
   void stop();
   void join();
+  template <class T>
   void send(const Address& src, const Address& dst, TriggerID trig,
-            unique_ptr<NativeValue> v, shared_ptr<Codec> cdec);
+            const T& value);
+  template <class T>
+  void send(const Address& src, const Address& dst, TriggerID trig,
+            T&& value);
+
+  // Delayed sends, in microseconds from now.
+  template <class T>
+  void delayedSend(const Address& src, const Address& dst, TriggerID trig,
+                   const T& value, const TimerType& tmty, int delay);
+  template <class T>
+  void delayedSend(const Address& src, const Address& dst, TriggerID trig,
+                   T&& value, const TimerType& tmty, int delay);
 
   // Accessors
-  shared_ptr<ProgramContext> getContext(const Address& addr);
+  ProgramContext& getContext(const Address& addr);
   NetworkManager& getNetworkManager();
   StorageManager& getStorageManager();
 
@@ -40,7 +57,7 @@ class Engine {
   shared_ptr<spdlog::logger> logger_;
   NetworkManager network_manager_;
   StorageManager storage_manager_;
-  shared_ptr<const map<Address, shared_ptr<Peer>>> peers_;
+  shared_ptr<const std::unordered_map<Address, shared_ptr<Peer>>> peers_;
 
   // Configuration
   Options options_;
@@ -63,7 +80,7 @@ void Engine::run() {
       [this]() { return make_shared<Context>(*this); });
   auto rdy_callback = [this]() { ready_peers_++; };
 
-  auto tmp_peers = make_shared<map<Address, shared_ptr<Peer>>>();
+  auto tmp_peers = make_shared<std::unordered_map<Address, shared_ptr<Peer>>>();
   vector<YAML::Node> nodes =
       serialization::yaml::parsePeers(options_.peer_strs_);
   for (auto node : nodes) {
@@ -94,6 +111,89 @@ void Engine::run() {
   }
   running_ = true;
   return;
+}
+
+unique_ptr<Dispatcher> getDispatcher(Peer& p, unique_ptr<NativeValue>, TriggerID trig);
+string getTriggerName(int);
+
+template <class T>
+void Engine::send(const Address& src, const Address& dst, TriggerID trig,
+                  T&& value) {
+  if (!peers_) {
+    throw std::runtime_error(
+        "Engine send(): Can't send before peers_ is initialized");
+  }
+  if (logger_->level() <= spdlog::level::debug) {
+    logger_->debug() << "Message: " << src.toString() << " --> "
+                    << dst.toString() << " @"
+                    << getTriggerName(trig);
+  }
+  auto it = peers_->find(dst);
+  if (options_.local_sends_enabled_ && it != peers_->end()) {
+    // Direct enqueue for local messages
+    unique_ptr<NativeValue> nv = std::make_unique<TNativeValue<T>>(std::move(value));
+    auto d = getDispatcher(*it->second, std::move(nv), trig);
+#ifdef K3DEBUG
+    d->trigger_ = trig;
+    d->source_ = src;
+    d->destination_ = dst;
+#endif
+    it->second->getQueue().enqueue(std::move(d));
+  } else {
+    // Serialize and send over the network, otherwise
+    unique_ptr<PackedValue> pv = pack<T>(value, K3_INTERNAL_FORMAT);
+    shared_ptr<NetworkMessage> m =
+        make_shared<NetworkMessage>(trig, std::move(pv));
+#ifdef K3DEBUG
+    m->source_ = src;
+    m->destination_ = dst;
+#endif
+    network_manager_.sendInternal(dst, m);
+  }
+}
+
+template <class T>
+void Engine::send(const Address& src, const Address& dst, TriggerID trig,
+                  const T& value)
+{
+  send(src, dst, trig, T(value));
+}
+
+
+// Delayed sends, based on timers.
+template <class T>
+void Engine::delayedSend(const Address& src, const Address& dst, TriggerID trig,
+                         T&& value, const TimerType& tmty, int delay)
+{
+  if (!peers_) {
+    throw std::runtime_error(
+        "Engine send(): Can't send before peers_ is initialized");
+  }
+  if (logger_->level() <= spdlog::level::debug) {
+    logger_->debug() << "Delayed Message: " << src.toString() << " --> "
+                     << dst.toString() << " @"
+                     << getTriggerName(trig);
+  }
+
+  auto timer_key = network_manager_.timerKey(tmty, src, dst, trig);
+  network_manager_.addTimer(timer_key, boost::posix_time::microseconds(delay));
+
+  auto cb = [this, timer_key, src, dst, trig, value = std::move(value)]
+            (const boost::system::error_code& error) mutable
+  {
+    if ( !error ) {
+      this->network_manager_.removeTimer(timer_key);
+      this->send(src, dst, trig, std::move(value));
+    }
+  };
+  network_manager_.asyncWaitTimer(timer_key, cb);
+}
+
+template <class T>
+void Engine::delayedSend(const Address& src, const Address& dst, TriggerID trig,
+                         const T& value, const TimerType& tmty, int delay)
+{
+  delayedSend(src, dst, trig, T(value), tmty, delay);
 }
 
 }  // namespace K3

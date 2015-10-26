@@ -46,6 +46,20 @@ struct hash<K3::Sorted<Elem>> {
 };
 
 template <class Elem>
+struct hash<K3::IntMap<Elem>> {
+  size_t operator()(K3::IntMap<Elem> const& b) const {
+    return hash_collection(b);
+  }
+};
+
+template <class Elem>
+struct hash<K3::StrMap<Elem>> {
+  size_t operator()(K3::StrMap<Elem> const& b) const {
+    return hash_collection(b);
+  }
+};
+
+template <class Elem>
 struct hash<K3::VMap<Elem>> {
   size_t operator()(K3::VMap<Elem> const& b) const {
     const auto& c = b.getConstContainer();

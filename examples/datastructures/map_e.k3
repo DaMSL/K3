@@ -1,7 +1,12 @@
+include "Annotation/Collection.k3"
 include "Annotation/Maps/MapE.k3"
 include "Core/Builtins.k3"
 
 declare c : mut collection {key: int, value: int} @{MapE(key=[:> key=>int], value=[:> value=>int])}
+declare d : mut collection {key: int, value: int} @{MapE(key=[:> key=>int], value=[:> value=>int])}
+
+declare e : collection {key: int, value: int} @Collection
+declare f : mut int = 0
 
 trigger t : () = \_ -> (
   (c.insert {key: 1, value: 1});
@@ -9,9 +14,20 @@ trigger t : () = \_ -> (
   (c.insert {key: 3, value: 3});
   (c.insert {key: 4, value: 4});
 
+  // Equijoinkf_kv test for Mosaic.
+  (e.insert {key: 1, value: 10});
+  (e.insert {key: 2, value: 10});
+  (e.insert {key: 3, value: 10});
+  (e.insert {key: 4, value: 10});
+  (f = (c.equijoinkf_kv e (\er -> er.key) (\acc -> \er -> \cr -> acc + (er.value * cr.value)) 0));
+  (print ("F: " ++ (itos f)));
+
+  //((c.group_by (\r -> r.key) (\acc -> \r -> acc + r.value) 0)
+  //   .iterate  (\r -> d.insert {key: r.key, value: r.value}));
+
   (c.update       {key: 3} {value: 6});
   (c.upsert_with  {key: 5} (\_ -> {key:5, value: 5}) (\r -> {key: 5, value: r.value + 5}));
-  (c.lookup_with4 {key: 4} (\_ -> ()) (\r -> print ("Found @4: " ++ (itos r.value))))
+  (c.lookup       {key: 4} (\_ -> ()) (\r -> print ("Found @4: " ++ (itos r.value))))
 )
 
 source s1 : () = value ()

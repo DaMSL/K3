@@ -1,0 +1,59 @@
+annotation Array[asize : literal] given type a, b
+{
+  provides lifted array_size : int = $[asize]
+
+  provides lifted size : () -> int
+    with effects \_ -> R[self]
+
+  @:CArgs 2
+  provides lifted peek : (() -> a) -> (content -> a) -> a
+    with effects \f -> \g -> [R[self]; f content; g content]
+
+  provides lifted at : int -> content
+    with effects \i -> [R[i]; R[self]]
+
+  @:CArgs 3
+  provides lifted safe_at : int -> (() -> a) -> (content -> a) -> a
+    with effects \i -> \f -> \g -> [R[i]; R[self]; f content; g content]
+
+
+  ///////////////////////////////////////////////////////
+  // Modifiers.
+
+  @:CArgs 2
+  provides lifted set : int -> content -> ()
+    with effects \i -> \elem -> [R[self]; R[i]; R[elem]; W[self]]
+
+  @:CArgs 2
+  provides lifted swap : int -> content -> content
+    with effects \i -> \c -> [R[i]; R[c]; W[self]]
+
+  @:CArgs 2
+  provides lifted fill : content -> ()
+    with effects \elem -> [R[self]; R[elem]; W[self]]
+
+  @:CArgs 2
+  provides lifted fill_by : (int -> content) -> ()
+    with effects \elemF -> [R[self]; elemF none; W[self]]
+
+
+  ///////////////////////////////////////////////////
+  // Bulk transformations.
+
+  @:Transformer
+  provides lifted iterate : (content -> ()) -> ()
+    with effects \iterF -> [R[self]; ([R[content]; iterF content])*]
+
+  @:Transformer
+  provides lifted map : (content -> a) -> collection {elem : a} @Array(asize = asize)
+    with effects \mapF -> [R[self]; ([R[content]; mapF content])*]
+
+  @:{Transformer, CArgs 2}
+  provides lifted fold : (a -> (content -> a)) -> a -> a
+    with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; ((foldF z) content)])*]
+
+  provides lifted zip : (content -> a -> b) -> collection {elem : a} @Array(asize = asize)
+                          -> collection {elem : b} @Array(asize = asize)
+    with effects \zipF -> \other -> [R[self]; R[other]; ([R[content]; zipF content])*]
+
+}

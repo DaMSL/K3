@@ -60,6 +60,7 @@ module Language.K3.Core.Utils
 , foldMapReturnExpression
 , mapReturnExpression
 
+, literalExpression
 , defaultExpression
 
 , compareDAST
@@ -122,8 +123,6 @@ import Data.Tree
 
 import Data.Map ( Map )
 import qualified Data.Map as Map
-
-import Debug.Trace
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -668,6 +667,16 @@ mapReturnExpression onReturnF nonReturnF expr =
 
 {- Expression utilities -}
 
+-- TODO: complete conversion for remaining literals.
+literalExpression :: K3 Literal -> Either String (K3 Expression)
+literalExpression l = case tag l of
+    LBool   b -> Right $ EC.constant $ CBool b
+    LInt    i -> Right $ EC.constant $ CInt i
+    LByte   w -> Right $ EC.constant $ CByte w
+    LReal   d -> Right $ EC.constant $ CReal d
+    LString s -> Right $ EC.constant $ CString s
+    _ -> Left "Unsupported literal conversion (not implemented)"
+
 defaultExpression :: K3 Type -> Either String (K3 Expression)
 defaultExpression typ = mapTree mkExpr typ
   where mkExpr _ t@(tag -> TBool)   = withQualifier t $ EC.constant $ CBool False
@@ -683,8 +692,8 @@ defaultExpression typ = mapTree mkExpr typ
                                         in withQualifier t $ EC.constant $ CNone nm
 
         mkExpr [e] t@(tag -> TIndirection) = withQualifier t $ EC.indirect e
-        mkExpr ch t@(tag -> TTuple)        = withQualifier t $ EC.tuple ch
-        mkExpr ch t@(tag -> TRecord ids)   = withQualifier t $ EC.record $ zip ids ch
+        mkExpr ch  t@(tag -> TTuple)       = withQualifier t $ EC.tuple ch
+        mkExpr ch  t@(tag -> TRecord ids)  = withQualifier t $ EC.record $ zip ids ch
 
         mkExpr _ t@(tag -> TCollection) = withQualifier t $
           foldl (@+) (EC.empty $ head $ children t) $ extractTCAnns $ annotations t
@@ -697,7 +706,8 @@ defaultExpression typ = mapTree mkExpr typ
         mkExpr _ t = Left $ boxToString $ ["Cannot create a default expression for: "] %+ prettyLines t
 
         extractTCAnns as = concatMap extract as
-          where extract (TAnnotation i) = [EAnnotation i]
+          where extract (TAnnotation i)    = [EAnnotation i]
+                extract (TApplyGen i senv) = [EApplyGen False i senv]
                 extract _ = []
 
         withQualifier t e = case t @~ isTQualified of

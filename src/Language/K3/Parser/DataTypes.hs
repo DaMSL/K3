@@ -144,14 +144,16 @@ k3Keywords = [
     "self", "structure", "horizon", "content", "forall",
 
     {- Metaprogramming keywords -}
-    "control", "label", "expr", "decl", "literal", "labeltype", "shared",
+    "control", "label", "expr", "decl", "literal", "labeltype", "shared", "for",
 
     {- Effect signature keywords -}
     "with", "symbol", "effects", "return", "fresh", "none", "io",
 
     {- Syntactic sugar keywords -}
-    "typedef"
+    "typedef",
 
+    {- Delayed messages. -}
+    "delay", "override", "edge"
   ]
 
 {- Style definitions for parsers library -}
@@ -194,10 +196,11 @@ identParts = token $ some (choice $ map try parts)
   where parts = [MPENull <$> (nonTokenIdent k3Idents), spliceEmbedding]
 
 spliceSymbols :: [(String, [Identifier])]
-spliceSymbols = map (,[]) ["$"] ++ [ ("$#",  [spliceVIdSym])
-                                   , ("$::", [spliceVTSym])
-                                   , ("$.",  [spliceVESym])
-                                   , ("$!",  [spliceVLSym])]
+spliceSymbols = [ ("$",[])
+                , ("$#",  [spliceVIdSym])
+                , ("$::", [spliceVTSym])
+                , ("$.",  [spliceVESym])
+                , ("$!",  [spliceVLSym])]
 
 splicePath :: K3Parser [String]
 splicePath = i `sepBy1` (string ".")

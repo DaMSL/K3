@@ -34,7 +34,6 @@ import Data.List.Split
 import Data.Map ( Map )
 import Data.Monoid
 import qualified Data.Map as Map
-import qualified Data.Set as Set
 import qualified Data.Text as T
 import Data.Tree
 import Data.Tuple
@@ -60,13 +59,15 @@ import qualified Language.K3.Analysis.SEffects.Inference   as SEffects
 
 import qualified Language.K3.Analysis.SendGraph as SG
 
+import qualified Language.K3.Codegen.CPP.Materialization.Inference as Mat
+
 import Language.K3.Transform.Simplification
 import Language.K3.Transform.TriggerSymbols (triggerSymbols)
 
 import Language.K3.Utils.Pretty
 import qualified Language.K3.Utils.PrettyText as PT
 
-import Language.K3.Codegen.CPP.Materialization
+import Language.K3.Codegen.CPP.Materialization.Inference
 import Language.K3.Codegen.CPP.Preprocessing
 
 -- | Snapshot specifications are a list of pass names to capture per declaration.
@@ -95,7 +96,8 @@ data TransformSt = TransformSt { nextuid    :: ParGenSymS
                                , prenv      :: Properties.PIEnv
                                , penv       :: Provenance.PIEnv
                                , fenv       :: SEffects.FIEnv
-                               , report     :: TransformReport }
+                               , report     :: TransformReport
+                               , mzFlags    :: MZFlags }
                   deriving (Eq, Read, Show, Generic)
 
 -- | Monoid instance for transform reports.
@@ -134,10 +136,13 @@ cs0 = CompilerSpec 16 ss0
 rp0 :: TransformReport
 rp0 = TransformReport Map.empty Map.empty
 
+mz0 :: MZFlags
+mz0 = MZFlags
+
 st0 :: Maybe ParGenSymS -> K3 Declaration -> IO (Either String TransformSt)
 st0 symSOpt prog =
   return $ mkEnv >>= \(stpe, stfe) ->
-    return $ TransformSt uidSymS cseSymS tienv0 Properties.pienv0 stpe stfe rp0
+    return $ TransformSt uidSymS cseSymS tienv0 Properties.pienv0 stpe stfe rp0 mz0
 
   where puid = let UID i = maxProgramUID prog in i + 1
         uidSymS = maybe (contigsymAtS puid) (lowerboundsymS puid) symSOpt
@@ -517,59 +522,33 @@ inferFreshTypesAndEffects = inferTypesAndEffects . stripTypeAndEffectAnns
 
 -- | Recomputes a program's inferred properties, types and effects.
 refreshProgram :: ProgramTransform
-refreshProgram = runPasses [inferFreshTypesAndEffects, inferFreshProperties]
-
-{- Whole program optimizations -}
-simplify :: ProgramTransform
-simplify = transformFixpoint $ runPasses simplifyPasses
-  where simplifyPasses = intersperse refreshProgram $
-                           map (mkXform False) [ ("CF", foldProgramConstants)
-                                               , ("BR", betaReductionOnProgram)
-                                               , ("DCE", eliminateDeadProgramCode) ]
-        mkXform asDebug (i,f) = withRepair i $ (if asDebug then transformEDbg i else transformE) f
-
-simplifyWCSE :: ProgramTransform
-simplifyWCSE p = do
-  np <- simplify p
-  (_, rp) <- liftEitherM $ commonProgramSubexprElim Nothing np
-  return rp
-
-streamFusion :: ProgramTransform
-streamFusion = runPasses [fusionEncodeFixpoint, inferFreshTypesAndEffects, fusionTransformFixpoint]
-  where
-    mkXform  asDebug i f    = withRepair  i $ (if asDebug then transformEDbg  i else transformE)  f
-    mkXformD asDebug i f    = withRepairD i $ (if asDebug then transformEDDbg i else transformED) f
-
-    fusionEncodeFixpoint    = transformFixpointID [inferFreshTypesAndEffects] fusionEncode
-    fusionTransformFixpoint = transformFixpointI fusionInterF fusionTransform
-
-    fusionEncode            = mkXformD False "fusionEncode"    encodeProgramTransformers
-    fusionTransform         = mkXform  False "fusionTransform" fuseProgramFoldTransformers
-    fusionReduce            = mkXform  False "fusionReduce"    betaReductionOnProgram
-    fusionInterF            = bracketPasses "fusion" inferFreshTypesAndEffects [fusionReduce]
+refreshProgram prog = runPasses [inferFreshTypesAndEffects, inferFreshProperties] prog
 
 
 {- Whole program pass aliases -}
-optPasses :: [ProgramTransform]
-optPasses = map prepareOpt [ (simplifyWCSE, "opt-simplify-prefuse")
-                           , (streamFusion, "opt-fuse")
-                           , (simplifyWCSE, "opt-simplify-final") ]
-  where prepareOpt (f,i) = runPasses [refreshProgram, withRepair i f]
+
+cgPreparePasses :: [ProgramTransform]
+cgPreparePasses = [ withRepair "TID" $ transformE $ triggerSymbols
+                  , \d -> (liftIO (SG.generateSendGraph d) >> return d)
+                  , \d -> return (mangleReservedNames d)
+                  , refreshProgram
+                  , transformF CArgs.runAnalysis
+                  , transformE markProgramLambdas ]
+
+materializationPass :: Bool -> Mat.IState -> ProgramTransform
+materializationPass dbg mst d = do
+  s  <- get
+  rE <- liftIO (Mat.optimizeMaterialization dbg mst (penv s, fenv s) d)
+  either throwE return rE
 
 cgPasses :: [ProgramTransform]
-cgPasses = [ withRepair "TID" $ transformE triggerSymbols
-           , \d -> (liftIO (SG.generateSendGraph d) >> return d)
-           , \d -> return (mangleReservedNames d)
-           , refreshProgram
-           , transformF CArgs.runAnalysis
-           , \d -> get >>= \s -> liftIO $ optimizeMaterialization (penv s, fenv s) d
-           ]
-
-runOptPassesM :: ProgramTransform
-runOptPassesM prog = runPasses optPasses $ stripTypeAndEffectAnns prog
+cgPasses = cgPreparePasses ++ [\p -> materializationPass False (Mat.prepareInitialIState False p) p]
 
 runCGPassesM :: ProgramTransform
 runCGPassesM prog = runPasses cgPasses prog
+
+runCGPreparePassesM :: ProgramTransform
+runCGPreparePassesM prog = runPasses cgPreparePasses prog
 
 
 {- Declaration-at-a-time analyses and optimizations. -}
@@ -686,9 +665,10 @@ declTransforms stSpec extInfOpt n = topLevel
     topLevel  = (Map.fromList $ fPf fst $ [
         second mkFix $
         mkT $ mkSeqRep "Optimize" highLevel $ fPf fst $ prepend [ ("refreshI",      False) ]
-                                                        $ [ ("Decl-Simplify", True)
-                                                          , ("Decl-Fuse",     True)
-                                                          , ("Decl-Simplify", True) ]
+                                                              $ [ ("Decl-Simplify", True)
+                                                                , ("Decl-Fuse",     True)
+                                                                , ("Decl-Simplify", True) ]
+
       ]) `Map.union` highLevel
 
     highLevel = (Map.fromList $ fPf fst $ [
@@ -702,14 +682,13 @@ declTransforms stSpec extInfOpt n = topLevel
                                               , "Decl-FT" ]
       ]) `Map.union` lowLevel
 
-    -- TODO: CF,BR,DCE,CSE should be a local fixpoint.
     lowLevel = Map.fromList $ fPf fst $ [
-              mk  foldConstants        "Decl-CF"  False True False True  (Just [typEffI])
-      ,       mk  betaReduction        "Decl-BR"  False True False True  (Just [typEffI])
-      ,       mk  eliminateDeadCode    "Decl-DCE" False True False True  (Just [typEffI])
-      ,       mkW cseTransform         "Decl-CSE" False True False True  (Just [typEffI])
-      , mkT $ mkD encodeTransformers   "Decl-FE"  False True False True  (Just [typEffI])
-      , mkT $ mk  fuseFoldTransformers "Decl-FT"  False True False True  (Just fusionI)
+              mk  foldConstants            "Decl-CF"  False True False True  (Just [typEffI])
+      ,       betaReduce                   "Decl-BR"  False True False True
+      ,       mk  eliminateDeadCode        "Decl-DCE" False True False True  (Just [typEffI])
+      ,       mkW cseTransform             "Decl-CSE" False True False True  (Just [typEffI])
+      , mkT $ mkD encodeTransformers       "Decl-FE"  False True False True  (Just [typEffI])
+      , mkT $ mk  fuseFoldTransformers     "Decl-FT"  False True False True  (Just fusionI)
       , mkT $ mkDebug False $ fusionReduce
       , mkT $ mkDebug False $ ("typEffI",)  $ typEffI
       , mkT $ mkDebug False $ ("refreshI",) $ refreshI
@@ -761,7 +740,13 @@ declTransforms stSpec extInfOpt n = topLevel
                    $ Map.lookup n $ snapshotSpec stSpec
 
     -- Custom, and shared passes
-    fusionReduce = mkT $ mk betaReduction "Decl-FR" False True False True (Just [typEffI])
+    betaReduce i asReified asRepair asDebug asFixT =
+      (\f -> mkW f i asReified asRepair asDebug asFixT (Just [typEffI]))
+        $ withEffectTransform
+        $ \p f d -> mapNamedDeclExpression n (betaReduction p) d >>= return . (,p,f)
+
+    fusionReduce = mkT $ betaReduce "Decl-FR" False True False True
+
     cseTransform = withStateTransform (Just . cseCnt)
                                       (\ncntOpt st -> st {cseCnt=maybe (cseCnt st) id ncntOpt})
                                       (foldNamedDeclExpression n commonSubexprElim)

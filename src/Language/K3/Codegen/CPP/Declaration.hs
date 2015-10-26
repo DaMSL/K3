@@ -1,6 +1,7 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE ViewPatterns #-}
 {-# LANGUAGE TypeFamilies #-}
+{-# LANGUAGE ParallelListComp #-}
 
 module Language.K3.Codegen.CPP.Declaration where
 
@@ -35,7 +36,7 @@ import Language.K3.Utils.Pretty
 
 -- Builtin names to explicitly skip.
 skip_builtins :: [String]
-skip_builtins = ["hasRead", "doRead", "doReadBlock", "hasWrite", "doWrite"]
+skip_builtins = ["hasRead", "doRead", "doBlockRead", "hasWrite", "doWrite"]
 
 declaration :: K3 Declaration -> CPPGenM [R.Definition]
 declaration (tna -> ((DGlobal n (tnc -> (TSource, [t])) _), as)) = return []
@@ -59,25 +60,14 @@ declaration (tag -> DGlobal _ (tag &&& children -> (TForall _, [tag &&& children
 
 -- Global monomorphic function with direct implementations.
 declaration (tag -> DGlobal i t@(tag &&& children -> (TFunction, [ta, tr]))
-                      (Just e@(tag &&& children -> (ELambda x, [body])))) = do
-    cta <- genCType ta
-    ctr <- genCType tr
-
-    cbody <- reify (RReturn False) body
-
-    addForward $ R.FunctionDecl (R.Name i) [cta] ctr
-
-    mtrlzns <- case e @~ isEMaterialization of
-                 Just (EMaterialization ms) -> return ms
-                 Nothing -> return $ M.fromList [(x, defaultDecision)]
-
-    let argMtrlznType = case inD (mtrlzns M.! x) of
-                          ConstReferenced -> R.Const (R.Reference cta)
-                          Referenced -> R.Reference cta
-                          _ | i == "processRole" -> R.Const (R.Reference cta)
-                          _ -> cta
-
-    return [R.FunctionDefn (R.Name i) [(x, argMtrlznType)] (Just ctr) [] False cbody]
+                      (Just e@(tag &&& children -> (ELambda x, [body]))))
+  | i == "processRole" = do
+      ([], R.Lambda _ mits _ _ body) <- inline e
+      return $ [R.FunctionDefn (R.Name i) [(Nothing, R.Reference $ R.Const $ R.Unit)] (Just R.Unit) [] True body]
+  | otherwise = do
+      ([], e') <- inline e
+      ct <- R.flattenFnType <$> genCType t
+      return [R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name i) ct $ Just e']
 
 -- Global polymorphic functions with direct implementations.
 declaration (tag -> DGlobal i (tag &&& children -> (TForall _, [tag &&& children -> (TFunction, [ta, tr])]))
@@ -93,17 +83,18 @@ declaration (tag -> DGlobal i (tag &&& children -> (TForall _, [tag &&& children
     addForward $ maybe id (\t -> R.TemplateDecl [(t, Nothing)]) template $
                    R.FunctionDecl (R.Name i) [argumentType] returnType
 
-    mtrlzns <- case e @~ isEMaterialization of
-                 Just (EMaterialization ms) -> return ms
-                 Nothing -> return $ M.fromList [(x, defaultDecision)]
+    -- mtrlzns <- case e @~ isEMaterialization of
+    --              Just (EMaterialization ms) -> return ms
+    --              Nothing -> return $ M.fromList [(x, defaultDecision)]
 
-    let argMtrlznType = case inD (mtrlzns M.! x) of
-                          ConstReferenced -> R.Const (R.Reference argumentType)
+    let argMtrlznType = case getInMethodFor x e of
+                          ConstReferenced -> R.Reference (R.Const argumentType)
                           Referenced -> R.Reference argumentType
+                          Forwarded -> R.RValueReference argumentType
                           _ -> argumentType
 
     body' <- reify (RReturn False) body
-    return [templatize $ R.FunctionDefn (R.Name i) [(x, argMtrlznType)] (Just returnType) [] False body']
+    return [templatize $ R.FunctionDefn (R.Name i) [(Just x, argMtrlznType)] (Just returnType) [] False body']
 
 -- Global scalars.
 declaration d@(tag -> DGlobal i t me) = do
@@ -121,7 +112,7 @@ declaration d@(tag -> DGlobal i t me) = do
     addStaticDeclaration staticGlobalDecl
 
     -- Initialize the variable.
-    let rName = RName (if pinned then "__global_context::" ++ i else i) Nothing
+    let rName = RName (R.Variable $ R.Name $ if pinned then "__global_context::" ++ i else i) Nothing
     globalInit <- maybe (return []) (liftM (addSetCheck pinned i) . reify rName) me
 
     -- Add to proper initialization list
@@ -158,12 +149,16 @@ declaration _ = return []
 -- Map special builtin suffix to a function that will generate the builtin.
 -- These suffixes are taken from L.K3.Parser.ProgramBuilder.hs
 source_builtin_map :: [(String, (String -> K3 Type -> String -> CPPGenM R.Definition))]
-source_builtin_map = [("MuxHasRead", genHasRead True),
-                      ("MuxRead",    genDoRead True),
-                      ("HasRead",    genHasRead False),
-                      ("Read",       genDoRead False),
-                      ("HasWrite",   genHasWrite),
-                      ("Write",      genDoWrite)]
+source_builtin_map = [("MuxHasRead",   genHasRead True     Nothing),
+                      ("MuxRead",      genDoRead  True     Nothing),
+                      ("PDataHasRead", genHasRead True     Nothing),
+                      ("PDataRead",    genDoRead  True     Nothing),
+                      ("POrdHasRead",  genHasRead False  $ Just "order"),
+                      ("POrdRead",     genDoRead  False  $ Just "order"),
+                      ("HasRead",      genHasRead False    Nothing),
+                      ("Read",         genDoRead  False    Nothing),
+                      ("HasWrite",     genHasWrite),
+                      ("Write",        genDoWrite)]
                      ++ extraSuffixes
 
         -- These suffixes are for data loading hacks.
@@ -199,45 +194,58 @@ getSourceBuiltin k =
         []         -> error $ "Could not find builtin with name" ++ k
         ((_,f):_) -> f k
 
-genHasRead :: Bool -> String -> K3 Type -> String -> CPPGenM R.Definition
-genHasRead asMux suf _ name = do
+genHasRead :: Bool -> Maybe String -> String -> K3 Type -> String -> CPPGenM R.Definition
+genHasRead asMux chanIdSuffixOpt suf _ name = do
+    concatOp        <- binarySymbol OConcat
     let source_name = stripSuffix suf name
-    let e_has_r = R.Variable $ R.Name "hasRead"
-    let source_e = R.Literal $ R.LString $ source_name ++ if asMux then "_" else ""
-    concatId <- binarySymbol OConcat
-    let call_args = [R.Variable $ R.Name "me"] ++
-                    if asMux then [R.Binary concatId source_e $
-                                   R.Call (R.Variable $ R.Name "itos") [R.Variable $ R.Name "muxid"]]
-                             else [source_e]
-    let body = R.Return $ R.Call e_has_r call_args
-    let args = if asMux then [("muxid", R.Primitive R.PInt)]
-                        else [("_", R.Named $ R.Name "unit_t")]
-    return $ R.FunctionDefn (R.Name $ source_name ++ suf) args
-      (Just $ R.Primitive R.PBool) [] False [body]
+    let e_has_r     = R.Variable $ R.Name "hasRead"
+    let source_pfx  = source_name ++ if asMux || isJust chanIdSuffixOpt then "_" else ""
 
-genDoRead :: Bool -> String -> K3 Type -> String -> CPPGenM R.Definition
-genDoRead asMux suf typ name = do
-    ret_type    <- genCType $ last $ children typ
-    let source_name =  stripSuffix suf name
-    let source_e = R.Literal $ R.LString $ source_name ++ if asMux then "_" else ""
-    concatId <- binarySymbol OConcat
-    let call_args = [R.Variable $ R.Name "me"] ++
-                    if asMux then [R.Binary concatId source_e $
-                                   R.Call (R.Variable $ R.Name "itos") [R.Variable $ R.Name "muxid"]]
-                             else [source_e]
-    let return_stmt = R.Return $ (R.Call (R.Variable (R.Specialized [ret_type] $ R.Name "doRead"))
-                               call_args)
-    let args = if asMux then [("muxid", R.Primitive R.PInt)]
-                        else [("_", R.Named $ R.Name "unit_t")]
-    return $ R.FunctionDefn (R.Name $ source_name ++ suf) args
-      (Just ret_type) [] False ([return_stmt])
+    let chan_id_e   = case (chanIdSuffixOpt, asMux) of
+                        (Just chan_suf, _) -> R.Literal $ R.LString $ source_pfx ++ chan_suf
+
+                        (Nothing, True) -> R.Binary concatOp (R.Literal $ R.LString source_pfx) $
+                                             R.Call (R.Variable $ R.Name "itos")
+                                               [R.Variable $ R.Name "muxid"]
+
+                        (_, _) -> R.Literal $ R.LString source_pfx
+
+    let body = R.Return $ R.Call e_has_r [R.Variable $ R.Name "me", chan_id_e]
+    let args = if asMux then [(Just "muxid", R.Primitive R.PInt)]
+                        else [(Just "_", R.Named $ R.Name "unit_t")]
+
+    return $ R.FunctionDefn (R.Name name) args (Just $ R.Primitive R.PBool) [] False [body]
+
+genDoRead :: Bool -> Maybe String -> String -> K3 Type -> String -> CPPGenM R.Definition
+genDoRead asMux chanIdSuffixOpt suf typ name = do
+    concatOp <- binarySymbol OConcat
+    ret_type <- genCType $ last $ children typ
+    let source_name = stripSuffix suf name
+    let source_pfx  = source_name ++ if asMux || isJust chanIdSuffixOpt then "_" else ""
+
+    let chan_id_e   = case (chanIdSuffixOpt, asMux) of
+                        (Just chan_suf, _) -> R.Literal $ R.LString $ source_pfx ++ chan_suf
+
+                        (Nothing, True) -> R.Binary concatOp (R.Literal $ R.LString source_pfx) $
+                                             R.Call (R.Variable $ R.Name "itos")
+                                               [R.Variable $ R.Name "muxid"]
+
+                        (_, _) -> R.Literal $ R.LString source_pfx
+
+    let body = R.Return $ (R.Call (R.Variable (R.Specialized [ret_type] $ R.Name "doRead"))
+                            [R.Variable $ R.Name "me", chan_id_e])
+
+    let args = if asMux then [(Just "muxid", R.Primitive R.PInt)]
+                        else [(Just "_", R.Named $ R.Name "unit_t")]
+
+    return $ R.FunctionDefn (R.Name name) args (Just ret_type) [] False [body]
 
 genHasWrite :: String -> K3 Type -> String -> CPPGenM R.Definition
 genHasWrite suf _ name = do
     let sink_name = stripSuffix suf name
     let e_has_w = R.Variable (R.Name "hasWrite")
     let body = R.Return $ R.Call e_has_w [R.Variable $ R.Name "me", R.Literal $ R.LString sink_name]
-    return $ R.FunctionDefn (R.Name $ sink_name ++ suf) [("_", R.Named $ R.Name "unit_t")]
+    return $ R.FunctionDefn (R.Name $ sink_name ++ suf) [(Just "_", R.Named $ R.Name "unit_t")]
       (Just $ R.Primitive R.PBool) [] False [body]
 
 genDoWrite :: String -> K3 Type -> String -> CPPGenM R.Definition
@@ -246,7 +254,7 @@ genDoWrite suf typ name = do
     let sink_name =  stripSuffix suf name
     let write_expr = R.Call (R.Variable $ (R.Specialized [val_type] $ R.Name "doWrite"))
                             [R.Variable $ R.Name "me", R.Literal $ R.LString sink_name, R.Variable $ R.Name "v"]
-    return $ R.FunctionDefn (R.Name $ sink_name ++ suf) [("v", R.Const $ R.Reference val_type)]
+    return $ R.FunctionDefn (R.Name $ sink_name ++ suf) [(Just "v", R.Reference $ R.Const val_type)]
       (Just $ R.Named $ R.Name "unit_t") [] False
       ([R.Ignore write_expr, R.Return $ R.Initialization R.Unit []])
 
@@ -292,9 +300,9 @@ genLoader elemWrap fixedSize projectedLoader asReturn sep suf ft@(children -> [_
                       ++ (\(a,b,c) -> readField a b c True) (last ftsWSkip)
                       ++ [R.Return $ R.Variable $ R.Name "record"]
 
- let readRecordFn = R.Lambda [R.ValueCapture $ Just ("this", Nothing)]
-                    [ ("in", (R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "istream")))
-                    , ("tmp_buffer", (R.Reference $ R.Named $ (R.Qualified (R.Name "std") (R.Name "string"))))
+ let readRecordFn = R.Lambda [R.ThisCapture]
+                    [ (Just "in", (R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "istream")))
+                    , (Just "tmp_buffer", (R.Reference $ R.Named $ (R.Qualified (R.Name "std") (R.Name "string"))))
                     ] False Nothing recordGetLines
 
  let readRecordsCall = if asReturn
@@ -316,14 +324,14 @@ genLoader elemWrap fixedSize projectedLoader asReturn sep suf ft@(children -> [_
                                 , readRecordFn
                                 ])
 
- let defaultArgs = [  ("paths", R.Named $ R.Specialized
+ let defaultArgs = [  (Just "paths", R.Named $ R.Specialized
                          [R.Named $ R.Specialized [R.Named $ R.Name "string_impl"] (R.Name "R_path")]
                          (R.Name "_Collection"))]
 
  let args = defaultArgs
-              ++ [("c", (if asReturn then R.Const else id) $ R.Reference cColType)]
-              ++ (if projectedLoader then [("_rec", R.Reference $ fromJust cfRecType)] else [])
-              ++ (if fixedSize       then [("size", R.Primitive R.PInt)] else [])
+              ++ [(Just "c", R.Reference $ (if asReturn then R.Const else id) cColType)]
+              ++ (if projectedLoader then [(Just "_rec", R.Reference $ fromJust cfRecType)] else [])
+              ++ (if fixedSize       then [(Just "size", R.Primitive R.PInt)] else [])
 
  let returnType   = if asReturn then cColType else R.Named $ R.Name "unit_t"
  let functionBody = if asReturn
@@ -380,15 +388,15 @@ genLogger _ (children -> [_,f]) name = do
   cRecType <- genCType recType
   cColType <- genCType colType
   let printRecordFn = R.Lambda []
-                    [ ("file", R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "ofstream"))
-                    , ("elem", R.Const $ R.Reference cRecType)
-                    , ("sep", R.Const $ R.Reference $ R.Named $ R.Name "string")
+                    [ (Just "file", R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "ofstream"))
+                    , (Just "elem", R.Reference $ R.Const cRecType)
+                    , (Just "sep", R.Reference $ R.Const $ R.Named $ R.Name "string")
                     ] False Nothing (map R.Ignore allLogs)
 
   return $ R.FunctionDefn (R.Name name)
-             [("file", R.Named $ R.Name "string")
-             , ("c", R.Reference cColType)
-             ,("sep", R.Const $ R.Reference $ R.Named $ R.Name "string")]
+             [ (Just "file", R.Named $ R.Name "string")
+             , (Just "c", R.Reference cColType)
+             , (Just "sep", R.Reference $ R.Const $ R.Named $ R.Name "string")]
              (Just $ R.Named $ R.Name "unit_t") [] False
              [ R.Return $ R.Call (R.Variable $ R.Name "logHelper")
                             [ R.Variable $ R.Name "file"
@@ -433,7 +441,7 @@ genCsvParserImpl elemType childTypes accessor = do
   let fields = concatMap (uncurry readField) (zip childTypes [0,1..])
   return $ R.Lambda
                []
-               [("str", R.Const $ R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "string"))]
+               [(Just "str", R.Reference $ R.Const $ R.Named $ R.Qualified (R.Name "std") (R.Name "string"))]
                False
                Nothing
                ( [iss_decl, iss_str, tup_decl et, token_decl] ++ fields ++ [R.Return tup])

@@ -15,9 +15,9 @@ declare g  : mut collection {key: int, value: collection {key:int, value:int} @M
 declare h  : mut collection {key: int, value: int} @Collection
 
 trigger groupByEncode : () = \_ -> (
-  let x = c.groupBy (\r -> r.a + 2)
-                    (\acc -> \r -> acc + 1)
-                    0
+  let x = c.group_by (\r -> r.a + 2)
+                     (\acc -> \r -> acc + 1)
+                     0
   in
   c.insert {a:5}
 )
@@ -138,87 +138,87 @@ trigger foldMapMap : () = \_ -> (
 
 trigger mapGroupBy : () = \_ -> (
   (resultCKV, 127.0.0.1:40000) <-
-    ((c.map     (\r -> r.a + 1))
-       .groupBy (\r -> r.elem + 2)
-                (\acc -> \r -> acc + 1)
-                0)
+    ((c.map      (\r -> r.a + 1))
+       .group_by (\r -> r.elem + 2)
+                 (\acc -> \r -> acc + 1)
+                 0)
 )
 
 trigger mapMapGroupBy : () = \_ -> (
   (resultCKV, 127.0.0.1:40000) <-
-    (((c.map     (\r -> r.a + 1))
-        .map     (\r -> r.elem + 2))
-        .groupBy (\r -> r.elem + 3)
-                 (\acc -> \r -> acc + 1)
-                 0)
+    (((c.map      (\r -> r.a + 1))
+        .map      (\r -> r.elem + 2))
+        .group_by (\r -> r.elem + 3)
+                  (\acc -> \r -> acc + 1)
+                  0)
 )
 
 trigger groupByMapMap : () = \_ -> (
   (resultC, 127.0.0.1:40000) <-
-    (((c.groupBy (\r -> r.a + 3)
-                 (\acc -> \r -> acc + 1)
-                 0)
-        .map     (\r -> r.value + 1))
-        .map     (\r -> r.elem + 2))
+    (((c.group_by (\r -> r.a + 3)
+                  (\acc -> \r -> acc + 1)
+                  0)
+        .map      (\r -> r.value + 1))
+        .map      (\r -> r.elem + 2))
 )
 
 trigger foldGroupBy : () = \_ -> (
   (resultCKV, 127.0.0.1:40000) <-
     ((c.fold    (\acc -> \r -> (acc.insert {a:r.a+1}; acc))
                 (empty {a:int} @Collection))
-       .groupBy (\r -> r.a + 2)
-                (\acc -> \r -> acc + 1)
-                0)
+       .group_by (\r -> r.a + 2)
+                 (\acc -> \r -> acc + 1)
+                 0)
 )
 
 trigger groupByFold : () = \_ -> (
   (resultCA, 127.0.0.1:40000) <-
-    ((c.groupBy (\r -> r.a + 2)
-                (\acc -> \r -> acc + 1)
-                0)
-       .fold    (\acc -> \r -> (acc.insert {a:r.value+1}; acc))
-                (empty {a:int} @Collection))
+    ((c.group_by (\r -> r.a + 2)
+                 (\acc -> \r -> acc + 1)
+                 0)
+       .fold     (\acc -> \r -> (acc.insert {a:r.value+1}; acc))
+                 (empty {a:int} @Collection))
 )
 
 trigger groupByFoldMap : () = \_ -> (
   (resultC, 127.0.0.1:40000) <-
-    ((c.groupBy (\r -> r.a + 2)
-                (\acc -> \r -> acc + 1)
-                0)
-       .fold    (\acc -> \r -> (acc.insert {a:r.value+1}; acc))
-                (empty {a:int} @Collection))
-       .map     (\r -> r.a + 4)
+    ((c.group_by (\r -> r.a + 2)
+                 (\acc -> \r -> acc + 1)
+                 0)
+       .fold     (\acc -> \r -> (acc.insert {a:r.value+1}; acc))
+                 (empty {a:int} @Collection))
+       .map      (\r -> r.a + 4)
 )
 
 trigger groupByFoldMapMap : () = \_ -> (
-  (((((c.groupBy (\r -> r.a + 2)
-                 (\acc -> \r -> acc + 1)
-                 0)
-        .fold    (\acc -> \r -> (acc.insert {a:r.value+1}; acc))
-                 (empty {a:int} @Collection))
-        .map     (\r -> r.a + 4))
-        .map     (\r -> r.elem + 7))
-        .iterate (\r -> (result, 127.0.0.1:40000) <- r))
+  (((((c.group_by (\r -> r.a + 2)
+                  (\acc -> \r -> acc + 1)
+                  0)
+        .fold     (\acc -> \r -> (acc.insert {a:r.value+1}; acc))
+                  (empty {a:int} @Collection))
+        .map      (\r -> r.a + 4))
+        .map      (\r -> r.elem + 7))
+        .iterate  (\r -> (result, 127.0.0.1:40000) <- r))
 )
 
 trigger groupByHGroupBy : () = \_ -> (
-  g = ((((c2.groupBy (\r -> r.a)
-                     (\acc -> (\r -> acc + r.b))
-                     0)
-            .groupBy) @:HGroupBy)
-                     (\r -> (hash r.key) % peers.size())
-                     (\acc -> (\r -> (acc.insert r; acc)))
-                     (empty {key: int, value: int} @Map))
+  g = ((((c2.group_by (\r -> r.a)
+                      (\acc -> (\r -> acc + r.b))
+                      0)
+            .group_by) @:HGroupBy)
+                      (\r -> (hash r.key) % peers.size())
+                      (\acc -> (\r -> (acc.insert r; acc)))
+                      (empty {key: int, value: int} @Map))
 )
 
 trigger groupByMGroupBy : () = \_ -> (
-  h = ((((c2.groupBy (\r -> r.a)
-                     (\acc -> (\r -> acc + r.b))
-                     0)
-            .groupBy) @:MGroupBy)
-                     (\r -> (hash r.key) % peers.size())
-                     (\acc -> (\r -> acc + r.value))
-                     0)
+  h = ((((c2.group_by (\r -> r.a)
+                      (\acc -> (\r -> acc + r.b))
+                      0)
+            .group_by) @:MGroupBy)
+                      (\r -> (hash r.key) % peers.size())
+                      (\acc -> (\r -> acc + r.value))
+                      0)
 )
 
 trigger nonEncodableFold : () = \_ -> (

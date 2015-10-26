@@ -46,11 +46,11 @@ trigger t1 : () = \_ -> (
     result2       = employeesV.lookup_before_by_name 2 {name: "John"};
     result3       = employeesV.lookup_before_by_rarb 2 {ra: 3, rb: 13};
 
-    (employeesV.lookup_with_before_by_name           2 {name: "John"}
+    (employeesV.lookup_before_by_name                2 {name: "John"}
                                                        (\_ -> ())
                                                        (\r -> result2w = r));
 
-    (employeesV.lookup_with4_before_vid              2 {key: {id:1, id2: 11, name: "John"}, value: {age: 0}}
+    (employeesV.lookup_before_with_vid               2 {key: {id:1, id2: 11, name: "John"}, value: {age: 0}}
                                                        (\_ -> ())
                                                        (\v -> (\r -> result4 = {vid: v, val: r})));
 

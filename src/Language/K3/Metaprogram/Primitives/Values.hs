@@ -1,5 +1,7 @@
 {-# LANGUAGE ViewPatterns #-}
 module Language.K3.Metaprogram.Primitives.Values where
+import Control.Monad.Identity
+import Control.Arrow ( (&&&) )
 
 import Data.List
 import Data.Maybe
@@ -10,6 +12,7 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
 import Language.K3.Core.Literal
+import Language.K3.Core.Utils
 
 import Language.K3.Core.Constructor.Type       as TC
 import Language.K3.Core.Constructor.Literal    as LC
@@ -82,9 +85,30 @@ listTypes (SList vs) = maybe err SList $ mapM ltType vs
 
 listTypes _ = error "Invalid splice value container for listTypes"
 
+{- Conversions -}
+labelExpr :: SpliceValue -> SpliceValue
+labelExpr (SExpr (tag -> EConstant (CString i))) = SLabel i
+labelExpr (SExpr (tag -> EConstant (CInt i)))    = SLabel $ show i
+labelExpr (SExpr (tag -> EConstant (CReal r)))   = SLabel $ show r
+labelExpr (SExpr (tag -> EConstant (CBool b)))   = SLabel $ show b
+labelExpr _ = error "Invalid splice expression for labelExpr"
+
+labelLiteral :: SpliceValue -> SpliceValue
+labelLiteral (SLiteral (tag -> LString i)) = SLabel i
+labelLiteral (SLiteral (tag -> LInt i))    = SLabel $ show i
+labelLiteral (SLiteral (tag -> LBool b))   = SLabel $ show b
+labelLiteral _ = error "Invalid splice literal for labelLiteral"
+
 literalLabel :: SpliceValue -> SpliceValue
 literalLabel (SLabel i) = SLiteral $ LC.string i
 literalLabel _ = error "Invalid splice label for literalLabel"
+
+literalExpr :: SpliceValue -> SpliceValue
+literalExpr (SExpr (tag -> EConstant (CString i))) = SLiteral $ LC.string i
+literalExpr (SExpr (tag -> EConstant (CInt i)))    = SLiteral $ LC.int i
+literalExpr (SExpr (tag -> EConstant (CReal r)))   = SLiteral $ LC.real r
+literalExpr (SExpr (tag -> EConstant (CBool b)))   = SLiteral $ LC.bool b
+literalExpr _ = error "Invalid splice expression for labelExpr"
 
 literalType :: SpliceValue -> SpliceValue
 literalType (SType t) = SLiteral . LC.string $ show t
@@ -171,3 +195,40 @@ broadcastjoinMaterialize (SLabel lbl) (SExpr e) = case tag e of
 
 broadcastjoinMaterialize _ _ = error "Invalid broadcast join materialization arguments"
 
+
+{- Column-store helpers -}
+columnJoinUpperBound :: Int
+columnJoinUpperBound = 14
+
+joinRange :: SpliceValue -> SpliceValue
+joinRange (SLiteral (tag -> LInt i)) = SList $ map (SLiteral . LC.int) [1..(columnJoinUpperBound - i)]
+joinRange _ = error "Invalid integer literal in joinRange"
+
+{- BulkFlatCollection helpers -}
+baseTableBFC :: SpliceValue -> K3 Expression -> SpliceValue
+baseTableBFC (SExpr e) var = runIdentity $ mapTree replaceNode e >>= return . SExpr
+  where
+    replaceNode :: [K3 Expression] -> K3 Expression -> Identity (K3 Expression)
+    replaceNode cs n@(annotations -> anns) = return . ((flip replaceCh) cs) $ if any hasProperty anns then var else n
+
+    hasProperty :: Annotation Expression -> Bool
+    hasProperty (EProperty (ePropertyName -> name)) = name == "BaseTable"
+    hasProperty _ = False
+baseTableBFC _ _ = error "Invalid expression in baseTableBFC"
+
+extractPathBFC :: SpliceValue -> SpliceValue
+extractPathBFC (SExpr e) = maybe (error "No path found in BaseTable property") (SExpr . EC.variable) (runIdentity $ foldTree nodeFn Nothing e)
+  where
+    nodeFn :: Maybe (String) -> K3 Expression -> Identity (Maybe String)
+    nodeFn acc n@(annotations -> anns) = return $ case (foldl extract Nothing anns) of
+                                                    Nothing -> acc
+                                                    Just x -> Just x
+
+    extract :: Maybe String -> Annotation Expression -> Maybe String
+    extract acc (EProperty ( (ePropertyName &&& ePropertyValue) -> ("BaseTable", Just (tag -> LString s)) )) = Just s
+    extract acc _ = acc
+extractPathBFC _ = error "Invalid expression in extractPathBFC"
+
+collectionContentType :: SpliceValue -> SpliceValue
+collectionContentType (SType (tag &&& children -> (TCollection , (t:_) ))) = SType t
+collectionContentType _ = error "Invalid type in collectionContentType"

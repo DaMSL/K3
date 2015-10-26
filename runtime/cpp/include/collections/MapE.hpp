@@ -12,6 +12,9 @@
 #include <boost/serialization/string.hpp>
 #include <csvpp/csv.h>
 
+#include "collections/Collection.hpp"
+#include "collections/Map.hpp"
+
 namespace K3 {
 template <class R>
 class MapE {
@@ -81,18 +84,31 @@ class MapE {
 
   const_iterator end() const { return const_iterator(container.cend()); }
 
-  shared_ptr<R> peek(const unit_t&) const {
-    shared_ptr<R> res(nullptr);
-    auto it = container.begin();
-    if (it != container.end()) {
-      res = std::make_shared<R>(it->second);
-    }
-    return res;
-  }
+  // Functionality
+  int size(unit_t) const { return container.size(); }
 
   template <typename F, typename G>
-  auto peek_with(F f, G g) const {
+  auto peek(F f, G g) const {
     auto it = container.begin();
+    if (it == container.end()) {
+      return f(unit_t{});
+    } else {
+      return g(it->second);
+    }
+  }
+
+  // Map retrieval.
+  // For a MapE, these methods expect a key argument instead of a key-value
+  // struct.
+
+  template <typename K>
+  bool member(const K& k) const {
+    return container.find(k.key) != container.end();
+  }
+
+  template <typename K, class F, class G>
+  RT<G,R> lookup(K const& k, F f, G g) const {
+    auto it = container.find(k.key);
     if (it == container.end()) {
       return f(unit_t{});
     } else {
@@ -106,13 +122,38 @@ class MapE {
     return unit_t();
   }
 
+  template <typename K, typename V>
+  unit_t update(const K& k, V&& val) {
+    auto it = container.find(k.key);
+    if (it != container.end()) {
+      container[k.key].value = std::move(val.value);
+    }
+    return unit_t();
+  }
+
+  template <typename K>
+  unit_t erase(const K& k) {
+    container.erase(k.key);
+    return unit_t();
+  }
+
+  template <typename K, typename F, typename G>
+  RT<G,R> erase_with(const K& k, F f, G g) {
+    auto existing = container.find(k.key);
+    if (existing == std::end(container)) {
+      return f(unit_t{});
+    } else {
+      return g(std::move(existing->second));
+    }
+  }
+
   template <class F>
   unit_t insert_with(const R& rec, F f) {
     auto existing = container.find(rec.key);
     if (existing == std::end(container)) {
       container[rec.key] = rec;
     } else {
-      container[rec.key] = f(std::move(existing->second))(rec);
+      container[rec.key] = f(std::move(existing->second), rec);
     }
 
     return unit_t{};
@@ -130,22 +171,8 @@ class MapE {
     return unit_t{};
   }
 
-  template <typename K>
-  unit_t erase(const K& k) {
-    container.erase(k.key);
-    return unit_t();
-  }
-
-  template <typename K, typename V>
-  unit_t update(const K& k, V&& val) {
-    auto it = container.find(k.key);
-    if (it != container.end()) {
-      container[k.key].value = std::move(val.value);
-    }
-    return unit_t();
-  }
-
-  int size(unit_t) const { return container.size(); }
+  ////////////////////////////////////////////////////////
+  // Bulk transformations.
 
   MapE combine(const MapE& other) const {
     // copy this DS
@@ -179,8 +206,17 @@ class MapE {
   }
 
   template <typename Fun>
-  auto map(Fun f) const -> MapE<RT<Fun, R>> {
-    MapE<RT<Fun, R>> result;
+  auto map(Fun f) const -> K3::MapE<RT<Fun, R>> {
+    K3::MapE<RT<Fun, R>> result;
+    for (const auto& p : container) {
+      result.insert(f(p.second));
+    }
+    return result;
+  }
+
+  template <typename Fun>
+  auto map_generic(Fun f) const -> K3::Map<RT<Fun, R>> {
+    K3::Map<RT<Fun, R>> result;
     for (const auto& p : container) {
       result.insert(f(p.second));
     }
@@ -201,14 +237,15 @@ class MapE {
   template <typename Fun, typename Acc>
   Acc fold(Fun f, Acc acc) const {
     for (const auto& p : container) {
-      acc = f(std::move(acc))(p.second);
+      acc = f(std::move(acc), p.second);
     }
     return acc;
   }
 
   template <typename F1, typename F2, typename Z>
-  MapE<R_key_value<RT<F1, R>, Z>> groupBy(F1 grouper, F2 folder,
-                                          const Z& init) const {
+  MapE<R_key_value<RT<F1, R>, Z>>
+  group_by(F1 grouper, F2 folder, const Z& init) const
+  {
     // Create a map to hold partial results
     typedef RT<F1, R> K;
     std::unordered_map<K, Z> accs;
@@ -218,11 +255,34 @@ class MapE {
       if (accs.find(key) == accs.end()) {
         accs[key] = init;
       }
-      accs[key] = folder(std::move(accs[key]))(it.second);
+      accs[key] = folder(std::move(accs[key]), it.second);
     }
 
-    // TODO more efficient implementation?
     MapE<R_key_value<K, Z>> result;
+    for (auto&& it : accs) {
+      result.insert(std::move(
+          R_key_value<K, Z>{std::move(it.first), std::move(it.second)}));
+    }
+    return result;
+  }
+
+  template <typename F1, typename F2, typename Z>
+  Map<R_key_value<RT<F1, R>, Z>>
+  group_by_generic(F1 grouper, F2 folder, const Z& init) const
+  {
+    // Create a map to hold partial results
+    typedef RT<F1, R> K;
+    std::unordered_map<K, Z> accs;
+
+    for (const auto& it : container) {
+      K key = grouper(it.second);
+      if (accs.find(key) == accs.end()) {
+        accs[key] = init;
+      }
+      accs[key] = folder(std::move(accs[key]), it.second);
+    }
+
+    Map<R_key_value<K, Z>> result;
     for (auto&& it : accs) {
       result.insert(std::move(
           R_key_value<K, Z>{std::move(it.first), std::move(it.second)}));
@@ -235,72 +295,44 @@ class MapE {
     typedef typename RT<Fun, R>::ElemType T;
     MapE<T> result;
     for (const auto& it : container) {
-      for (auto& it2 : expand(it.second).container) {
-        result.insert(it2.second);
+      for (auto&& it2 : expand(it.second).container) {
+        result.insert(std::move(it2.second));
       }
     }
 
     return result;
   }
 
-  // Map retrieval.
-  // For a MapE, these methods expect a key argument instead of a key-value
-  // struct.
-
-  template <typename K>
-  bool member(const K& k) const {
-    return container.find(k.key) != container.end();
-  }
-
-  template <typename K>
-  shared_ptr<R> lookup(const K& k) const {
-    auto it = container.find(k.key);
-    if (it != container.end()) {
-      return std::make_shared<R>(it->second);
-    } else {
-      return nullptr;
-    }
-  }
-
-  template <typename K, class F>
-  unit_t lookup_with(K const& k, F f) const {
-    auto it = container.find(k.key);
-    if (it != container.end()) {
-      return f(it->second);
+  template <class Fun>
+  auto ext_generic(Fun expand) const -> Map<typename RT<Fun, R>::ElemType> {
+    typedef typename RT<Fun, R>::ElemType T;
+    Map<T> result;
+    for (const auto& it : container) {
+      for (auto&& it2 : expand(it.second).container) {
+        result.insert(std::move(it2.second));
+      }
     }
 
-    return unit_t{};
+    return result;
   }
 
-  template <typename K, class F, class G>
-  auto lookup_with2(K const& k, F f, G g) const {
-    auto it = container.find(k.key);
-    if (it == container.end()) {
-      return f(unit_t{});
-    } else {
-      return g(it->second);
+  // Mosaic-specific functionality.
+
+  template<class Other, class OtherKeyFun, class Folder, class Acc>
+  Acc equijoinkf_kv(Collection<Other> other, OtherKeyFun keyf, Folder f, Acc acc) const
+  {
+    // Probe and accumulate.
+    for (const auto& otherelem : other.getConstContainer()) {
+      RT<OtherKeyFun, Other> key(keyf(otherelem));
+      auto it = container.find(key);
+      if ( it != container.end() ) {
+        acc = f(std::move(acc), it->second, otherelem);
+      }
     }
+    return acc;
   }
 
-  template <typename K, class F>
-  auto lookup_with3(K const& k, F f) const {
-    auto it = container.find(k.key);
-    if (it != container.end()) {
-      return f(it->second);
-    }
-    throw std::runtime_error("No match on Map.lookup_with3");
-  }
-
-  template <typename K, class F, class G>
-  RT<G,R> lookup_with4(K const& k, F f, G g) const {
-    auto it = container.find(k.key);
-    if (it == container.end()) {
-      return f(unit_t{});
-    } else {
-      return g(it->second);
-    }
-  }
-
+  // Comparators.
   bool operator==(const MapE& other) const {
     return container == other.container;
   }

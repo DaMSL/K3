@@ -1,4 +1,11 @@
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE StandaloneDeriving #-}
+
 module Language.K3.Codegen.CPP.Types where
+
+import GHC.Generics (Generic)
+import Data.Binary (Binary)
+import Data.Serialize (Serialize)
 
 import Control.Monad.State
 import Control.Monad.Trans.Except
@@ -85,14 +92,29 @@ data CPPGenS = CPPGenS {
         optRefs :: Bool,
 
         -- | Whether to optimize moves
-        optMoves :: Bool
+        optMoves :: Bool,
 
+        flags :: CPPCGFlags
 
     } deriving Show
 
+data CPPCGFlags
+  = CPPCGFlags
+    { isolateLoopIndex :: Bool
+    } deriving (Eq, Generic, Ord, Read, Show)
+
+instance Binary CPPCGFlags
+instance Serialize CPPCGFlags
+
+defaultCPPCGFlags :: CPPCGFlags
+defaultCPPCGFlags
+  = CPPCGFlags
+    { isolateLoopIndex = True
+    }
+
 -- | The default code generation state.
 defaultCPPGenS :: CPPGenS
-defaultCPPGenS = CPPGenS 0 [] [] [] [] [] [] [] [] M.empty M.empty M.empty [] BoostSerialization 0 False False
+defaultCPPGenS = CPPGenS 0 [] [] [] [] [] [] [] [] M.empty M.empty M.empty [] BoostSerialization 0 False False defaultCPPCGFlags
 
 refreshCPPGenS :: CPPGenM ()
 refreshCPPGenS = do

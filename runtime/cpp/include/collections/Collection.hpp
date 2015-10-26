@@ -21,18 +21,24 @@ class Collection : public VectorDS<K3::Collection, Elem> {
   Collection(const Super& c) : Super(c) {}
   Collection(Super&& c) : Super(std::move(c)) {}
 
-  shared_ptr<Elem> at(int i) const {
-    auto& c = Super::getConstContainer();
-    if (i < c.size()) {
-      return std::make_shared<Elem>(c[i]);
-    } else {
-      return nullptr;
-    }
+  Elem at(int i) const {
+    auto& vec = Super::getConstContainer();
+    return vec[i];
   }
 
-  template <class F>
-  auto at_with(int i, F f) const {
-    return f(Super::getConstContainer()[i]);
+  unit_t clear(const unit_t&) {
+    Super::getContainer().clear();
+    return unit_t();
+  }
+
+  template<class F, class G>
+  auto safe_at(int i, F f, G g) const {
+    auto& vec = Super::getConstContainer();
+    if ( i < vec.size() ) {
+      return g(vec[i]);
+    } else {
+      return f(unit_t {});
+    }
   }
 
   template<class Archive>

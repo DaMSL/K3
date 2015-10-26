@@ -64,52 +64,20 @@ void Engine::join() {
   if (running_ && peers_) {
     for (auto& it : *peers_) {
       it.second->join();
-#ifdef K3DEBUG
-      it.second->printStatistics();
-#endif
     }
   }
+#ifdef K3DEBUG
+  for (auto& it : *peers_) {
+    it.second->printStatistics();
+  }
+#endif
   network_manager_.stop();
   network_manager_.join();
   running_ = false;
   logger_->info("The Engine has Joined.");
 }
 
-void Engine::send(const Address& src, const Address& dst, TriggerID trig,
-                  unique_ptr<NativeValue> value, shared_ptr<Codec> codec) {
-  if (!peers_) {
-    throw std::runtime_error(
-        "Engine send(): Can't send before peers_ is initialized");
-  }
-  if (logger_->level() <= spdlog::level::debug) {
-    logger_->debug() << "Message: " << src.toString() << " --> "
-                    << dst.toString() << " @"
-                    << ProgramContext::__triggerName(trig);
-  }
-  auto it = peers_->find(dst);
-  if (options_.local_sends_enabled_ && it != peers_->end()) {
-    // Direct enqueue for local messages
-    auto d = it->second->getContext()->__getDispatcher(std::move(value), trig);
-#ifdef K3DEBUG
-    d->trigger_ = trig;
-    d->source_ = src;
-    d->destination_ = dst;
-#endif
-    it->second->getQueue().enqueue(std::move(d));
-  } else {
-    // Serialize and send over the network, otherwise
-    unique_ptr<PackedValue> pv = codec->pack(*value);
-    shared_ptr<NetworkMessage> m =
-        make_shared<NetworkMessage>(trig, std::move(pv));
-#ifdef K3DEBUG
-    m->source_ = src;
-    m->destination_ = dst;
-#endif
-    network_manager_.sendInternal(dst, m);
-  }
-}
-
-shared_ptr<ProgramContext> Engine::getContext(const Address& addr) {
+ProgramContext& Engine::getContext(const Address& addr) {
   auto it = peers_->find(addr);
   if (it != peers_->end()) {
     return it->second->getContext();
@@ -122,4 +90,11 @@ NetworkManager& Engine::getNetworkManager() { return network_manager_; }
 
 StorageManager& Engine::getStorageManager() { return storage_manager_; }
 
+unique_ptr<Dispatcher> getDispatcher(Peer& p, unique_ptr<NativeValue> nv, TriggerID trig) {
+ return p.getContext().__getDispatcher(std::move(nv), trig);
+}
+
+string getTriggerName(int trig) {
+  return ProgramContext::__triggerName(trig);
+}
 }  // namespace K3

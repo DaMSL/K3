@@ -53,7 +53,7 @@ program (tag &&& children -> (DRole name, decls)) = do
     programDefns <- concat <$> mapM declaration decls
 
     globalInits <- globalInitializations <$> get
-    let initDeclDefn = R.FunctionDefn (R.Name "initDecls") [("_", R.Unit)] (Just R.Unit) [] False
+    let initDeclDefn = R.FunctionDefn (R.Name "initDecls") [(Just "_", R.Unit)] (Just R.Unit) [] False
                          (globalInits ++ [R.Return (R.Initialization R.Unit [])])
 
     -- Generate program preamble.
@@ -93,8 +93,8 @@ program (tag &&& children -> (DRole name, decls)) = do
     let tableName isNative = if isNative then "native_dispatch_table" else "packed_dispatch_table"
 
     let dispatchDecl isNative = R.FunctionDefn (R.Name "__getDispatcher")
-                       [ ("payload", R.UniquePointer $ R.Named $ R.Name $ valType isNative)
-                       , ("trigger_id", R.Primitive R.PInt)
+                       [ (Just "payload", R.UniquePointer $ R.Named $ R.Name $ valType isNative)
+                       , (Just "trigger_id", R.Primitive R.PInt)
                        ]
                        (Just $ R.UniquePointer $ R.Named $ R.Name "Dispatcher") [] False
                        [R.Return $ R.Call
@@ -109,7 +109,7 @@ program (tag &&& children -> (DRole name, decls)) = do
                      Nothing
 
     let patchFn = R.FunctionDefn (R.Qualified contextName (R.Name "__patch"))
-                  [("node", R.Const $ R.Reference $ R.Named $ R.Qualified (R.Name "YAML") (R.Name "Node"))]
+                  [(Just "node", R.Reference $ R.Const $ R.Named $ R.Qualified (R.Name "YAML") (R.Name "Node"))]
                   (Just R.Void) [] False
                   [ R.Ignore $ R.Call (R.Variable $ R.Qualified (R.Name "YAML") $ R.Qualified (R.Specialized
                                                          [R.Named contextName]
@@ -120,7 +120,7 @@ program (tag &&& children -> (DRole name, decls)) = do
                   ]
 
     let patchFnDecl = R.GlobalDefn $ R.Forward $ R.FunctionDecl (R.Name "__patch")
-                      [R.Const $ R.Reference $ R.Named $ R.Qualified (R.Name "YAML") (R.Name "Node")] R.Void
+                      [R.Reference $ R.Const $ R.Named $ R.Qualified (R.Name "YAML") (R.Name "Node")] R.Void
 
     let contextDefns = [contextConstructor] ++ programDefns  ++ [initDeclDefn] ++
                        [patchFnDecl, globalNames, prettify, jsonify, dispatchDecl True, dispatchDecl False]
@@ -139,7 +139,7 @@ program (tag &&& children -> (DRole name, decls)) = do
 
   where
     mkContextConstructor contextName body =
-      R.FunctionDefn contextName [("__engine", R.Reference $ R.Named (R.Name "Engine"))]
+      R.FunctionDefn contextName [(Just "__engine", R.Reference $ R.Named (R.Name "Engine"))]
         Nothing
         [ R.Call
             (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "ProgramContext")
@@ -152,7 +152,7 @@ program (tag &&& children -> (DRole name, decls)) = do
       R.NamespaceDefn "YAML"
        [ R.TemplateDefn [] $ R.ClassDefn (R.Name "convert") [R.Named contextName] []
            [ R.FunctionDefn (R.Name "encode")
-               [("context", R.Const $ R.Reference $ R.Named contextName)]
+               [(Just "context", R.Reference $ R.Const $ R.Named contextName)]
                (Just $ R.Static $ R.Named $ R.Name "Node") [] False
                ([R.Forward $ R.ScalarDecl (R.Name "_node") (R.Named $ R.Name "Node") Nothing] ++
                 [R.Assignment (R.Subscript
@@ -166,8 +166,8 @@ program (tag &&& children -> (DRole name, decls)) = do
                 | (field, (fieldType, _)) <- patchables''
                 ] ++ [R.Return (R.Variable $ R.Name "_node")])
            , R.FunctionDefn (R.Name "decode")
-               [ ("node", R.Const $ R.Reference $ R.Named $ R.Name "Node")
-               , ("context", R.Reference $ R.Named contextName)
+               [ (Just "node", R.Reference $ R.Const $ R.Named $ R.Name "Node")
+               , (Just "context", R.Reference $ R.Named contextName)
                ] (Just $ R.Static $ R.Primitive $ R.PBool) [] False
                ([ R.IfThenElse (R.Unary "!" $ R.Call (R.Project
                                                           (R.Variable $ R.Name "node")
@@ -216,7 +216,7 @@ main = do
     let joinProgram = R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "engine") (R.Name "join")) []
 
     return [
-        R.FunctionDefn (R.Name "main") [("argc", R.Primitive R.PInt), ("argv", R.Named (R.Name "char**"))]
+        R.FunctionDefn (R.Name "main") [(Just "argc", R.Primitive R.PInt), (Just "argv", R.Named (R.Name "char**"))]
              (Just $ R.Primitive R.PInt) [] False
              (
              staticContextMembersPop ++
@@ -232,10 +232,10 @@ main = do
 requiredAliases :: CPPGenM [(Either R.Name R.Name, Maybe R.Name)]
 requiredAliases = return
                   [ (Right (R.Qualified (R.Name "K3" )$ R.Name "Address"), Nothing)
-                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "Codec"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "StorageFormat"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "IOMode"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "CodecFormat"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "unpack"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Engine"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "make_address"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Dispatcher"), Nothing)
@@ -243,6 +243,7 @@ requiredAliases = return
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "TNativeValue"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "PackedValue"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Options"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "TimerType"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "string_impl"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "unit_t"), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "make_tuple" ), Nothing)
@@ -281,6 +282,7 @@ requiredIncludes = return
                    , "serialization/Yaml.hpp"
                    , "types/BaseString.hpp"
                    , "types/Dispatcher.hpp"
+                   , "types/Timers.hpp"
 
                    , "collections/AllCollections.hpp"
 
@@ -318,24 +320,24 @@ generateDispatchers isNative = do
        let valName = if isNative then "Native" else "Packed"
        let members = [ R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name "context_") (R.Reference $ R.Named $ R.Name "CONTEXT") Nothing,
                        R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name "value_") (R.UniquePointer $ R.Named $ R.Name $ valName ++ "Value") Nothing
-                     ] ++ if isNative then [] else [R.GlobalDefn $ R.Forward $ R.ScalarDecl (R.Name "codec_") (R.SharedPointer $ R.Named $ R.Name "Codec") Nothing]
+                     ]
        let constructor = R.FunctionDefn (R.Name $ tName ++ valName ++ "Dispatcher")
-                           [("ctxt", R.Reference $ R.Named $ R.Name  "CONTEXT"), ("val", R.UniquePointer $ R.Named $ R.Name $ valName ++ "Value")]
+                           [(Just "ctxt", R.Reference $ R.Named $ R.Name  "CONTEXT"), (Just "val", R.UniquePointer $ R.Named $ R.Name $ valName ++ "Value")]
                            Nothing
                            [R.Call (R.Variable $ R.Name "context_") [R.Variable $ R.Name "ctxt"], R.Call (R.Variable $ R.Name "value_") [R.Move $ R.Variable $ R.Name "val"]]
                            False
-                           (if isNative then [] else [R.Assignment (R.Variable $ R.Name "codec_")
-                                                       (R.Call (R.Variable $ R.Qualified (R.Name "Codec") (R.Specialized [argType] (R.Name "getCodec")))
-                                                       [R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "value_") (R.Name "format")) []])
-                                                     ])
-       let unpacked = if isNative then [] else (:[]) $ R.Forward $ R.ScalarDecl (R.Name "nv") (R.UniquePointer $ R.Named $ R.Name "NativeValue") $ Just $ R.Call (R.Project (R.Dereference $ R.Variable $ R.Name "codec_") (R.Name "unpack")) [R.Dereference $ R.Variable $ R.Name "value_"]
-       let native_val = if isNative then (R.Variable $ R.Name "value_") else R.Variable $ R.Name "nv"
-       let casted_val = R.Forward $ R.ScalarDecl (R.Name "casted") (R.Pointer $ argType) $ Just $ R.Call (R.Project (R.Dereference $ native_val) ( R.Specialized [argType] (R.Name "template as"))) []
+                           []
+       let casted_val = if isNative
+                        then
+                          R.Call (R.Project (R.Dereference $ (R.Variable $ R.Name "value_")) ( R.Specialized [argType] (R.Name "template as"))) []
+                        else
+                          R.Call (R.Variable $ R.Specialized [argType] (R.Name "unpack")) [R.Move $ R.Variable $ R.Name "value_"]
+
        let call_op = R.FunctionDefn (R.Name $ "operator()") [] (Just $ R.Void) [] False
-                      (unpacked ++ [casted_val, R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "context_") (R.Name tName)) [R.Dereference $ R.Variable $ R.Name "casted"]])
+                      ([R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "context_") (R.Name tName)) [R.Move $ R.Dereference $ casted_val]])
 
        let jsonify = R.FunctionDefn (R.Name $ "jsonify") [] (Just $ R.Primitive $ R.PString) [] True
-                      (unpacked ++ [casted_val, R.Return $ R.Call (R.Variable $ R.Specialized [argType] (R.Qualified (R.Name "K3") (R.Qualified (R.Name "serialization") (R.Qualified (R.Name "json") (R.Name "encode"))))) [R.Dereference $ R.Variable $ R.Name "casted"] ])
+                      ([R.Return $ R.Call (R.Variable $ R.Specialized [argType] (R.Qualified (R.Name "K3") (R.Qualified (R.Name "serialization") (R.Qualified (R.Name "json") (R.Name "encode"))))) [if isNative then R.Dereference casted_val else R.Dereference $ R.Call (R.Variable $ R.Specialized [argType] (R.Name "unpack")) [R.Dereference $ R.Variable $ R.Name "value_"]]])
        let methods = [constructor, call_op, jsonify]
        return $ R.TemplateDefn [("CONTEXT", Nothing)] (R.ClassDefn (R.Name $ tName ++ valName ++ "Dispatcher") [] [R.Named $ R.Name "Dispatcher"] methods [] members)
 
@@ -354,8 +356,8 @@ generateDispatchPopulation isNative = do
      value = if isNative then "NativeValue" else "PackedValue"
      genDispatch (tName, tType) = do
        let dispatchWrapper = R.Lambda
-                             [R.ValueCapture $ Just ("this", Nothing)]
-                             [("payload", R.UniquePointer $ R.Named $ R.Name value)]
+                             [R.ThisCapture]
+                             [(Just "payload", R.UniquePointer $ R.Named $ R.Name value)]
                              False
                              Nothing
                              [
@@ -378,7 +380,7 @@ genJsonify :: CPPGenM R.Definition
 genJsonify = do
    currentS <- get
    body    <- genReturns $ showables currentS
-   return $ R.FunctionDefn (R.Name "__jsonify") [("global", R.Const $ R.Reference $ R.Primitive $ R.PString)] (Just $ R.Primitive R.PString) [] False body
+   return $ R.FunctionDefn (R.Name "__jsonify") [(Just "global", R.Reference $ R.Const $ R.Primitive $ R.PString)] (Just $ R.Primitive R.PString) [] False body
   where
    genReturns :: [(Identifier, K3 Type)] -> CPPGenM [R.Statement]
    genReturns n_ts = do
@@ -437,71 +439,72 @@ genPrettify = do
 -- | Generate a C++  expression that represents a K3 expression of the given type as a string
 prettifyExpr :: K3 Type -> R.Expression -> CPPGenM R.Expression
 prettifyExpr base_t e =
- case base_t of
-   -- non-nested:
-   (tag -> TBool)     -> return $ call_prettify "bool" [e]
-   (tag -> TByte)     -> return $ call_prettify "byte" [e]
-   (tag -> TInt)      -> return $ call_prettify "int" [e]
-   (tag -> TReal)     -> return $ call_prettify "real" [e]
-   (tag -> TString)   -> return $ call_prettify "string" [e]
-   (tag -> TAddress)  -> return $ call_prettify "address" [e]
-   (tag -> TFunction) -> return $ call_prettify "function" [e]
-   -- nested:
-   ((tag &&& children) -> (TOption, [t]))      -> opt t
-   ((tag &&& children) -> (TIndirection, [t])) -> ind_to_string t
-   ((tag &&& children) -> (TTuple, ts))        -> tup_to_string ts
-   ((tag &&& children) -> (TRecord ids, ts))   -> rec_to_string ids ts
-   ((details) -> (TCollection, [et], as)) -> coll_to_string base_t et as
-   _                                           -> return $ lit_string "Cant Show!"
- where
-   -- Utils
-   call_prettify x args =  R.Call (R.Variable (R.Qualified (R.Name "K3") (R.Name $ "prettify_" ++ x))) args
-   wrap_inner t = do
-     cType <- genCType t
-     inner <- prettifyExpr t (R.Variable $ R.Name "x")
-     return $ R.Lambda [] [("x", cType)] False Nothing [R.Return $ inner]
+ return $ R.Literal $ R.LString "disabled"
+ --case base_t of
+ --  -- non-nested:
+ --  (tag -> TBool)     -> return $ call_prettify "bool" [e]
+ --  (tag -> TByte)     -> return $ call_prettify "byte" [e]
+ --  (tag -> TInt)      -> return $ call_prettify "int" [e]
+ --  (tag -> TReal)     -> return $ call_prettify "real" [e]
+ --  (tag -> TString)   -> return $ call_prettify "string" [e]
+ --  (tag -> TAddress)  -> return $ call_prettify "address" [e]
+ --  (tag -> TFunction) -> return $ call_prettify "function" [e]
+ --  -- nested:
+ --  ((tag &&& children) -> (TOption, [t]))      -> opt t
+ --  ((tag &&& children) -> (TIndirection, [t])) -> ind_to_string t
+ --  ((tag &&& children) -> (TTuple, ts))        -> tup_to_string ts
+ --  ((tag &&& children) -> (TRecord ids, ts))   -> rec_to_string ids ts
+ --  ((details) -> (TCollection, [et], as)) -> coll_to_string base_t et as
+ --  _                                           -> return $ lit_string "Cant Show!"
+ --where
+ --  -- Utils
+ --  call_prettify x args =  R.Call (R.Variable (R.Qualified (R.Name "K3") (R.Name $ "prettify_" ++ x))) args
+ --  wrap_inner t = do
+ --    cType <- genCType t
+ --    inner <- prettifyExpr t (R.Variable $ R.Name "x")
+ --    return $ R.Lambda [] [(Just "x", cType)] False Nothing [R.Return $ inner]
 
-   oss_decl = R.Forward $ R.ScalarDecl (R.Name "oss") (R.Named $ R.Name "ostringstream") Nothing
-   oss_concat = R.Binary "<<"
-   oss = (R.Variable $ R.Name "oss")
+ --  oss_decl = R.Forward $ R.ScalarDecl (R.Name "oss") (R.Named $ R.Name "ostringstream") Nothing
+ --  oss_concat = R.Binary "<<"
+ --  oss = (R.Variable $ R.Name "oss")
 
-   lit_string  = R.Literal . R.LString
-   std_string s = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "string")) [lit_string s]
-   project field n = R.Project n (R.Name field)
+ --  lit_string  = R.Literal . R.LString
+ --  std_string s = R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "string")) [lit_string s]
+ --  project field n = R.Project n (R.Name field)
 
-   -- Option
-   opt ct = do
-       f <- wrap_inner ct
-       return $ call_prettify "option" [e, f]
+ --  -- Option
+ --  opt ct = do
+ --      f <- wrap_inner ct
+ --      return $ call_prettify "option" [e, f]
 
-   -- Indirection
-   ind_to_string ct = do
-       f <- wrap_inner ct
-       return $ call_prettify "indirection" [e, f]
+ --  -- Indirection
+ --  ind_to_string ct = do
+ --      f <- wrap_inner ct
+ --      return $ call_prettify "indirection" [e, f]
 
-   -- Tuple (TODO)
-   tup_to_string cts = mapM wrap_inner cts >>= return . call_prettify "tuple" . (e:)
+ --  -- Tuple (TODO)
+ --  tup_to_string cts = mapM wrap_inner cts >>= return . call_prettify "tuple" . (e:)
 
-   -- Record
-   rec_to_string ids cts = do
-       cType  <- genCType base_t
-       let ct_ids = zip cts ids
-       let x = R.Variable $ R.Name "x"
-       cs     <- mapM (\(ct,field) -> prettifyExpr ct (project field x) >>= \v -> return $ (oss_concat oss (oss_concat (std_string $ field ++ ":") v ))) ct_ids
-       done   <- return $ map R.Ignore $ L.intersperse (oss_concat oss (lit_string  ",")) cs
-       let front = R.Ignore $ oss_concat oss (lit_string "{")
-       let end = R.Ignore $ oss_concat oss (lit_string "}")
-       let str = R.Call (R.Project oss (R.Name "str")) []
-       let ret = R.Return $ R.Call (R.Variable $ R.Name "string_impl") [str]
-       let body = [oss_decl, front] ++ done ++ [end, ret]
-       let f =  R.Lambda [] [("x", cType)] False Nothing body
-       return $ call_prettify "record" [e, f]
+ --  -- Record
+ --  rec_to_string ids cts = do
+ --      cType  <- genCType base_t
+ --      let ct_ids = zip cts ids
+ --      let x = R.Variable $ R.Name "x"
+ --      cs     <- mapM (\(ct,field) -> prettifyExpr ct (project field x) >>= \v -> return $ (oss_concat oss (oss_concat (std_string $ field ++ ":") v ))) ct_ids
+ --      done   <- return $ map R.Ignore $ L.intersperse (oss_concat oss (lit_string  ",")) cs
+ --      let front = R.Ignore $ oss_concat oss (lit_string "{")
+ --      let end = R.Ignore $ oss_concat oss (lit_string "}")
+ --      let str = R.Call (R.Project oss (R.Name "str")) []
+ --      let ret = R.Return $ R.Call (R.Variable $ R.Name "string_impl") [str]
+ --      let body = [oss_decl, front] ++ done ++ [end, ret]
+ --      let f =  R.Lambda [] [(Just "x", cType)] False Nothing body
+ --      return $ call_prettify "record" [e, f]
 
-   -- Collection
-   coll_to_string t et as = do
-       f <- wrap_inner et
-       let str = maybe "collection" (const "vmap") (as @~ isVMap)
-       return $ call_prettify str [e, f]
+ --  -- Collection
+ --  coll_to_string t et as = do
+ --      f <- wrap_inner et
+ --      let str = maybe "collection" (const "vmap") (as @~ isVMap)
+ --      return $ call_prettify str [e, f]
 
-   isVMap (TAnnotation s) = "VMap" `L.isInfixOf` s
-   isVMap _ = False
+ --  isVMap (TAnnotation s) = "VMap" `L.isInfixOf` s
+ --  isVMap _ = False

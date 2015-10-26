@@ -20,7 +20,7 @@ trigger q15_stage1: () = \_ -> (
     ((lineitem.filter
                  (\e -> 19960101 <= e.l_shipdate and e.l_shipdate < 19960401)
                )
-               .groupBy
+               .group_by
                  (\l -> l.l_suppkey)
                  (\a -> \e -> a + (e.l_extendedprice * (1.0 - e.l_discount)))
                  0.0
@@ -29,9 +29,7 @@ trigger q15_stage1: () = \_ -> (
 ) @DistributedGroupBy2(lbl=[# lineitem_groupby], merge=[$ \a -> \b -> a + b])
 
 trigger q15_stage2: () = \_ -> (
-  let first = case aggs.at 0 of
-                { Some x -> x }
-                { None -> error () }
+  let first = aggs.at 0
   in
   let local_max = aggs.fold (\a -> \e -> if e.value > a.value then e else a) first
   in (q15_stage3, master) <- local_max

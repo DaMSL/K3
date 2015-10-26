@@ -1602,7 +1602,7 @@ sqlcodegen distributed (stmts, stgg) = do
           let rkeyE  = EC.lambda rqual rkbodyE
           let outE   = EC.lambda lqual $ EC.lambda rqual obodyE
           joinKV <- isKVBindingMap rbm
-          let joinE  = EC.applyMany (EC.project (if joinKV then "equijoinKV" else "equijoin") lexpr) [rexpr, lkeyE, rkeyE, outE]
+          let joinE  = EC.applyMany (EC.project (if joinKV then "equijoin_kv" else "equijoin") lexpr) [rexpr, lkeyE, rkeyE, outE]
           cgchains (Just (joinE, osid, bmelem, Nothing)) chains
 
         (_, _) -> do
@@ -1613,7 +1613,7 @@ sqlcodegen distributed (stmts, stgg) = do
           let matchE = EC.lambda lqual $ EC.lambda rqual mbodyE
           let outE   = EC.lambda lqual $ EC.lambda rqual obodyE
           joinKV <- isKVBindingMap rbm
-          let joinE  = EC.applyMany (EC.project (if joinKV then "joinKV" else "join") lexpr) [rexpr, matchE, outE]
+          let joinE  = EC.applyMany (EC.project (if joinKV then "join_kv" else "join") lexpr) [rexpr, matchE, outE]
           cgchains (Just (joinE, osid, bmelem, Nothing)) chains
 
     cgtree (Node (PSubquery _ qcl) ch) = cgclosure qcl
@@ -1674,7 +1674,7 @@ sqlcodegen distributed (stmts, stgg) = do
       let aggit = zip (map fst aggie) aggt
       zE <- zeroE aggit
 
-      let rE = EC.applyMany (EC.project "groupBy" e) [groupF, aggF, zE]
+      let rE = EC.applyMany (EC.project "group_by" e) [groupF, aggF, zE]
 
       let prefixTypePath i pfx l = case l of
                                      []  -> (i+1, [("f" ++ show i, [pfx])])

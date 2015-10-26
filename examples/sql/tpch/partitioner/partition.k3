@@ -25,14 +25,14 @@ declare index_by_hash : forall a. a -> int = \s -> (
 // Open a file for each partition named prefixN
 declare initialize: string  -> () = \prefix -> (
   (range numparts).iterate (\i ->
-    let name = filename prefix i.i in
+    let name = filename prefix i.elem in
     openFile name name "k3" "w"
   )
 )
 
 trigger partitionLineitem: () = \_ -> (
   let prefix = outFolder ++ "/lineitem" in
-  initialize prefix; 
+  initialize prefix;
   dataFiles.iterate (\e -> (
     // Load the file into memory. Both the raw strings and the parsed representation
     (print ("On file: " ++ e.path));
@@ -42,12 +42,12 @@ trigger partitionLineitem: () = \_ -> (
     // Assign each element to a bucket, and write the raw string to the right file
     let n = strings.size () in
       ((range n).iterate (\i ->
-        let r = lineitem.at i.i in
-        let s = strings.at i.i in
-        case r of 
-          {Some rec -> 
-            case s of 
-              {Some str -> 
+        let r = lineitem.at i.elem in
+        let s = strings.at i.elem in
+        case r of
+          {Some rec ->
+            case s of
+              {Some str ->
                 let n = index_by_hash rec.l_orderkey in
                 let f = filename prefix n in
                 if hasWrite f
@@ -70,7 +70,7 @@ trigger partitionLineitem: () = \_ -> (
 
 trigger partitionOrders: () = \_ -> (
   let prefix = outFolder ++ "/orders" in
-  initialize prefix; 
+  initialize prefix;
   dataFiles.iterate (\e -> (
     // Load the file into memory. Both the raw strings and the parsed representation
     (print ("On file: " ++ e.path));
@@ -80,12 +80,12 @@ trigger partitionOrders: () = \_ -> (
     // Assign each element to a bucket, and write the raw string to the right file
     let n = strings.size () in
       ((range n).iterate (\i ->
-        let r = orders.at i.i in
-        let s = strings.at i.i in
-        case r of 
-          {Some rec -> 
-            case s of 
-              {Some str -> 
+        let r = orders.at i.elem in
+        let s = strings.at i.elem in
+        case r of
+          {Some rec ->
+            case s of
+              {Some str ->
                 let n = index_by_hash rec.o_orderkey in
                 let f = filename prefix n in
                 if hasWrite f
@@ -106,7 +106,7 @@ trigger partitionOrders: () = \_ -> (
 
 trigger partitionOrdersCustkey: () = \_ -> (
   let prefix = outFolder ++ "/orders" in
-  initialize prefix; 
+  initialize prefix;
   dataFiles.iterate (\e -> (
     // Load the file into memory. Both the raw strings and the parsed representation
     (print ("On file: " ++ e.path));
@@ -116,12 +116,12 @@ trigger partitionOrdersCustkey: () = \_ -> (
     // Assign each element to a bucket, and write the raw string to the right file
     let n = strings.size () in
       ((range n).iterate (\i ->
-        let r = orders.at i.i in
-        let s = strings.at i.i in
-        case r of 
-          {Some rec -> 
-            case s of 
-              {Some str -> 
+        let r = orders.at i.elem in
+        let s = strings.at i.elem in
+        case r of
+          {Some rec ->
+            case s of
+              {Some str ->
                 let n = index_by_hash rec.o_custkey in
                 let f = filename prefix n in
                 if hasWrite f
@@ -142,7 +142,7 @@ trigger partitionOrdersCustkey: () = \_ -> (
 
 trigger partitionCustomer: () = \_ -> (
   let prefix = outFolder ++ "/customer" in
-  initialize prefix; 
+  initialize prefix;
   dataFiles.iterate (\e -> (
     // Load the file into memory. Both the raw strings and the parsed representation
     (print ("On file: " ++ e.path));
@@ -152,12 +152,12 @@ trigger partitionCustomer: () = \_ -> (
     // Assign each element to a bucket, and write the raw string to the right file
     let n = strings.size () in
       ((range n).iterate (\i ->
-        let r = customer.at i.i in
-        let s = strings.at i.i in
-        case r of 
-          {Some rec -> 
-            case s of 
-              {Some str -> 
+        let r = customer.at i.elem in
+        let s = strings.at i.elem in
+        case r of
+          {Some rec ->
+            case s of
+              {Some str ->
                 let n = index_by_hash rec.c_custkey in
                 let f = filename prefix n in
                 if hasWrite f
@@ -177,7 +177,7 @@ trigger partitionCustomer: () = \_ -> (
 )
 
 source sCustomers: () = value ()
-feed sCustomers |> partitionCustomer 
+feed sCustomers |> partitionCustomer
 
 source sOrdersCustkey: () = value ()
 feed sOrdersCustkey |> partitionOrdersCustkey

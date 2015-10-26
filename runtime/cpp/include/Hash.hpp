@@ -5,6 +5,7 @@
 
 #include "boost/functional/hash.hpp"
 
+#include "types/BaseString.hpp"
 #include "Common.hpp"
 
 namespace std {

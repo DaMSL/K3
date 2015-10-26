@@ -1,0 +1,11 @@
+include "Annotation/Collection.k3"
+include "Annotation/Maps/StrMap.k3"
+include "Core/Builtins.k3"
+
+trigger shutdown: () = \_ -> haltEngine()
+
+typedef get_request_r  = {client: address, tid: int, key: string}  
+typedef get_response_r = {tid: int, value: option string}
+
+typedef put_request_r = {client: address, tid: int, key: string, value: string}
+typedef put_response_r = {tid: int, value: bool}

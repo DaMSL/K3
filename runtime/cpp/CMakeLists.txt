@@ -14,9 +14,9 @@ else()
   message(STATUS "The compiler ${CMAKE_CXX_COMPILER} has no C++14 support. Please use a different C++ compiler.")
 endif()
 
-set(Boost_USE_STATIC_LIBS OFF) 
-set(Boost_USE_MULTITHREADED ON)  
-set(Boost_USE_STATIC_RUNTIME OFF) 
+set(Boost_USE_STATIC_LIBS OFF)
+set(Boost_USE_MULTITHREADED ON)
+set(Boost_USE_STATIC_RUNTIME OFF)
 
 # TODO error handling on not found
 find_package(Boost 1.55.0 COMPONENTS chrono serialization system thread program_options)
@@ -28,7 +28,7 @@ find_library(CSVPP_LIBRARY
 add_subdirectory(include/external/gtest-1.7.0)
 enable_testing()
 
-set (srcs src/core/Engine.cpp 
+set (srcs src/core/Engine.cpp
           src/core/Peer.cpp
           src/core/ProgramContext.cpp
           src/types/BaseString.cpp
@@ -51,6 +51,7 @@ set (srcs src/core/Engine.cpp
           src/Options.cpp
           src/Prettify.cpp
           src/Common.cpp
+	        src/collections/MultiIndex.cpp
     )
 
 set (link_libs k3 ${Boost_LIBRARIES} ${YAMLCPP_LIBRARY} ${CSVPP_LIBRARY} dynamic)

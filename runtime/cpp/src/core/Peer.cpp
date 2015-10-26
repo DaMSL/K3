@@ -1,3 +1,6 @@
+#ifdef _WIN32
+#include <winsock2.h>
+#endif //_WIN32
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
@@ -57,9 +60,10 @@ Peer::Peer(shared_ptr<ContextFactory> fac, const YAML::Node& config,
 #ifdef K3DEBUG
       logGlobals(true);
 #endif
-    } catch (const std::exception& e) {
-      logger_->error() << "Peer failed: " << e.what();
     }
+    //catch (const std::exception& e) {
+    //  logger_->error() << "Peer failed: " << e.what();
+    //}
   };
 
   // Execute in new thread
@@ -89,7 +93,6 @@ bool Peer::finished() { return finished_.load(); }
 
 Address Peer::address() { return address_; }
 
-shared_ptr<ProgramContext> Peer::getContext() { return context_; }
 
 void Peer::processBatch() {
   size_t num = queue_->dequeueBulk(batch_);
@@ -116,21 +119,23 @@ void Peer::processBatch() {
 
 void Peer::logMessage(const Dispatcher& d) {
 #ifdef K3DEBUG
-  string trig = ProgramContext::__triggerName(d.trigger_);
   if (logger_->level() <= spdlog::level::debug) {
+    string trig = ProgramContext::__triggerName(d.trigger_);
     logger_->debug() << "Received:: @" << trig;
   }
 
-  if (json_messages_log_ && !json_opts_.final_state_only_ &&
-      std::regex_match(trig, std::regex(json_opts_.messages_regex_))) {
-    *json_messages_log_ << message_counter_ << "|";
-    *json_messages_log_ << K3::serialization::json::encode<Address>(
-                               d.destination_) << "|";
-    *json_messages_log_ << trig << "|";
-    *json_messages_log_ << K3::serialization::json::encode<Address>(d.source_)
-                        << "|";
-    *json_messages_log_ << d.jsonify() << "|";
-    *json_messages_log_ << currentTime() << std::endl;
+  if (json_messages_log_ && !json_opts_.final_state_only_) {
+    string trig = ProgramContext::__triggerName(d.trigger_);
+    if (std::regex_match(trig, std::regex(json_opts_.messages_regex_))) {
+      *json_messages_log_ << message_counter_ << "|";
+      *json_messages_log_ << K3::serialization::json::encode<Address>(
+                                d.destination_) << "|";
+      *json_messages_log_ << trig << "|";
+      *json_messages_log_ << K3::serialization::json::encode<Address>(d.source_)
+                          << "|";
+      *json_messages_log_ << d.jsonify() << "|";
+      *json_messages_log_ << currentTime() << std::endl;
+    }
   }
   message_counter_++;
 #endif  // K3DEBUG

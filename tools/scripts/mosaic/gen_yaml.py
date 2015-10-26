@@ -33,15 +33,16 @@ def parse_extra_args(args):
             extra_args[val[0]] = val[1]
     return extra_args
 
-def create_file(num_switches, num_nodes, file_path, extra_args):
+def create_file(num_switches, num_nodes, file_path, extra_args, csv_data):
     extra_args = parse_extra_args(extra_args)
+    switch_role = "switch_old" if csv_data else "switch"
 
     peers = []
     peers.append(('master', 40000))
     peers.append(('timer', 40001))
     switch_ports = 50001
     for i in range(num_switches):
-        peers.append(('switch', switch_ports + i))
+        peers.append((switch_role, switch_ports + i))
     node_ports = 60001
     for i in range(num_nodes):
         peers.append(('node', node_ports + i))
@@ -57,8 +58,9 @@ def create_file(num_switches, num_nodes, file_path, extra_args):
     # dump out
     dump_yaml(peers2)
 
-def create_dist_file(num_switches, perhost, num_nodes, nmask, file_path, extra_args):
+def create_dist_file(num_switches, perhost, num_nodes, nmask, file_path, extra_args, csv_data):
     extra_args = parse_extra_args(extra_args)
+    switch_role = "switch_old" if csv_data else "switch"
 
     master_role = {'role': wrap_role('master')}
     master_role.update(extra_args)
@@ -66,7 +68,7 @@ def create_dist_file(num_switches, perhost, num_nodes, nmask, file_path, extra_a
     timer_role = {'role': wrap_role('timer')}
     timer_role.update(extra_args)
 
-    switch_role = {'role': wrap_role('switch'), 'switch_path': file_path}
+    switch_role = {'role': wrap_role(switch_role), 'switch_path': file_path}
     switch_role.update(extra_args)
 
     node_role = {'role': wrap_role('node')}
@@ -102,17 +104,18 @@ def create_dist_file(num_switches, perhost, num_nodes, nmask, file_path, extra_a
     # dump out
     dump_yaml(launch_roles)
 
-def create_multicore_file(num_switches, perhost, num_nodes, nmask, file_path, extra_args):
+def create_multicore_file(num_switches, perhost, num_nodes, nmask, file_path, extra_args, csv_data):
     if num_switches > 1:
         raise ValueError("Can't create multicore deployment with more than one switch just yet.")
 
     extra_args = parse_extra_args(extra_args)
+    switch_role = "switch_old" if csv_data else "switch"
 
     role = {
         "hostmask": "qp3",
         "name": "Everything",
         "peer_globals": [
-            {"role": wrap_role("master")}, {"role": wrap_role("timer")}, {"role": wrap_role("switch"), "switch_path": file_path}
+            {"role": wrap_role("master")}, {"role": wrap_role("timer")}, {"role": wrap_role(switch_role), "switch_path": file_path}
         ] + [{"role": wrap_role("node")} for _ in range(num_nodes)],
         "privileged": False,
         'volumes'   : [{'host':'/local', 'container':'/local'}],
@@ -139,15 +142,16 @@ def main():
     parser.add_argument("-f", "--file", type=str, dest="file_path", help="file path",
                         default="/local/agenda.csv")
     parser.add_argument("--extra-args", type=str, help="extra arguments in x=y format")
+    parser.add_argument("--csv-data", action='store_true', dest="csv_data", default=False)
     args = parser.parse_args()
     if args.run_mode == "dist":
         create_dist_file(args.num_switches, args.perhost, args.num_nodes, args.nmask,
-                         args.file_path, args.extra_args)
+                         args.file_path, args.extra_args, args.csv_data)
     elif args.run_mode == "local":
-        create_file(args.num_switches, args.num_nodes, args.file_path, args.extra_args)
+        create_file(args.num_switches, args.num_nodes, args.file_path, args.extra_args, args.csv_data)
     elif args.run_mode == "multicore":
         create_multicore_file(args.num_switches, args.perhost, args.num_nodes, args.nmask,
-                              args.file_path, args.extra_args)
+                              args.file_path, args.extra_args, args.csv_data)
 
 
 if __name__ == '__main__':

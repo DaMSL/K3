@@ -123,6 +123,7 @@ simplifyCPPExpression expr =
     Subscript a x -> Subscript <$> simplifyCPPExpression a <*> simplifyCPPExpression x
     Unary i e -> Unary i <$> simplifyCPPExpression e
     Variable n -> Variable <$> simplifyCPPName n
+    ExprOnType t -> return $ ExprOnType t
 
 simplifyCPPDeclaration :: Declaration -> SimplificationM Declaration
 simplifyCPPDeclaration decl =
