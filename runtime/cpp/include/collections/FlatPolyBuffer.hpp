@@ -466,6 +466,15 @@ public:
     return unit_t{};
   }
 
+  // Reserve a certain number of elements and fixed size
+  unit_t reserve(int num_elems, int fixed_size, int var_size) {
+    if (!buffer.data()) {
+      vector_reserve(tags(), num_elems);
+      buffer_reserve(fixed(), fixed_size);
+      buffer_reserve(variable(), var_size);
+    }
+  }
+
   // Externalizes an existing buffer, reusing the variable-length segment.
   unit_t repack(unit_t) {
     if ( !internalized ) {
