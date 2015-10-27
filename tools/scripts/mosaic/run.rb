@@ -241,7 +241,8 @@ def gen_yaml(k3_data_path, role_file, script_path)
   extra_args << "ms_gc_interval=" + $options[:gc_epoch] if $options[:gc_epoch]
   extra_args << "sw_driver_sleep=" + $options[:msg_delay] if $options[:msg_delay]
   extra_args << "corrective_mode=false" if $options[:no_corrective]
-  #extra_args << "builtin_route=true"
+  extra_args << "sw_poly_batch_size=" + $options[:batch_size] if $options[:batch_size]
+  extra_args << "do_poly_reserve=false" if $options[:no_poly_reserve]
   cmd << "--extra-args " << extra_args.join(',') << " " if extra_args.size > 0
 
   yaml = run("#{File.join(script_path, "gen_yaml.py")} #{cmd}")
@@ -715,6 +716,8 @@ def main()
     opts.on("--compileargs [STRING]", "Pass arguments to compiler (distributed only)") { |s| $options[:compileargs] = s }
     opts.on("--no-correctives", "Run in no-corrective mode") { $options[:no_corrective] = true }
     opts.on("--csv-data", "Use the old data format (csv)") {$options[:csv_data] = true }
+    opts.on("--batch-size [SIZE]", "Set the batch size") {|s| $options[:batch_size] = s }
+    opts.on("--no-reserve", "Prevent reserve on the poly buffers") { $options[:no_poly_reserve] = true }
 
     # Stages.
     # Ktrace is not run by default.
