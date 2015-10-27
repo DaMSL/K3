@@ -28,6 +28,9 @@ annotation FlatPolyBuffer[variants: [labeltylit]] given type a
   provides lifted unpack : () -> ()
     with effects \_ -> [R[self]; W[self]]
 
+  provides lifted reserve : int -> int -> int -> ()
+    with effects \tags -> \fixed -> \var -> [R[self]; R[tags]; R[fixed]; R[var]; W[self]]
+
   provides lifted load : string -> ()
     with effects \data -> [R[self]; R[data]; W[self]]
 
