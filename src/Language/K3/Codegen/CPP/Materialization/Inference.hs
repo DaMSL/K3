@@ -581,8 +581,8 @@ isPseudoGlobal p = case tag p of
 
 occursIn :: Contextual (K3 Provenance) -> Contextual (K3 Provenance) -> InferM (K3 MPred)
 occursIn a@(Contextual pa ca) b@(Contextual pb cb) = case tag pb of
-  PFVar i _ -> case tag pa of
-    PFVar j _ | i == j && ca == cb -> return (mBool True)
+  PFVar i m -> case tag pa of
+    PFVar j n | i == j && m == n -> return (mBool True)
     _ -> return (mBool False)
   PBVar (PMatVar n u ptr) -> case tag pa of
     PBVar (PMatVar n' u' _) | n' == n && u' == u -> return (mBool True)
