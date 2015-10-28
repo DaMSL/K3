@@ -547,15 +547,15 @@ public:
 // Allocators.
 #ifdef BSL_ALLOC
   #ifdef BSEQ
-  extern BloombergLP::bdlma::SequentialAllocator mpool;
+  extern thread_local BloombergLP::bdlma::SequentialAllocator mpool;
   #elif BPOOLSEQ
-  extern BloombergLP::bdlma::SequentialAllocator seqpool;
-  extern BloombergLP::bdlma::MultipoolAllocator mpool;
+  extern thread_local BloombergLP::bdlma::SequentialAllocator seqpool;
+  extern thread_local BloombergLP::bdlma::MultipoolAllocator mpool;
   #elif BLOCAL
   constexpr size_t lsz = 2<<14;
-  extern BloombergLP::bdlma::LocalSequentialAllocator<lsz> mpool;
+  extern thread_local BloombergLP::bdlma::LocalSequentialAllocator<lsz> mpool;
   #else
-  extern BloombergLP::bdlma::MultipoolAllocator mpool;
+  extern thread_local BloombergLP::bdlma::MultipoolAllocator mpool;
   #endif
 #endif
 
@@ -585,25 +585,27 @@ class MultiIndexVMap
 
   typedef typename Container::iterator iterator;
 
-  Container container;
-
   // Allocators.
   #ifdef BSL_ALLOC
-    bsl::allocator<VElem<R, Version>> oalloc;
-    bsl::allocator<std::pair<Version, R>> ialloc;
+    using IAlloc = bsl::allocator<std::pair<Version, R>>;
+    using OAlloc = bsl::allocator<VElem<R, Version>>;
+    IAlloc ialloc;
+    OAlloc oalloc;
   #else
-    std::allocator<VElem<R, Version>> oalloc;
     std::allocator<std::pair<Version, R>> ialloc;
+    std::allocator<VElem<R, Version>> oalloc;
   #endif
 
   vmap_alloc<Version, R> scialloc;
   midx_alloc<R, Version> scoalloc;
 
+  Container container;
+
  public:
   MultiIndexVMap() :
     #ifdef BSL_ALLOC
-      oalloc(&mpool),
       ialloc(&mpool),
+      oalloc(&mpool),
     #endif
     scialloc(ialloc),
     scoalloc(oalloc, scialloc),
