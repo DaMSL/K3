@@ -41,17 +41,17 @@ control ConvertPSVToFPB [on_batch_fn: expr, batch_size: expr, batch_buffer: expr
 typedef customer_rb = { ra:bool, rb:int, rc:string, rd:string, re:int, rf:string, rg:real, rh:string, ri:string }
 typedef lineitem_rb = { ra:bool, rb:int, rc:int, rd:int, re:int, rf:real, rg:real, rh:real, ri:real, rj:string,
                         rk:string, rl:int, rm:int, rn:int, ro:string, rp:string, rq:string }
-typedef orders_rb = { ra:bool, rb:int, rc:int, rd:string, re:real, rf:int, rg:string, rh:string, ri:int, rj:string }
-typedef part_rb = { ra:bool, rb:int, rc:string, rd:string, re:string, rf:string, rg:int, rh:string, ri:real, rj:string }
+typedef orders_rb   = { ra:bool, rb:int, rc:int, rd:string, re:real, rf:int, rg:string, rh:string, ri:int, rj:string }
+typedef part_rb     = { ra:bool, rb:int, rc:string, rd:string, re:string, rf:string, rg:int, rh:string, ri:real, rj:string }
 typedef partsupp_rb = { ra:bool, rb:int, rc:int, rd:int, re:real, rf:string }
 typedef supplier_rb = { ra:bool, rb:int, rc:string, rd:string, re:int, rf:string, rg:real, rh:string }
 
 
 typedef customer_r = { rb:int, rc:string, rd:string, re:int, rf:string, rg:real, rh:string, ri:string }
 typedef lineitem_r = { rb:int, rc:int, rd:int, re:int, rf:real, rg:real, rh:real, ri:real, rj:string,
-                        rk:string, rl:int, rm:int, rn:int, ro:string, rp:string, rq:string }
-typedef orders_r = {  rb:int, rc:int, rd:string, re:real, rf:int, rg:string, rh:string, ri:int, rj:string }
-typedef part_r = {  rb:int, rc:string, rd:string, re:string, rf:string, rg:int, rh:string, ri:real, rj:string }
+                       rk:string, rl:int, rm:int, rn:int, ro:string, rp:string, rq:string }
+typedef orders_r   = { rb:int, rc:int, rd:string, re:real, rf:int, rg:string, rh:string, ri:int, rj:string }
+typedef part_r     = { rb:int, rc:string, rd:string, re:string, rf:string, rg:int, rh:string, ri:real, rj:string }
 typedef partsupp_r = { rb:int, rc:int, rd:int, re:real, rf:string }
 typedef supplier_r = { rb:int, rc:string, rd:string, re:int, rf:string, rg:real, rh:string }
 
@@ -98,12 +98,12 @@ declare supplier_tag : int = 6
 
 typedef poly_tpch = collection {elem : ()} @FlatPolyBuffer(
   variants=[:#>
-    sentinel => { elem:() } : 0,
+    sentinel => { elem:() }  : 0,
     customer => customer_rb  : 1,
-    lineitem => lineitem_rb  : 2, 
+    lineitem => lineitem_rb  : 2,
     orders   =>  orders_rb   : 3,
-    part     =>  part_rb     : 4, 
-    partsupp => partsupp_rb  : 5, 
+    part     =>  part_rb     : 4,
+    partsupp => partsupp_rb  : 5,
     supplier => supplier_rb  : 6
   ])
 
@@ -119,33 +119,40 @@ declare partsupp : partsupp_bag
 declare part     : part_bag
 
 declare lineitem_fpb : lineitem_bag -> () = \c -> (
-  c.iterate (\r -> buffer.append_lineitem
-    {ra:true,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh,ri:r.ri,rj:r.rj,rk:r.rk,rl:r.rl,rm:r.rm,rn:r.rn,ro:r.ro,rp:r.rp,rq:r.rq})
+  (c.iterate (\r -> buffer.append_lineitem
+    {ra:true,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh,
+     ri:r.ri,rj:r.rj,rk:r.rk,rl:r.rl,rm:r.rm,rn:r.rn,ro:r.ro,rp:r.rp,rq:r.rq}));
+  buffer.unpack()
 )
 
 declare customer_fpb : customer_bag -> () = \c -> (
-  c.iterate (\r -> buffer.append_customer 
-    {ra:true,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh,ri:r.ri})
+  (c.iterate (\r -> buffer.append_customer
+    {ra:true,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh,ri:r.ri}));
+  buffer.unpack()
 )
 
 declare orders_fpb : orders_bag -> () = \c -> (
-  c.iterate (\r -> buffer.append_orders
-    {ra:true,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh,ri:r.ri,rj:r.rj})
+  (c.iterate (\r -> buffer.append_orders
+    {ra:true,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh,ri:r.ri,rj:r.rj}));
+  buffer.unpack()
 )
 
 declare supplier_fpb : supplier_bag -> () = \c -> (
-  c.iterate (\r -> buffer.append_supplier
-    {ra:true,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh})
+  (c.iterate (\r -> buffer.append_supplier
+    {ra:true,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh}));
+  buffer.unpack()
 )
 
 declare partsupp_fpb : partsupp_bag -> () = \c -> (
-  c.iterate (\r -> buffer.append_partsupp
-    {ra:true,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf})
+  (c.iterate (\r -> buffer.append_partsupp
+    {ra:true,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf}));
+  buffer.unpack()
 )
 
 declare part_fpb : part_bag -> () = \c -> (
-  c.iterate (\r -> buffer.append_part
-    {ra:true,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh,ri:r.ri,rj:r.rj})
+  (c.iterate (\r -> buffer.append_part
+    {ra:true,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh,ri:r.ri,rj:r.rj}));
+  buffer.unpack()
 )
 
 trigger convert_lineitem : () = \_ -> (
