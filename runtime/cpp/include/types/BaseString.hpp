@@ -141,6 +141,12 @@ class base_string {
 
   template <class archive>
   void serialize(archive& a, const unsigned int) {
+    bool header = has_header();
+    a & header;
+    if (archive::is_loading::value) {
+      set_header(header);
+    }
+
     uint64_t len;
     if (archive::is_saving::value) {
       len = raw_length();
@@ -166,6 +172,7 @@ class base_string {
 
   template <class archive>
   void serialize(archive& a) const {
+    a& has_header();
     uint64_t len = raw_length();
     a& len;
     if (bufferp_()) {
@@ -175,6 +182,8 @@ class base_string {
 
   template <class archive>
   void serialize(archive& a) {
+    bool has_header;
+    a& has_header;
     uint64_t len;
     a& len;
     if (bufferp_()) {
@@ -191,6 +200,8 @@ class base_string {
     if (bufferp_()) {
       a.read(bufferp_(), len);
     }
+
+    set_header(has_header);
   }
 
   __attribute__((always_inline)) char* bufferp_() const {

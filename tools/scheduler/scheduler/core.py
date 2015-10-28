@@ -2,6 +2,7 @@
 import os, re, yaml
 import tarfile
 import logging
+from random import shuffle
 from common import *
 
 class K3JobError(Exception):
@@ -95,6 +96,8 @@ class Job:
     self.status      = None
     self.all_peers   = None
     self.master      = None
+    self.start_ts    = None
+    self.time_limit  = kwargs.get("timelimit", 20 * 60)
 
     if self.binary_url == None:
       logging.error("[FLASKWEB] Error. No binary provided to Job")
@@ -128,8 +131,8 @@ class Job:
       self.privileged = False if 'privileged' not in doc else doc['privileged']
 
       mask = r".*" if "hostmask" not in doc else doc['hostmask']
-      volumes = doc.get('volumes', []) 
-      envars = doc.get('envars', []) 
+      volumes = doc.get('volumes', [])
+      envars = doc.get('envars', [])
       inputs = doc.get('k3_data', [])
 
       # Parameters:  Just add additional parameters here to receive them
@@ -138,7 +141,7 @@ class Job:
 
       for p in roleParameters:
         if p in doc:
-          params[p] = doc[p]        
+          params[p] = doc[p]
 
       # if 'peers_per_host' in doc:
       #   params['peers_per_host'] = doc['peers_per_host']
@@ -157,11 +160,17 @@ class Job:
 
 
 class PortList():
-   def __init__(self, ranges=[]):
+   def __init__(self, ranges=[], dir=1):
        self.index = 0
        self.offset = 0
+       self.dir = dir
        self.ports = [] if ranges == 0 else ranges
-       
+
+   def randomize(self):
+       print("Before: %s" % (self.ports, ))
+       shuffle(self.ports)
+       print("After: %s" % (self.ports, ))
+
    def addRange(self, r):
        ports.append(r)
 
@@ -180,8 +189,8 @@ class PortList():
    def getNext(self):
      if len(self.ports) == 0 or self.index >= len(self.ports):
        return None
-     result = self.ports[self.index][0] + self.offset
-     if result == self.ports[self.index][1]:
+     result = self.ports[self.index][0 if self.dir == 1 else 1] + self.dir * self.offset
+     if result == self.ports[self.index][1 if self.dir == 1 else 0]:
          self.index += 1
          self.offset = 0
      else:

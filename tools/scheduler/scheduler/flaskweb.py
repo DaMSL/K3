@@ -156,7 +156,7 @@ def initWeb(port, **kwargs):
     webapp.config['COMPILELOG'] = compileFile
 
     compile_fmt = ServiceFormatter(u'[%(asctime)s] %(message)s'.encode("utf8", errors='ignore'))
-    compile_file = logging.handlers.RotatingFileHandler(compileFile, maxBytes=1024*1024, backupCount=5, mode='w')
+    compile_file = logging.handlers.RotatingFileHandler(compileFile, maxBytes=5*1024*1024, backupCount=20, mode='w')
     compile_file.setFormatter(compile_fmt)
     compileLogger.addHandler(compile_file)
 

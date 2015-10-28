@@ -30,7 +30,7 @@ data PMatVar = PMatVar {pmvn :: Identifier, pmvloc :: UID, pmvptr :: PPtr}
 
 data Provenance =
     -- Atoms
-      PFVar        Identifier
+      PFVar        Identifier (Maybe UID)
     | PBVar        PMatVar
     | PTemporary   -- A local leading to no lineage of interest
 

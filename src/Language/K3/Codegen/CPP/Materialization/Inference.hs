@@ -8,8 +8,12 @@
 {-# LANGUAGE ViewPatterns #-}
 
 module Language.K3.Codegen.CPP.Materialization.Inference (
+  prepareInitialIState,
   optimizeMaterialization,
-  MZFlags(..)
+  MZFlags(..),
+  IState(..),
+  DKey,
+  defaultIState
 ) where
 
 import GHC.Generics (Generic)
@@ -22,9 +26,11 @@ import qualified Data.List as L
 import Control.Arrow
 
 import Data.Foldable
-import Data.Maybe (fromMaybe)
+import Data.Maybe (fromMaybe, mapMaybe)
 import Data.Traversable
 import Data.Tree
+
+import Debug.Trace
 
 import Control.Monad.Except
 import Control.Monad.Identity
@@ -49,7 +55,7 @@ import Language.K3.Core.Literal
 import Language.K3.Core.Type
 
 import Language.K3.Analysis.Provenance.Core (Provenance(..), PMatVar(..), PPtr)
-import Language.K3.Analysis.Provenance.Constructors (pbvar, pfvar)
+import Language.K3.Analysis.Provenance.Constructors (pbvar, pfvar, ptemp)
 
 import Language.K3.Analysis.SEffects.Core (Effect(..))
 
@@ -70,13 +76,46 @@ data MZFlags = MZFlags deriving (Eq, Generic, Ord, Read, Show)
 instance Binary MZFlags
 instance Serialize MZFlags
 
-optimizeMaterialization :: (PIEnv, FIEnv) -> K3 Declaration -> IO (Either String (K3 Declaration))
-optimizeMaterialization (p, f) d = runExceptT $ inferMaterialization >>= solveMaterialization >>= attachMaterialization d
+prepareInitialIState :: Bool -> K3 Declaration -> IState
+prepareInitialIState dbg dr = IState (M.fromList $ mapMaybe genHack (children dr)) MM.empty
+
+-- (foldl addGlobalPhaseBoundary MM.empty $ mapMaybe getMaybePhaseBoundary (children dr))
  where
-  inferMaterialization = case runInferM (preprocessD d >> materializeD d) defaultIState defaultIScope of
+  genHack :: K3 Declaration -> Maybe (DKey, K3 MExpr)
+  genHack d@(tag -> DGlobal i _ _) = debugHack d $ Just ((Juncture (gUID d) i, In), (mAtom Referenced -??- "Hack"))
+  genHack _ = Nothing
+
+  gUID d = let Just (DUID u) = d @~ isDUID in u
+  gPrv d = maybe ("N",ptemp) (\(DProvenance provE) -> either (("U"),) (("I"),) provE) $ d @~ isDProvenance
+
+  debugHack d r@(Just ((j, _), _)) =
+    if dbg
+      then let (a,p) = gPrv d
+           in flip trace r $ boxToString $ ["Init IState " ++ a ++ " global " ++ show j]
+                          %$ prettyLines p
+      else r
+
+  debugHack _ r = r
+
+  hasPhaseBoundary :: K3 Declaration -> Maybe Identifier
+  hasPhaseBoundary x = case x @~ isDProperty of
+    Just (DProperty dp) -> flip onDProperty dp $ \case
+      ("ExpiresAt", Just (tag -> LString mt)) -> Just mt
+      _ -> Nothing
+    _ -> Nothing
+
+  getMaybePhaseBoundary :: K3 Declaration -> Maybe (Identifier, Identifier)
+  getMaybePhaseBoundary x = case tag x of
+    DGlobal i _ _ -> (i,) <$> hasPhaseBoundary x
+    _ -> Nothing
+
+optimizeMaterialization :: Bool -> IState -> (PIEnv, FIEnv) -> K3 Declaration -> IO (Either String (K3 Declaration))
+optimizeMaterialization dbg is (p, f) d = runExceptT $ inferMaterialization >>= solveMaterialization >>= attachMaterialization d
+ where
+  inferMaterialization = case runInferM (materializeD d) defaultIState defaultIScope of
     Left (IError msg) -> throwError msg
-    Right ((_, IState ct _), r) -> liftIO (formatIReport reportVerbosity r) >> return ct
-   where defaultIState = IState { cTable = M.empty, globalPhaseBoundaries = MM.empty }
+    Right ((_, IState ct _), r) -> liftIO (formatIReport reportVerbosity r) >> (debugInfer ct $ return ct)
+   where defaultIState = is
          defaultIScope = IScope { downstreams = []
                                 , nearestBind = Nothing
                                 , pEnv = p
@@ -84,19 +123,11 @@ optimizeMaterialization (p, f) d = runExceptT $ inferMaterialization >>= solveMa
                                 , topLevel = False
                                 , currentTrigger = Nothing
                                 }
+         debugInfer ct r = if False
+                            then flip trace r $ boxToString $ M.foldlWithKey' debugCTEntry ["Mat CT"] ct
+                            else r
 
-         hasPhaseBoundary :: K3 Declaration -> Maybe Identifier
-         hasPhaseBoundary x = case x @~ isDProperty of
-           Just (DProperty dp) -> flip onDProperty dp $ \case
-             ("ExpiresAt", Just (tag -> LString mt)) -> Just mt
-             _ -> Nothing
-           _ -> Nothing
-
-         preprocessD :: K3 Declaration -> InferM ()
-         preprocessD x = case tag x of
-           DGlobal i _ _ -> maybe (return ()) (addGlobalPhaseBoundary i) (hasPhaseBoundary x)
-           DRole _ -> traverse_ preprocessD (children x)
-           _ -> return ()
+         debugCTEntry acc k v = acc ++ [show k ++ " => "] %$ (indent 2 $ prettyLines v)
 
   solveMaterialization ct = case runSolverM solveAction defaultSState of
     Left (SError msg) -> throwError msg
@@ -129,7 +160,10 @@ runInferM m st sc = runIdentity $ runExceptT $ runWriterT $ flip runReaderT sc $
 -- ** Non-scoping State
 data IState = IState { cTable :: M.HashMap DKey (K3 MExpr)
                      , globalPhaseBoundaries :: MM.Map Identifier (S.Set Identifier)
-                     }
+                     } deriving (Eq, Read, Show, Generic)
+
+defaultIState :: IState
+defaultIState = IState  M.empty MM.empty
 
 type DKey = (Juncture, Direction)
 
@@ -137,10 +171,8 @@ constrain :: UID -> Identifier -> Direction -> K3 MExpr -> InferM ()
 constrain u i d m = let j = (Juncture u i) in
   logR j d m >> modify (\s -> s { cTable = M.insertWith (flip const) (j, d) (simplifyE m) (cTable s) })
 
-addGlobalPhaseBoundary :: Identifier -> Identifier -> InferM ()
-addGlobalPhaseBoundary gName tName = modify $ \s -> s {
-    globalPhaseBoundaries = MM.insertWith S.union tName [gName] (globalPhaseBoundaries s)
-  }
+addGlobalPhaseBoundary :: MM.Map Identifier (S.Set Identifier) -> (Identifier, Identifier) -> MM.Map Identifier (S.Set Identifier)
+addGlobalPhaseBoundary m (gName, tName) = MM.insertWith S.union tName [gName] m
 
 isPseudoLocalInContext :: Identifier -> InferM Bool
 isPseudoLocalInContext i = do
@@ -204,16 +236,16 @@ newtype IError = IError String
 -- * Helpers
 
 dUID :: K3 Declaration -> InferM UID
-dUID d = maybe (throwError $ IError "Invalid UID") (\(DUID u) -> return u) (d @~ isDUID)
+dUID d = maybe (throwError $ IError "Invalid DUID") (\(DUID u) -> return u) (d @~ isDUID)
 
 eUID :: K3 Expression -> InferM UID
-eUID e = maybe (throwError $ IError "Invalid UID") (\(EUID u) -> return u) (e @~ isEUID)
+eUID e = maybe (throwError $ IError "Invalid EUID") (\(EUID u) -> return u) (e @~ isEUID)
 
 ePrv :: K3 Expression -> InferM (K3 Provenance)
-ePrv e = maybe (throwError $ IError "Invalid Provenance") (\(EProvenance p) -> return p) (e @~ isEProvenance)
+ePrv e = maybe (throwError $ IError "Invalid EProvenance") (\(EProvenance p) -> return p) (e @~ isEProvenance)
 
 eEff :: K3 Expression -> InferM (K3 Effect)
-eEff e = maybe (throwError $ IError "Invalid Provenance") (\(ESEffect f) -> return f) (e @~ isESEffect)
+eEff e = maybe (throwError $ IError "Invalid ESEffect") (\(ESEffect f) -> return f) (e @~ isESEffect)
 
 chasePPtr :: PPtr -> InferM (K3 Provenance)
 chasePPtr p = do
@@ -224,7 +256,7 @@ chasePPtr p = do
 
 bindPoint :: Contextual (K3 Provenance) -> InferM (Maybe Juncture)
 bindPoint (Contextual p u) = case tag p of
-  PFVar i | Just u' <- u -> return $ Just $ Juncture u' i
+  PFVar i _ | Just u' <- u -> return $ Just $ Juncture u' i
   PBVar (PMatVar i u' _) -> return $ Just $ Juncture u' i
   PProject _ -> bindPoint (Contextual (head $ children p) u)
   _ -> return Nothing
@@ -235,8 +267,7 @@ bindPoint (Contextual p u) = case tag p of
 -- TODO: Add constraint between decision for declaration and root expression of initializer.
 materializeD :: K3 Declaration -> InferM ()
 materializeD d = case tag d of
-  DGlobal i _ (Just e) -> materializeE e >> dUID d >>= \u -> constrain u i In (mAtom Referenced -??- "Hack")
-  DGlobal i _ Nothing -> dUID d >>= \u -> constrain u i In (mAtom Referenced -??- "Hack")
+  DGlobal i _ (Just e) -> materializeE e
   DTrigger i _ e -> withCurrentTrigger i $ withTopLevel True $ materializeE e
   _ -> traverse_ materializeD (children d)
 
@@ -275,7 +306,7 @@ materializeE e@(Node (t :@: _) cs) = case t of
 
     (ci, cb) <- withNearestBind u $ do
       withTopLevel False $ materializeE body
-      ci' <- contextualizeNow (pfvar i)
+      ci' <- contextualizeNow (pfvar i $ Just u)
       cb' <- contextualizeNow body
       return (ci', cb')
 
@@ -434,7 +465,7 @@ materializeE e@(Node (t :@: _) cs) = case t of
 
 -- * Queries
 hasReadIn :: Contextual (K3 Provenance) -> Contextual (K3 Expression) -> InferM (K3 MPred, K3 MPred)
-hasReadIn (Contextual (tag -> PFVar _) cp) (Contextual _ ce) | cp /= ce = return (mBool False, mBool False)
+hasReadIn (Contextual (tag -> PFVar _ _) cp) (Contextual _ ce) | cp /= ce = return (mBool False, mBool False)
 hasReadIn (Contextual p cp) (Contextual e ce) = case tag e of
   ELambda _ -> do
     cls <- ePrv e >>= \case
@@ -479,7 +510,7 @@ hasReadInF p (Contextual f cf) = case f of
   _ -> return (mBool False)
 
 hasWriteIn :: Contextual (K3 Provenance) -> Contextual (K3 Expression) -> InferM (K3 MPred, K3 MPred)
-hasWriteIn (Contextual (tag -> PFVar _) cp) (Contextual _ ce) | cp /= ce = return (mBool False, mBool False)
+hasWriteIn (Contextual (tag -> PFVar _ _) cp) (Contextual _ ce) | cp /= ce = return (mBool False, mBool False)
 hasWriteIn (Contextual p cp) (Contextual e ce) = case tag e of
   ELambda _ -> do
     cls <- ePrv e >>= \case
@@ -550,14 +581,16 @@ isPseudoGlobal p = case tag p of
 
 occursIn :: Contextual (K3 Provenance) -> Contextual (K3 Provenance) -> InferM (K3 MPred)
 occursIn a@(Contextual pa ca) b@(Contextual pb cb) = case tag pb of
-  PFVar i -> case tag pa of
-    PFVar j | i == j && ca == cb -> return (mBool True)
+  PFVar i _ -> case tag pa of
+    PFVar j _ | i == j && ca == cb -> return (mBool True)
     _ -> return (mBool False)
   PBVar (PMatVar n u ptr) -> case tag pa of
     PBVar (PMatVar n' u' _) | n' == n && u' == u -> return (mBool True)
     _ -> do
       pOccurs <- chasePPtr ptr >>= \p' -> occursIn a (Contextual p' cb)
-      return $ mOneOf (mVar u n In) [Referenced, ConstReferenced, Forwarded] -&&- pOccurs
+      return $ (mOneOf (mVar u n In) [Referenced, ConstReferenced, Forwarded] -&&- pOccurs)
+        -??- (if u == (UID 43168) then boxToString $ ["occursIn RCRF"] %$ prettyLines pa %$ prettyLines pb else "")
+
   PSet -> mOr <$> traverse (\pb' -> occursIn a (Contextual pb' cb)) (children pb)
   PLambda _ _ -> mOr <$> traverse (\pb' -> occursIn a (Contextual pb' cb)) (children pb)
   PProject _ -> mOr <$> traverse (\pb' -> occursIn a (Contextual pb' cb)) (children pb)
@@ -565,7 +598,7 @@ occursIn a@(Contextual pa ca) b@(Contextual pb cb) = case tag pb of
 
 ownedByContext :: Contextual (K3 Provenance) -> InferM (K3 MPred)
 ownedByContext (Contextual p c) = case tag p of
-  PFVar i | Just u' <- c -> return $ mOneOf (mVar u' i In) [Copied, Moved]
+  PFVar i _ | Just u' <- c -> return $ mOneOf (mVar u' i In) [Copied, Moved]
   PBVar (PMatVar i u' ptr) -> do
     transitive <- chasePPtr ptr >>= \p' -> ownedByContext (Contextual p' c)
     return $ mOneOf (mVar u' i In) [Copied, Moved] -||- (mOneOf (mVar u' i In) [Referenced] -&&- transitive)
@@ -617,7 +650,8 @@ setMethod :: DKey -> Method -> SolverM ()
 setMethod k m = modify $ \s -> s { assignments = M.insert k m (assignments s) }
 
 getMethod :: DKey -> SolverM Method
-getMethod k = gets assignments >>= maybe (throwError $ SError $ "Unconfirmed decision for " ++ show k) return . M.lookup k
+getMethod k = gets assignments >>= maybe (err k) return . M.lookup k
+  where err k' = throwError $ SError $ "Materialization lookup failed on " ++ show k'
 
 -- ** Sorting
 mkDependencyList :: M.HashMap DKey (K3 MExpr) -> K3 Declaration -> SolverM [Either DKey DKey]
@@ -667,13 +701,27 @@ findDependenciesP p = case tag p of
 
 -- ** Solving
 solveForAll :: [Either DKey DKey] -> M.HashMap DKey (K3 MExpr) -> SolverM ()
-solveForAll eks m = for_ eks $ \case
-  Left fk -> do
-    progress <- gets (S.fromList . M.keys . assignments)
-    if progress S.\\ (findDependenciesE (m M.! fk)) == [fk]
-      then tryResolveSelfCycle fk (m M.! fk) >>= setMethod fk . fromMaybe Copied
-      else setMethod fk Copied
-  Right rk -> solveForE (m M.! rk) >>= setMethod rk
+solveForAll eks m =
+  let debugConstraint dtg origE simpleE m = flip trace m $ boxToString
+                                              $ [dtg] ++
+                                              ["Unsimplified:"]
+                                              ++ (indent 2 $ prettyLines origE)
+                                              ++ ["Simplified:"]
+                                              ++ (indent 2 $ prettyLines simpleE)
+      onFail dtg mexpr smexpr (SError msg) = debugConstraint dtg mexpr smexpr $ throwError $ SError msg
+  in for_ eks $ \case
+      Left fk -> do
+        progress <- gets (S.fromList . M.keys . assignments)
+        let mexpr  = m M.! fk
+        let smexpr = simplifyE mexpr
+        if progress S.\\ (findDependenciesE mexpr) == [fk]
+          then (tryResolveSelfCycle fk smexpr) `catchError` (onFail (unwords ["SCYC", show fk]) mexpr smexpr)
+                  >>= setMethod fk . fromMaybe Copied
+          else setMethod fk Copied
+
+      Right rk -> let mexpr  = m M.! rk
+                      smexpr = simplifyE mexpr
+                  in (solveForE smexpr) `catchError` (onFail (unwords ["ACYC", show rk]) mexpr smexpr) >>= setMethod rk
 
 solveForE :: K3 MExpr -> SolverM Method
 solveForE m = case tag m of
@@ -710,7 +758,7 @@ simplifyE :: K3 MExpr -> K3 MExpr
 simplifyE expr = case expr of
   (tag &&& children -> (MIfThenElse p, [t, e])) -> case simplifyP p of
     (tag -> MBool b) -> simplifyE $ if b then t else e
-    p' -> mITE p' t e
+    p' -> mITE p' (simplifyE t) (simplifyE e)
   _ -> expr
 
 simplifyP :: K3 MPred -> K3 MPred

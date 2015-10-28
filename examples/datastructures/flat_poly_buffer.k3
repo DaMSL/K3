@@ -64,8 +64,8 @@ trigger t : () = \_ -> (
   ((t2, me) <- c);
 
   // Send an externalized FPB to t3
-   c.repack();
-   (t3, me) <- c.save()
+  c.repack();
+  (t3, me) <- c.save()
 )
 
 trigger t2 : PType = \x -> (
