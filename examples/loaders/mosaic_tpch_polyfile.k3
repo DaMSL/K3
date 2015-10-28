@@ -240,6 +240,14 @@ trigger load_tpch : poly_tpch = \buf -> (
       else if tg == partsupp_tag then (numps = numps + 1)
       else if tg == supplier_tag then (numsu = numsu + 1)
       else ( print ("Unknown tag " ++ (itos tg)) )
+    ));
+  (print ("Loaded " ++
+          "  numli: " ++ (itos numli) ++ "\\n" ++
+          "  numcs: " ++ (itos numcs) ++ "\\n" ++
+          "  numor: " ++ (itos numor) ++ "\\n" ++
+          "  numsu: " ++ (itos numsu) ++ "\\n" ++
+          "  numps: " ++ (itos numps) ++ "\\n" ++
+          "  numpt: " ++ (itos numpt) ++ "\\n"
     ))
 )
 
