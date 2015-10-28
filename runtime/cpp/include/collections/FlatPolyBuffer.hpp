@@ -386,7 +386,7 @@ public:
     if (!internalized) { throw std::runtime_error ("Invalid traverse on externalized poly buffer"); }
     size_t sz = size(unit_t{});
     // warning: could loop infinitely
-    while (static_cast<size_t>idx < sz) {
+    while (static_cast<size_t>(idx) < sz) {
       Tag tg = tag_at(idx);
       R_key_value<int, int> next = f(tg, idx, offset);
       // Check for end condition
