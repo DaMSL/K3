@@ -174,8 +174,11 @@ end
 # do both creation and compilation remotely (returns uid)
 def run_create_compile_k3_remote(server_url, bin_file, block_on_compile, k3_cpp_name, k3_path, nice_name)
   stage "[3-4] Remote creating && compiling K3 file to binary"
-  res = curl(server_url, "/compile", file: k3_path, post: true, json: true,
-            args:{ "compilestage" => "both", "workload" => $options[:skew].to_s})
+  args = { "compilestage" => "both",
+           "workload" => $options[:skew].to_s}
+  args["compileargs"] = $options[:compileargs] if $options[:compileargs]
+
+  res = curl(server_url, "/compile", file: k3_path, post: true, json: true, args:args)
   uid = res["uid"]
   $options[:uid] = uid
   persist_options()
@@ -713,11 +716,19 @@ def main()
     opts.on("--dots", "Get the awesome dots") { $options[:dots] = true }
     opts.on("--gc-epoch [MS]", "Set gc epoch time (ms)") { |i| $options[:gc_epoch] = i }
     opts.on("--msg-delay [MS]", "Set switch message delay (ms)") { |i| $options[:msg_delay] = i }
-    opts.on("--compileargs [STRING]", "Pass arguments to compiler (distributed only)") { |s| $options[:compileargs] = s }
     opts.on("--no-correctives", "Run in no-corrective mode") { $options[:no_corrective] = true }
     opts.on("--csv-data", "Use the old data format (csv)") {$options[:csv_data] = true }
     opts.on("--batch-size [SIZE]", "Set the batch size") {|s| $options[:batch_size] = s }
     opts.on("--no-reserve", "Prevent reserve on the poly buffers") { $options[:no_poly_reserve] = true }
+
+    # Compile args synonyms
+    opts.on("--compileargs [STRING]", "Pass arguments to compiler (distributed only)") { |s| $options[:compileargs] = s }
+
+    opts.on("--dmat",       "Use distributed materialization")                 { $options[:compileargs] = "#{$options[:compileargs]} --sparallel2stage sparallel2=True" }
+    opts.on("--dmat-debug", "Use distributed materialization (in debug mode)") { $options[:compileargs] = "#{$options[:compileargs]} --sparallel2stage sparallel2-debug=True" }
+    opts.on("--wmoderate",  "Skew argument")                                   { $options[:compileargs] = "#{$options[:compileargs]} --workerfactor hm=3 --workerblocks hd=4:qp3=4:qp4=4:qp5=4:qp6=4" }
+    opts.on("--wmoderate2", "Skew argument")                                   { $options[:compileargs] = "#{$options[:compileargs]} --workerfactor hm=3 --workerblocks hd=2:qp3=2:qp4=2:qp5=2:qp6=2" }
+    opts.on("--wextreme",   "Skew argument")                                   { $options[:compileargs] = "#{$options[:compileargs]} --workerfactor hm=4 --workerblocks hd=1:qp3=1:qp4=1:qp5=1:qp6=1" }
 
     # Stages.
     # Ktrace is not run by default.

@@ -521,7 +521,7 @@ pisub pienv i dp dip sp dti sti = do
     (renv, _, rp, rip, rti) <- acyclicSub pienv emptyPtrSubs [] sti sp
     return ((rp, rip, rti), renv)
   where
-    acyclicSub env subs _ _ (tag -> PFVar j) | i == j = return (env, subs, dp, dip, dti)
+    acyclicSub env subs _ _ (tag -> PFVar j _) | i == j = return (env, subs, dp, dip, dti)
 
     acyclicSub env subs path ti p@(tag -> PBVar mv@(pmvptr -> j))
       | j `elem` path   = return (env, subs, p, p, ti)
@@ -543,7 +543,7 @@ pisub pienv i dp dip sp dti sti = do
 
     -- Handle higher-order function application (two-place PApply nodes) where a PFVar
     -- in the lambda position is replaced by a PLambda
-    acyclicSub env subs path ti p@(tnc -> (PApply Nothing, [lp@(tag -> PFVar _),argp])) = do
+    acyclicSub env subs path ti p@(tnc -> (PApply Nothing, [lp@(tag -> PFVar _ _),argp])) = do
       let subp = [(head $ children ti, lp), (((children ti) !! 2), argp)]
       (nenv,nsubs,nch) <- foldM (rcr path) (env, subs, []) subp
       case nch of
@@ -599,7 +599,7 @@ pisub pienv i dp dip sp dti sti = do
 
 chaseLambda :: PIEnv -> [PPtr] -> TrIndex -> K3 Provenance -> Except Text [(K3 Provenance, TrIndex)]
 chaseLambda _ _ ti p@(tag -> PLambda _ _)  = return [(p, ti)]
-chaseLambda _ _ ti p@(tag -> PFVar _)      = return [(p, ti)]
+chaseLambda _ _ ti p@(tag -> PFVar _ _)    = return [(p, ti)]
 
 -- The following two cases address partial application of externals and forward declarations.
 chaseLambda _ _ ti p@(tag -> PTemporary) = return [(p, ti)]
@@ -684,7 +684,7 @@ simplifyApply pienv eOpt lp argp lti argti = do
           in return (chacc ++ [(rp, rp, rti')], eacc)
 
         -- Handle higher-order and external functions as an unsimplified apply.
-        (PFVar _, _) ->
+        (PFVar _ _, _) ->
           let rp = papplyExt lp argp
               rti = orti [lti', argti']
           in return (chacc ++ [(rp, rp, rti)], eacc)
@@ -1085,7 +1085,7 @@ inferProvenance expr = do
     topdown :: InfTD -> K3 Expression -> K3 Expression -> PInfM (InfTD)
     topdown td _ e@(tag -> ELambda i) = do
       u <- uidOf e
-      trt td (uidInt u) 1 (piexteM i (pfvar i) >> pushClosure (scuid td) u e)
+      trt td (uidInt u) 1 (piexteM i (pfvar i $ Just u) >> pushClosure (scuid td) u e)
 
     topdown td _ _ = trt td (scuid td) 0 iu
 
@@ -1243,7 +1243,7 @@ inferProvenance expr = do
     constti varSz = return . tileaf $ zerobv varSz
 
     varti su (tag -> PBVar pmv) = svarti su (pmvn pmv)
-    varti su (tag -> PFVar n) = svarti su n
+    varti su (tag -> PFVar n _) = svarti su n
     varti _ p = vartiKindErr p
 
     svarti su n
@@ -1339,7 +1339,7 @@ provOfType args t | isTFunction t =
   where mkArg i = "__arg" ++ show i
 
 provOfType [] _   = return (emptyti, ptemp)
-provOfType args _ = return (tinode v0 $ map (const $ tileaf v0) args, pderived $ map pfvar args)
+provOfType args _ = return (tinode v0 $ map (const $ tileaf v0) args, pderived $ map (\i -> pfvar i Nothing) args)
   where v0 = zerobv $ length args
 
 -- | Simplifies applies on all provenance trees attached to an expression.

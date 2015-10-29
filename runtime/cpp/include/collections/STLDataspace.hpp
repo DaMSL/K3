@@ -94,8 +94,7 @@ class STLDS {
   }
 
   unit_t extend(const STLDS& other) {
-    auto &c = other.getConstContainer();
-    for (auto& e : c) {
+    for (auto& e : other.getConstContainer()) {
       insert(e);
     }
     return unit_t();
