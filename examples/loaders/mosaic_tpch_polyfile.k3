@@ -226,6 +226,7 @@ trigger create_sentinel_file : () = \_ -> (
   (buffer.unpack());
   ((stsink, me) <- buffer.save());
   (buffer.clear());
+  (halt, me) <- () delay 2s
 )
 
 declare inorder : mut string = "in_order.csv"
