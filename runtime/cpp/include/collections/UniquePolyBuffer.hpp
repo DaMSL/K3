@@ -67,7 +67,7 @@ public:
     keys = other.keys;
   }
 
-  UniquePolyBuffer(UniquePolyBuffer&& other) : Super(other) {
+  UniquePolyBuffer(UniquePolyBuffer&& other) : Super(std::move(other)) {
     keys.swap(other.keys);
   }
 
