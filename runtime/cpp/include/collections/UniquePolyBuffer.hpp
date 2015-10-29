@@ -81,7 +81,7 @@ public:
     for (size_t i = 0; i < sz; ++i) {
       Tag tg = Super::tag_at(i);
       keys.insert(std::make_pair(tg, reinterpret_cast<void*>(buffer_data(Super::fixed()) + foffset)));
-      foffset += Super::elemsize(tg);
+      foffset += this->elemsize(tg);
     }
   }
 
@@ -130,12 +130,12 @@ public:
 
   template <class archive>
   void serialize(archive& a) const {
-    a << yas::base_object<const Super>(*this);
+    Super::serialize(a);
   }
 
   template <class archive>
   void serialize(archive& a) {
-    a >> yas::base_object<Super>(*this);
+    Super::serialize(a);
     rebuildKeys();
   }
 
