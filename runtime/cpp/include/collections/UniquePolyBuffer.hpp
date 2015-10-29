@@ -74,7 +74,16 @@ public:
   UniquePolyBuffer& operator=(const UniquePolyBuffer& other) {
     Super::operator=(other);
     keys = other.keys;
+    return *this;
   }
+
+  UniquePolyBuffer& operator=(UniquePolyBuffer&& other) {
+    keys = std::move(other.keys);
+    Super::operator=(std::move(other));
+    return *this;
+  }
+
+  ~UniquePolyBuffer() {}
 
   void rebuildKeys() {
     size_t foffset = 0, sz = Super::size(unit_t{});

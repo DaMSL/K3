@@ -182,6 +182,7 @@ public:
     if (other.internalized) {
       unpack(unit_t{});
     }
+    return *this;
   }
 
   FlatPolyBuffer& operator=(FlatPolyBuffer&& other) {
@@ -189,7 +190,7 @@ public:
     return *this;
   }
 
-  ~FlatPolyBuffer() {
+  virtual ~FlatPolyBuffer() {
     freeContainer();
   }
 
