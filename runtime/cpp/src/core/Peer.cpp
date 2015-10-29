@@ -14,7 +14,17 @@
 #include "core/ProgramContext.hpp"
 #include "network/NetworkManager.hpp"
 
+
 namespace K3 {
+  namespace lifetime {
+#if defined(K3_LT_SAMPLE)
+    extern thread_local sampler<> __active_lt_profiler;
+#endif
+
+#if defined(K3_LT_HISTOGRAM)
+    extern thread_local histogram __active_lt_profiler;
+#endif
+  }
 
 Peer::Peer(shared_ptr<ContextFactory> fac, const YAML::Node& config,
            std::function<void()> callback, const JSONOptions& opts) {
