@@ -69,7 +69,7 @@ def create_local_file(args):
                 peer['switch_path'] = args.csv_path
             if args.tpch_data_path:
                 peer['files'] = tpch_paths(args.tpch_data_path)
-                peer['in_order'] = args.tpch_inorder_path
+                peer['inorder'] = args.tpch_inorder_path
 
         peer.update(extra_args)
         peers2.append(peer)
@@ -92,7 +92,7 @@ def create_dist_file(args):
         peer['switch_path'] = csv_path
     elif args.tpch_fpb_path and args.tpch_inorder_path:
         peer['files'] = tpch_paths(args.tpch_data_path)
-        peer['in_order'] = args.tpch_inorder_path
+        peer['inorder'] = args.tpch_inorder_path
 
     switch_role.update(extra_args)
 
