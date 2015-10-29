@@ -135,8 +135,9 @@ composite name ans content_ts = do
       R.GlobalDefn $
         R.Forward $
           R.ScalarDecl (R.Name "__lifetime_sentinel")
-            (R.Named $ R.Qualified (R.Name "K3") $ R.Qualified (R.Name "lifetime") (R.Name "sentinel")) Nothing
-
+            (R.Named $ R.Qualified (R.Name "K3") $ R.Qualified (R.Name "lifetime") (R.Name "sentinel"))
+            (Just $ R.Initialization (R.Named $ R.Qualified (R.Name "K3") $ R.Qualified (R.Name "lifetime") (R.Name "sentinel"))
+                      [foldr1 (R.Binary "+") [R.Call (R.Variable (R.Name "sizeof")) [R.ExprOnType $ R.Named bc] | bc <- baseClasses]])
       ]
     let members = sentinelDefn
 
@@ -305,8 +306,10 @@ record (sort -> ids) = do
       R.GlobalDefn $
         R.Forward $
           R.ScalarDecl (R.Name "__lifetime_sentinel")
-            (R.Named $ R.Qualified (R.Name "K3") $ R.Qualified (R.Name "lifetime") (R.Name "sentinel")) Nothing
-
+            (R.Named $ R.Qualified (R.Name "K3") $ R.Qualified (R.Name "lifetime") (R.Name "sentinel"))
+            (Just $ R.Initialization (R.Named $ R.Qualified (R.Name "K3") $ R.Qualified (R.Name "lifetime") (R.Name "sentinel"))
+                      [foldr1 (R.Binary "+") [R.Call (R.Variable (R.Name "sizeof"))
+                        [R.ExprOnType $ R.Named $ R.Name bc] | bc <- templateVars]])
       ]
 
     let members = sentinelDefn ++ typedefs ++ constructors ++ comparators ++
