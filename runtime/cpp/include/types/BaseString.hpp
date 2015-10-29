@@ -14,6 +14,14 @@
 #include <csvpp/csv.h>
 #include "serialization/Json.hpp"
 
+#include "builtins/LifetimeBuiltins.hpp"
+
+#if defined(K3_LT_SAMPLE) || defined(K3_LT_HISTOGRAM)
+#define INIT_LT_SZ(X) , __lt_sentinel(X)
+#else
+#define INIT_LT_SZ(X)
+#endif
+
 namespace K3 {
 
 char* dupstr(const char*) throw();
@@ -24,12 +32,12 @@ class base_string {
   // Constructors/Destructors/Assignment.
   base_string() : buffer_(nullptr) {}
 
-  base_string(const base_string& other) : buffer_(dupbuf(other)) {
+  base_string(const base_string& other) : buffer_(dupbuf(other)) INIT_LT_SZ(other.__lt_sentinel) {
     set_header(other.has_header());
     set_advance(other.has_advance());
   }
 
-  base_string(base_string&& other) noexcept : base_string() {
+  base_string(base_string&& other) noexcept : buffer_(nullptr) INIT_LT_SZ(std::move(other.__lt_sentinel)) {
     // If the other string has ownership, move, else copy and set our ownership
     if (!other.is_borrowing()) {
       swap(*this, other);
@@ -53,6 +61,7 @@ class base_string {
   }
 
   ~base_string() {
+    __lt_sentinel.object_size = length();
     if (!is_borrowing()) {
       delete[] bufferp_();
     }
@@ -209,6 +218,9 @@ class base_string {
   }
 
  private:
+#if defined(K3_LT_SAMPLE) || defined(K3_LT_HISTOGRAM)
+  lifetime::sentinel __lt_sentinel;
+#endif
   union {
     char* buffer_;
     intptr_t as_bits;
