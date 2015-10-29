@@ -101,8 +101,8 @@ typedef poly_tpch = collection {elem : ()} @FlatPolyBuffer(
     sentinel => { elem:() }  : 0,
     customer => customer_rb  : 1,
     lineitem => lineitem_rb  : 2,
-    orders   =>  orders_rb   : 3,
-    part     =>  part_rb     : 4,
+    orders   => orders_rb    : 3,
+    part     => part_rb      : 4,
     partsupp => partsupp_rb  : 5,
     supplier => supplier_rb  : 6
   ])
@@ -221,8 +221,16 @@ trigger convert_part : () = \_ -> (
   (halt, me) <- () delay 2s
 )
 
+trigger create_sentinel_file : () = \_ -> (
+  (buffer.append_sentinel {elem:()});
+  (buffer.unpack());
+  ((stsink, me) <- buffer.save());
+  (buffer.clear());
+)
+
 declare inorder : mut string = "in_order.csv"
 
+declare numst : mut int = 0
 declare numli : mut int = 0
 declare numcs : mut int = 0
 declare numor : mut int = 0
@@ -232,7 +240,7 @@ declare numpt : mut int = 0
 
 trigger load_tpch : poly_tpch = \buf -> (
   (buf.iterate (\tg -> \idx -> \offset ->
-      if tg == 0 then (numli = numli + 1)
+      if tg == 0 then (numst = numst + 1)
       else if tg == customer_tag then (numcs = numcs + 1)
       else if tg == lineitem_tag then (numli = numli + 1)
       else if tg == orders_tag then (numor = numor + 1)
@@ -247,7 +255,8 @@ trigger load_tpch : poly_tpch = \buf -> (
           "  numor: " ++ (itos numor) ++ "\\n" ++
           "  numsu: " ++ (itos numsu) ++ "\\n" ++
           "  numps: " ++ (itos numps) ++ "\\n" ++
-          "  numpt: " ++ (itos numpt) ++ "\\n"
+          "  numpt: " ++ (itos numpt) ++ "\\n" ++
+          "  numst: " ++ (itos numst) ++ "\\n"
     ))
 )
 
@@ -258,7 +267,8 @@ trigger halt : () = \_ -> (
           "  numor: " ++ (itos numor) ++ "\\n" ++
           "  numsu: " ++ (itos numsu) ++ "\\n" ++
           "  numps: " ++ (itos numps) ++ "\\n" ++
-          "  numpt: " ++ (itos numpt) ++ "\\n"
+          "  numpt: " ++ (itos numpt) ++ "\\n" ++
+          "  numst: " ++ (itos numst) ++ "\\n"
     ));
   haltEngine()
 )
@@ -269,6 +279,7 @@ sink osink  : string = file "porders.out"   binary raw
 sink ssink  : string = file "psupplier.out" binary raw
 sink pssink : string = file "ppartsupp.out" binary raw
 sink psink  : string = file "ppart.out"     binary raw
+sink stsink : string = file "psentinel.out" binary raw
 
 source go_lineitem : () = value ()
 feed go_lineitem |> convert_lineitem
@@ -287,6 +298,9 @@ feed go_partsupp |> convert_partsupp
 
 source go_part : () = value ()
 feed go_part |> convert_part
+
+source go_sentinel : () = value ()
+feed go_sentinel |> create_sentinel_file
 
 source load : poly_tpch = polyfile files binary raw inorder
 feed load |> load_tpch
