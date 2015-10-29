@@ -21,6 +21,12 @@ annotation UniquePolyBuffer[variants: [labeltylit]] given type a
   provides lifted traverse : (int -> int -> int -> {key: int, value: int}) -> ()
     with effects \iterF -> [R[self]; ([R[content]; (((iterF none) none) none)])*]
 
+  // The traverse2 function is more flexible than traverse
+  // Returning the same value in the lambda as the one we were given causes the iterations to stop, returning
+  // our point in the polybuffer
+  provides lifted traverse2 : int -> int -> (int -> int -> int -> {key: int, value: int}) -> {key: int, value: int}
+    with effects \idx -> \offset -> \iterF -> [R[self]; R[idx]; R[offset]; ([R[content]; (((iterF none) none) none)])*]
+
   // Externalization/internalization methods.
   provides lifted repack : () -> ()
     with effects \_ -> [R[self]; W[self]]
