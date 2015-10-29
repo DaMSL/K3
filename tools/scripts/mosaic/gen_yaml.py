@@ -4,6 +4,7 @@
 # Note: *requires pyyaml*
 import argparse
 import yaml
+import os
 
 def address(port):
     return ['127.0.0.1', port]
@@ -38,7 +39,7 @@ def tpch_paths(p):
     names = ['psentinel.out', 'pcustomer.out', 'plineitem.out',
              'porders.out', 'ppart.out', 'ppartsupp.out', 'psupplier.out']
     for n in names:
-        files.append({'path': p + n})
+        files.append({'path': os.path.join(p, n)})
 
     return files
 
