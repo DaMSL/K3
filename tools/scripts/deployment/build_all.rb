@@ -263,7 +263,7 @@ def harvest(statuses, out_folder)
         $stats[group_key] << time_ms
       end
     else
-      results[job_id]["status"] = "FAILED"
+      results[job_id] = { "status" =>  "FAILED" }
       puts "\t#{job_id} FAILED."
     end
   end

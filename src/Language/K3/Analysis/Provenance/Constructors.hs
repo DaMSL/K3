@@ -18,8 +18,8 @@ leaf p = Node (p :@: []) []
 sing :: K3 Provenance -> Provenance -> K3 Provenance
 sing ch p = Node (p :@: []) [ch]
 
-pfvar :: Identifier -> K3 Provenance
-pfvar n = leaf $ PFVar n
+pfvar :: Identifier -> Maybe UID -> K3 Provenance
+pfvar n u = leaf $ PFVar n u
 
 pbvar :: PMatVar -> K3 Provenance
 pbvar mv = leaf $ PBVar mv

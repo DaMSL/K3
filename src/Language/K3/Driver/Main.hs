@@ -14,7 +14,7 @@ run :: Options -> DriverM ()
 run opts = do
   void $ initialize opts
   case mode opts of
-    Service (RunMaster sOpts smOpts)   -> liftIO $ runServiceMaster sOpts smOpts opts
+    Service (RunMaster sOpts)          -> liftIO $ runServiceMaster sOpts opts
     Service (RunWorker sOpts)          -> liftIO $ runServiceWorker sOpts
     Service (SubmitJob sOpts rjOpts)   -> liftIO $ submitJob        sOpts rjOpts opts
     Service (QueryService sOpts qOpts) -> liftIO $ queryService     sOpts qOpts
