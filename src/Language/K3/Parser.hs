@@ -1184,11 +1184,13 @@ filemux = mkFMuxSrc <$> syms ["filemxsq", "filemux"] <*> eVariable <*> textOrBin
       else fail "Invalid file mux kind"
 
 polyfile :: K3Parser EndpointBuilder
-polyfile = mkPFSrc <$> try (symbol "polyfile") <*> eVariable <*> textOrBinary <*> format <*> eTerminal
+polyfile = mkPFSrc <$> try (symbol "polyfile") <*> eVariable <*> textOrBinary <*> format <*> eTerminal <*> eVariable <*> eVariable
   where
     textOrBinary = (symbol "text" *> return True) <|> (symbol "binary" *> return False)
-    mkPFSrc sym argE asTxt formatE orderE n t = do
-      s <- (\a f o -> PolyFileMuxEP a asTxt f o) <$> S.exprS argE <*> S.symbolS formatE <*> S.exprS orderE
+    mkPFSrc sym argE asTxt formatE orderE rbsizeE rbtransferE n t = do
+      s <- (\a f o s t -> PolyFileMuxEP a asTxt f o s t)
+              <$> S.exprS argE <*> S.symbolS formatE <*> S.exprS orderE
+              <*> S.exprS rbsizeE <*> S.exprS rbtransferE
       return $ endpointMethods True s argE formatE n t
 
 

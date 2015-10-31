@@ -302,9 +302,10 @@ endpoint kw n specOpt t' eOpt' = case specOpt of
   Just (FileMuxseqEP seqcol txt fmt) ->
     common . Just $ text "filemxsq" <+> text seqcol <+> text (txtOrBin txt) <+> text fmt
 
-  Just (PolyFileMuxEP pathcol txt fmt orderpath) ->
+  Just (PolyFileMuxEP pathcol txt fmt orderpath rbsizeV rbtransferV) ->
     common . Just $ text "polyfile"
         <+> text pathcol <+> text (txtOrBin txt) <+> text fmt <+> text orderpath
+        <+> text rbsizeV <+> text rbtransferV
 
   where
     common initializer =

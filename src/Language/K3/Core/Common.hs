@@ -171,8 +171,9 @@ data EndpointSpec
   | FileMuxseqEP String Bool String
     -- ^ File sequence collection (as expression), text/binary, format
 
-  | PolyFileMuxEP String Bool String String
-    -- ^ File path collection, text/binary, format, order file
+  | PolyFileMuxEP String Bool String String String String
+    -- ^ File path collection, text/binary, format, order file,
+    --   rebuffer size variable, rebuffer transfer function variable
 
   | NetworkEP String Bool String
     -- ^ Address, text/binary, format

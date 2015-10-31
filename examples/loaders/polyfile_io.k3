@@ -1,4 +1,5 @@
 include "Annotation/Collection.k3"
+include "Annotation/Vector.k3"
 include "Annotation/FlatPolyBuffer.k3"
 include "Core/Builtins.k3"
 
@@ -61,5 +62,16 @@ sink csink: string = file "poly_c.out" binary raw
 sink dsink: string = file "poly_d.out" binary raw
 sink esink: string = file "poly_e.out" binary raw
 
-source load : FPB = polyfile fpaths binary raw inorder
+// Rebuffering support.
+declare rebuffer : mut int = 0
+
+declare transfer : FPB -> FPB -> int -> int -> int -> FPB
+  = \orig -> \new -> \tg -> \idx -> \offset -> (
+           if tg == 0 then ((new.append_foo (orig.foo_at idx offset)); new)
+      else if tg == 1 then ((new.append_bar (orig.bar_at idx offset)); new)
+      else if tg == 2 then ((new.append_baz (orig.baz_at idx offset)); new)
+      else new
+    )
+
+source load : FPB = polyfile fpaths binary raw inorder rebuffer transfer
 feed load |> tload
