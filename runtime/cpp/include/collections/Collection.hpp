@@ -26,11 +26,6 @@ class Collection : public VectorDS<K3::Collection, Elem> {
     return vec[i];
   }
 
-  unit_t clear(const unit_t&) {
-    Super::getContainer().clear();
-    return unit_t();
-  }
-
   template<class F, class G>
   auto safe_at(int i, F f, G g) const {
     auto& vec = Super::getConstContainer();
