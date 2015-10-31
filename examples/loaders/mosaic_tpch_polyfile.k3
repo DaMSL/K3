@@ -69,7 +69,20 @@ control DeleteWindow[window_elem_fn: expr]
 }
 
 
-// Types with booleans
+/////////////////
+// Typedefs.
+
+// Schema types for PSV loading.
+typedef customer_r = { rb:int, rc:string, rd:string, re:int, rf:string, rg:real, rh:string, ri:string }
+typedef lineitem_r = { rb:int, rc:int, rd:int, re:int, rf:real, rg:real, rh:real, ri:real, rj:string,
+                       rk:string, rl:int, rm:int, rn:int, ro:string, rp:string, rq:string }
+typedef orders_r   = { rb:int, rc:int, rd:string, re:real, rf:int, rg:string, rh:string, ri:int, rj:string }
+typedef part_r     = { rb:int, rc:string, rd:string, re:string, rf:string, rg:int, rh:string, ri:real, rj:string }
+typedef partsupp_r = { rb:int, rc:int, rd:int, re:real, rf:string }
+typedef supplier_r = { rb:int, rc:string, rd:string, re:int, rf:string, rg:real, rh:string }
+
+
+// Schema types with booleans to indiciate insert/delete.
 typedef customer_rb = { ra:bool, rb:int, rc:string, rd:string, re:int, rf:string, rg:real, rh:string, ri:string }
 typedef lineitem_rb = { ra:bool, rb:int, rc:int, rd:int, re:int, rf:real, rg:real, rh:real, ri:real, rj:string,
                         rk:string, rl:int, rm:int, rn:int, ro:string, rp:string, rq:string }
@@ -79,14 +92,6 @@ typedef partsupp_rb = { ra:bool, rb:int, rc:int, rd:int, re:real, rf:string }
 typedef supplier_rb = { ra:bool, rb:int, rc:string, rd:string, re:int, rf:string, rg:real, rh:string }
 
 
-typedef customer_r = { rb:int, rc:string, rd:string, re:int, rf:string, rg:real, rh:string, ri:string }
-typedef lineitem_r = { rb:int, rc:int, rd:int, re:int, rf:real, rg:real, rh:real, ri:real, rj:string,
-                       rk:string, rl:int, rm:int, rn:int, ro:string, rp:string, rq:string }
-typedef orders_r   = { rb:int, rc:int, rd:string, re:real, rf:int, rg:string, rh:string, ri:int, rj:string }
-typedef part_r     = { rb:int, rc:string, rd:string, re:string, rf:string, rg:int, rh:string, ri:real, rj:string }
-typedef partsupp_r = { rb:int, rc:int, rd:int, re:real, rf:string }
-typedef supplier_r = { rb:int, rc:string, rd:string, re:int, rf:string, rg:real, rh:string }
-
 typedef lineitem_bag    = collection lineitem_r    @Collection
 typedef customer_bag    = collection customer_r    @Collection
 typedef orders_bag      = collection orders_r      @Collection
@@ -94,6 +99,10 @@ typedef supplier_bag    = collection supplier_r    @Collection
 typedef partsupp_bag    = collection partsupp_r    @Collection
 typedef part_bag        = collection part_r        @Collection
 typedef tpch_agenda_bag = collection tpch_agenda_r @Collection
+
+
+/////////////////
+// PSV loaders.
 
 @:CArgs 2
 declare lineitemLoaderP : collection {path: string} @Collection -> lineitem_bag -> ()
@@ -120,6 +129,9 @@ declare partLoaderP : collection {path: string} @Collection -> part_bag -> ()
   with effects \_ -> \_ -> io
 
 
+//////////////////////////////////
+// Tag and variant definitions.
+
 declare sentinel_tag : int = 0
 declare customer_tag : int = 1
 declare lineitem_tag : int = 2
@@ -139,6 +151,10 @@ typedef poly_tpch = collection {elem : ()} @FlatPolyBuffer(
     supplier => supplier_rb  : 6
   ])
 
+
+//////////////////////////
+// Global datastructures.
+
 declare buffer : poly_tpch
 
 declare lineitem : lineitem_bag
@@ -147,6 +163,10 @@ declare orders   : orders_bag
 declare supplier : supplier_bag
 declare partsupp : partsupp_bag
 declare part     : part_bag
+
+
+///////////////////////
+// Batch constructors.
 
 declare lineitem_fpb : lineitem_bag -> int -> () = \c -> \batch_size -> (
   (c.iterate (\r -> buffer.append_lineitem
@@ -301,6 +321,7 @@ trigger create_sentinel_file : () = \_ -> (
   (halt, me) <- () delay 2s
 )
 
+// Counters used for both loading, and order file generation.
 declare numst : mut int = 0
 declare numli : mut int = 0
 declare numcs : mut int = 0
@@ -362,7 +383,7 @@ trigger create_mux_order_file : () = \_ -> (
   )
 )
 
-
+// Loader trigger for simple count-based file verification.
 trigger load_tpch : poly_tpch = \buf -> (
   (buf.iterate (\tg -> \idx -> \offset ->
       if tg == 0 then (numst = numst + 1)
@@ -374,15 +395,9 @@ trigger load_tpch : poly_tpch = \buf -> (
       else if tg == supplier_tag then (numsu = numsu + 1)
       else ( print ("Unknown tag " ++ (itos tg)) )
     ));
-  (print ("Loaded " ++
-          "  numli: " ++ (itos numli) ++ "\\n" ++
-          "  numcs: " ++ (itos numcs) ++ "\\n" ++
-          "  numor: " ++ (itos numor) ++ "\\n" ++
-          "  numsu: " ++ (itos numsu) ++ "\\n" ++
-          "  numps: " ++ (itos numps) ++ "\\n" ++
-          "  numpt: " ++ (itos numpt) ++ "\\n" ++
-          "  numst: " ++ (itos numst) ++ "\\n"
-    ))
+
+  // Halt the engine if no other load event overrides this in 5 seconds.
+  (halt, me) <- () delay override 5s
 )
 
 trigger halt : () = \_ -> (
@@ -398,6 +413,7 @@ trigger halt : () = \_ -> (
   haltEngine()
 )
 
+
 sink lsink   : string = file "plineitem.out" binary raw
 sink csink   : string = file "pcustomer.out" binary raw
 sink osink   : string = file "porders.out"   binary raw
@@ -406,6 +422,9 @@ sink pssink  : string = file "ppartsupp.out" binary raw
 sink psink   : string = file "ppart.out"     binary raw
 sink stsink  : string = file "psentinel.out" binary raw
 sink muxsink : int    = file outorder text csv
+
+
+// Use the go_* roles to create binary FPB files for specific relations.
 
 source go_lineitem : () = value ()
 feed go_lineitem |> convert_lineitem
@@ -425,11 +444,21 @@ feed go_partsupp |> convert_partsupp
 source go_part : () = value ()
 feed go_part |> convert_part
 
+
+// Use this role to create a sentinel file.
+
 source go_sentinel : () = value ()
 feed go_sentinel |> create_sentinel_file
 
+
+// Use this role, along with the numli, numcs, etc. values to create
+// a randomly multiplexed order file.
+
 source go_mux : () = value ()
 feed go_mux |> create_mux_order_file
+
+
+// Use this role to verify FPB files by counting batches.
 
 source load : poly_tpch = polyfile files binary raw inorder
 feed load |> load_tpch
