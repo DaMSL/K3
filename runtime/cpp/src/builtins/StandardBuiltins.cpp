@@ -45,7 +45,7 @@ double StandardBuiltins::randomFraction(unit_t) {
 }
 
 int StandardBuiltins::randomBinomial(int trials, double p) {
-  std::binomial_distribution<> d(trial, p);
+  std::binomial_distribution<> d(trials, p);
   return d(__rand_generator_);
 }
 
