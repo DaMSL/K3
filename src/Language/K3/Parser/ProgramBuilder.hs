@@ -494,7 +494,9 @@ endpointMethods isSource eSpec argE formatE n t =
         rebufferE =
           EC.applyMany (EC.project "iterate" $
               EC.applyMany (EC.project "foldl" $ EC.variable "buffer") [rebufferFnE, rebufferInitE])
-            [EC.lambda "rebuf" $ feedBufferE $ EC.project "elem" $ EC.variable "rebuf"]
+            [EC.lambda "rebuf" $ EC.block
+              [ EC.applyMany (EC.project "unpack" $ EC.project "elem" $ EC.variable "rebuf") [EC.unit]
+              , feedBufferE $ EC.project "elem" $ EC.variable "rebuf"]]
 
         rebufferInitE = (EC.constant $ CEmpty $ TC.record [("elem", cleanT)]) @+ EAnnotation "Vector"
         rebufferFnE = EC.lambdaMany ["acc", "tag", "idx", "offset"] $
@@ -502,7 +504,8 @@ endpointMethods isSource eSpec argE formatE n t =
           EC.block
             [ EC.ifThenElse
                 (EC.binop OLth (EC.applyMany (EC.project "size" $ EC.variable "acc") [EC.unit]) $ EC.variable "segmentIdx")
-                (EC.applyMany (EC.project "insert_at" $ EC.variable "acc") [EC.variable "segmentIdx", EC.record [("elem", defaultBuffer)]])
+                (EC.applyMany (EC.project "insert_at" $ EC.variable "acc")
+                              [EC.variable "segmentIdx", EC.record [("elem", defaultBuffer)]])
                 EC.unit
             , EC.applyMany (EC.project "update_at" $ EC.variable "acc")
                 [ EC.variable "segmentIdx"
