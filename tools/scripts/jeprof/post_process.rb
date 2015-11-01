@@ -7,14 +7,14 @@ def get_profile_total(profile_type, binary, profile)
 end
 
 GROUP_ROOT = ARGV.shift
+OUTFILE_STUB = ARGV.shift
 
-unless GROUP_ROOT
-  p "usage: #{$0} path/to/experiment/root"
+unless GROUP_ROOT && OUTFILE_STUB
+  p "usage: #{$0} path/to/experiment/root path/to/outfile_stub"
   exit
 end
 
 heap_files = Queue.new
-out_records = Queue.new
 
 NUM_WORKERS = 8
 
@@ -43,22 +43,20 @@ end
 
 workers = []
 
-NUM_WORKERS.times.each do
+NUM_WORKERS.times.each do |i|
   workers << Thread.new do
-    begin
-      while entry = heap_files.pop(true)
-        pt, hf, h, s  = entry
-        total = get_profile_total(pt, hf, h)
-        total ||= 0.0
-        out_records << s + "#{total}"
+    File.open("#{OUTFILE_STUB}_#{i}.csv", "w") do |outf|
+      begin
+        while entry = heap_files.pop(true)
+          pt, hf, h, s  = entry
+          total = get_profile_total(pt, hf, h)
+          total ||= 0.0
+          outf << s + "#{total}"
+        end
+      rescue ThreadError
       end
-    rescue ThreadError
     end
   end
 end
 
 workers.each(&:join)
-
-while record = out_records.pop()
-  puts record
-end
