@@ -35,7 +35,7 @@ class __heap_profiler {
  protected:
   std::shared_ptr<boost::thread> heap_profiler_thread;
   std::atomic_flag heap_profiler_done;
-  int time_milli() {
+  int64_t time_milli() {
     auto t = std::chrono::system_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         t.time_since_epoch());
