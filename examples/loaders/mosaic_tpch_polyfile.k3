@@ -346,8 +346,9 @@ declare dcg_r : mut real = 1.0
 declare dcg_s : mut int  = 0
 
 declare mux_order : mut collection {elem: int} @Vector
+declare mux_cnt   : mut int = 0
 
-declare get_categorical_weight : int -> int -> real = \n -> \i -> (
+declare get_categorical_weight : real -> int -> real = \n -> \i -> (
   (     if i == 0 then numli
    else if i == 1 then numcs
    else if i == 2 then numor
@@ -358,33 +359,56 @@ declare get_categorical_weight : int -> int -> real = \n -> \i -> (
   ) / n
 )
 
-trigger create_mux_order_file : () = \_ -> (
-  let nbatches = numli + numcs + numor + numsu + numps + numpt in (
+trigger create_random_mux_order_file : () = \_ -> (
+  let nbatches = 1.0 * (numli + numcs + numor + numsu + numps + numpt) in (
     dcg_r = 1.0;
     dcg_s = 0;
-
-    // Resize the ordering vector with a sentinel element.
-    mux_order.insert_at (dcg_n+1) {elem: 0};
 
     // Draw samples.
     (range 6).iterate (\r ->
       let p = get_categorical_weight nbatches r.elem in
       let v = randomBinomial dcg_n (p / dcg_r) in (
+      (print ("Mux idx: " ++ (itos (r.elem + 1)) ++ "p: " ++ (rtos p) ++ " v: " ++ (itos v)));
       (range v).iterate (\s -> (
-        mux_order.insert_at s.elem {elem: r.elem + 1};
+        mux_order.insert_at dcg_s {elem: r.elem + 1};
         dcg_s = dcg_s + 1 ));
-      dcg_n = dcg_n - 1;
+      dcg_n = dcg_n - v;
       dcg_r = dcg_r - p)
     );
 
     // Shuffle the order vector, and push its elements to a sink.
-    // Shuffling may arbitrarily reorder the sentinel element, so we filter it,
-    // and push it as the last element to the sink.
     print ("Created order vector with " ++ (itos (mux_order.size())) ++ " elements.");
-    ((mux_order.filter (\r -> r.elem != 0)).shuffle ());
-    mux_order.iterate (\r -> (muxsink, me) <- r.elem);
-    (muxsink, me) <- 0
+    (mux_order.shuffle ());
+    (mux_order.iterate (\r -> (muxsink, me) <- r.elem));
+    ((muxsink, me) <- 0);
+    (halt, me) <- () delay 2s
   )
+)
+
+declare get_batch_count : int -> int = \i -> (
+        if i == 0 then numli
+   else if i == 1 then numcs
+   else if i == 2 then numor
+   else if i == 3 then numsu
+   else if i == 4 then numps
+   else if i == 5 then numpt
+   else                0
+)
+
+trigger create_exact_mux_order_file : () = \_ -> (
+  (range 6).iterate (\r ->
+    let v = get_batch_count r.elem in
+    (range v).iterate (\s -> (
+      mux_order.insert_at mux_cnt {elem: r.elem + 1};
+      mux_cnt = mux_cnt + 1));
+  );
+
+  // Shuffle the order vector, and push its elements to a sink.
+  print ("Created order vector with " ++ (itos (mux_order.size())) ++ " elements.");
+  (mux_order.shuffle ());
+  (mux_order.iterate (\r -> (muxsink, me) <- r.elem));
+  ((muxsink, me) <- 0);
+  (halt, me) <- () delay 2s
 )
 
 // Loader trigger for simple count-based file verification.
@@ -458,9 +482,11 @@ feed go_sentinel |> create_sentinel_file
 // Use this role, along with the numli, numcs, etc. values to create
 // a randomly multiplexed order file.
 
-source go_mux : () = value ()
-feed go_mux |> create_mux_order_file
+source go_random_mux : () = value ()
+feed go_random_mux |> create_random_mux_order_file
 
+source go_exact_mux : () = value ()
+feed go_exact_mux |> create_exact_mux_order_file
 
 // Use this role to verify FPB files by counting batches.
 declare rebuffer : mut int = 0
