@@ -7,8 +7,12 @@ include "Core/Builtins.k3"
 // insert+delete files with a count-based delete lag, per relation
 // (e.g., lineitem deletes 2000 tuples after the insert).
 //
-declare files     : collection {path: string} @Collection
 declare batch_sz  : mut int   = 100
+
+declare files     : collection {path: string} @Collection
+
+typedef fileseq   = collection {path: string} @Collection
+declare seqfiles  : collection {seq: fileseq} @Collection
 
 // Parameters for generating separate delete files.
 declare as_insert_file : mut bool = true
@@ -475,3 +479,6 @@ declare tpch_copy : poly_tpch -> poly_tpch -> int -> int -> int -> poly_tpch
 
 source load : poly_tpch = polyfile files binary raw inorder rebuffer tpch_copy
 feed load |> load_tpch
+
+source loadseq : poly_tpch = polyfileseq seqfiles binary raw inorder rebuffer tpch_copy
+feed loadseq |> load_tpch
