@@ -57,11 +57,8 @@ NUM_WORKERS.times.each do
   end
 end
 
-logger = Thread.new do
-  while workers.any?(&:status) && record = out_records.pop()
-    puts record
-  end
-end
-
 workers.each(&:join)
-logger.join
+
+while record = out_records.pop()
+  puts record
+end
