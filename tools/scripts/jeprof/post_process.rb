@@ -18,7 +18,7 @@ out_records = Queue.new
 
 NUM_WORKERS = 8
 
-puts "job,query,sf,prof_type,peer_id,seq_num,value"
+puts "job,query,sf,prof_type,peer_id,start_time,seq_num,value"
 Dir.glob("#{GROUP_ROOT}/*/") do |f|
   next if f == "roles"
 
