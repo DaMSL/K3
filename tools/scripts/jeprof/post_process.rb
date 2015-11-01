@@ -30,7 +30,7 @@ Dir.glob("#{GROUP_ROOT}/*/") do |f|
     job_id = File.basename(m)[/[^_]*_([0-9]*)/, 1]
     Dir.glob("#{m}*.t[0-9]*.heap") do |h|
       sequence_number = h[/\.t([0-9]*)\./, 1]
-      start_time = h[/K3\.([0-9]*)/, 1]
+      start_time = h[/K3\.(-?[0-9]*)/, 1]
       heap_files << [
         profile_type,
         "#{GROUP_ROOT}/#{binary}",
