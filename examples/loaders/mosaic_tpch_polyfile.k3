@@ -400,7 +400,7 @@ trigger create_exact_mux_order_file : () = \_ -> (
     let v = get_batch_count r.elem in
     (range v).iterate (\s -> (
       mux_order.insert_at mux_cnt {elem: r.elem + 1};
-      mux_cnt = mux_cnt + 1));
+      mux_cnt = mux_cnt + 1))
   );
 
   // Shuffle the order vector, and push its elements to a sink.
