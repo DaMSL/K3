@@ -51,7 +51,7 @@ NUM_WORKERS.times.each do |i|
           pt, hf, h, s  = entry
           total = get_profile_total(pt, hf, h)
           total ||= 0.0
-          outf << s + "#{total}"
+          outf << s + "#{total}\n"
         end
       rescue ThreadError
       end
