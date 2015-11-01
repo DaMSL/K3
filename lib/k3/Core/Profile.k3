@@ -1,4 +1,5 @@
 include "Annotation/Map.k3"
+include "Annotation/Vector.k3"
 include "Core/Barrier.k3"
 include "Core/Builtins.k3"
 
@@ -122,5 +123,32 @@ control CollectProfile[lbls: [label], coordinator: expr, nodes: expr, next: expr
       )); $[next]
       ) @OnCounter(id=[# global_profiles_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
     )
+  }
+}
+
+// Mosaic profiling.
+// This expects a 'mosaic_event_sink' to be defined.
+
+control MosaicPreEvent[lbl : label, tl:literal, ve:expr, ce:expr] {
+  ?e => ($[lbl]_event_buffer.insert {tag: $[tl], vid: $[ve], component: $[ce], t: now_int()});
+        (if $[lbl]_event_buffer.size() >= $[lbl]_event_buffer_batch_sz
+          then $[lbl]_event_buffer.iterate (\r -> (mosaic_event_sink, me) <- r)
+          else ());
+        $.[e]
+  +> {
+    declare $[lbl]_event_buffer : collection {tag:int, vid:int, component:int, t:int} @Vector
+    declare $[lbl]_event_buffer_batch_sz : mut int = 100
+  }
+}
+
+control MosaicPostEvent[lbl : label] {
+  ?e => ( $.[e] );
+        ($[lbl]_event_buffer.insert {tag: $[tl], vid: $[ve], component: $[ce], t: now_int()});
+        (if $[lbl]_event_buffer.size() >= $[lbl]_event_buffer_batch_sz
+          then $[lbl]_event_buffer.iterate (\r -> (mosaic_event_sink, me) <- r)
+          else ())
+  +> {
+    declare $[lbl]_event_buffer : collection {tag:int, vid:int, component:int, t:int} @Vector
+    declare $[lbl]_event_buffer_batch_sz : mut int = 100
   }
 }
