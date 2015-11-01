@@ -49,6 +49,7 @@ NUM_WORKERS.times.each do
       while entry = heap_files.pop(true)
         pt, hf, h, s  = entry
         total = get_profile_total(pt, hf, h)
+        total ||= 0.0
         out_records << s + "#{total}"
       end
     rescue ThreadError
