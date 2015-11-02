@@ -136,7 +136,7 @@ control MosaicPreEvent[lbl:label, tl:expr, ve:expr, ce:expr]
                 $.[e]
   +> {}
 
-  ?e => (if ($[ve] % $[lbl]_event_sample_mod == 0)
+  ?e => (if ($[lbl]_event_sample_mod == 0 or $[ve] % $[lbl]_event_sample_mod == 0)
          then (
           ($[lbl]_event_buffer.insert {etag: $[tl], evid: $[ve], pcomponent: $[ce], t: now_int()});
           (if $[lbl]_event_buffer.size() >= $[lbl]_event_buffer_batch_sz
@@ -160,7 +160,7 @@ control MosaicPostEvent[lbl:label, tl:expr, ve:expr, ce:expr]
   +> {}
 
   ?e => ( $.[e] );
-        (if ($[ve] % $[lbl]_event_sample_mod == 0)
+        (if ($[lbl]_event_sample_mod == 0 or $[ve] % $[lbl]_event_sample_mod == 0)
          then (
           ($[lbl]_event_buffer.insert {etag: $[tl], evid: $[ve], pcomponent: $[ce], t: now_int()});
           (if $[lbl]_event_buffer.size() >= $[lbl]_event_buffer_batch_sz
