@@ -123,21 +123,23 @@ def create_dist_file(args):
 
     switch_env  = {'k3_globals': switch_role}
     node_env    = {'k3_globals': node_role}
+    master_env  = {'k3_globals': master_role}
+    timer_env   = {'k3_globals': timer_role}
 
-    switch_res = ['qp3', 'qp4', 'qp5', 'qp6'] * 16
+    # The amount of cores we have of qps. deduct timer and master on qp3
+    switch_res = (['qp3', 'qp4', 'qp5', 'qp6'] * 14) + (['qp4', 'qp5' ,'qp6'] * 2)
 
     k3_roles = []
 
-    # Switch1 contains also the master and timer
-    k3_roles.append(('Switch1', switch_res.pop(0), 3, None, switch1_env))
+    k3_roles.append(('Master', 'qp3', 1, None, master_env))
+    k3_roles.append(('Timer', 'qp3', 1, None, timer_env))
 
-    if num_switches > 1:
-        for i in range(2, num_switches):
-            switch_env2 = copy.deepcopy(switch_env)
-            if args.tpch_data_path:
-                switch_env2['k3_seq_files'] = \
-                  mk_k3_seq_files(num_switches, i, args.tpch_data_path, args.tpch_inorder_path)
-            k3_roles.append(('Switch' + str(i), switch_res.pop(0), 1, None, switch_env2))
+    for i in range(num_switches):
+        switch_env2 = copy.deepcopy(switch_env)
+        if args.tpch_data_path:
+            switch_env2['k3_seq_files'] = \
+                mk_k3_seq_files(num_switches, i, args.tpch_data_path, args.tpch_inorder_path)
+        k3_roles.append(('Switch' + str(i), switch_res.pop(0), 1, None, switch_env2))
 
     k3_roles.append(('Nodes', args.nmask, num_nodes, args.perhost, node_env))
 
