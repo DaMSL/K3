@@ -494,28 +494,11 @@ endpointMethods isSource eSpec argE formatE n t =
         noRebufferE = feedBufferE $ EC.variable "buffer"
 
         rebufferE =
-          EC.applyMany (EC.project "iterate" $
-              EC.applyMany (EC.project "foldl" $ EC.variable "buffer") [rebufferFnE, rebufferInitE])
+          EC.applyMany (EC.project "iterate" $ EC.applyMany (EC.project "splitMany" $ EC.variable "buffer")
+                                                            [EC.variable rbsizeV])
             [EC.lambda "rebuf" $ EC.block
               [ EC.applyMany (EC.project "unpack" $ EC.project "elem" $ EC.variable "rebuf") [EC.unit]
               , feedBufferE $ EC.project "elem" $ EC.variable "rebuf"]]
-
-        rebufferInitE = (EC.constant $ CEmpty $ TC.record [("elem", cleanT)]) @+ EAnnotation "Vector"
-        rebufferFnE = EC.lambdaMany ["acc", "tag", "idx", "offset"] $
-          EC.letIn "segmentIdx" (EC.binop ODiv (EC.variable "idx") $ EC.variable rbsizeV) $
-          EC.block
-            [ EC.ifThenElse
-                (EC.binop OLeq (EC.applyMany (EC.project "size" $ EC.variable "acc") [EC.unit]) $ EC.variable "segmentIdx")
-                (EC.applyMany (EC.project "insert_at" $ EC.variable "acc")
-                              [EC.variable "segmentIdx", EC.record [("elem", defaultBuffer)]])
-                EC.unit
-            , EC.applyMany (EC.project "update_at" $ EC.variable "acc")
-                [ EC.variable "segmentIdx"
-                , EC.lambda "rebuf" $ EC.record [("elem",
-                    EC.applyMany (EC.variable rbtransferV) $
-                      [ EC.variable "buffer", EC.project "elem" $ EC.variable "rebuf"
-                      , EC.variable "tag", EC.variable "idx", EC.variable "offset"])]]
-            , EC.variable "acc" ]
 
         defaultBuffer = either error debugDefault $ defaultExpression cleanT
         debugDefault dt = if True then dt else trace (boxToString $

@@ -17,7 +17,7 @@
 #include "Common.hpp"
 #include "collections/STLDataspace.hpp"
 #include "collections/Collection.hpp"
-#include "FlatPolyBuffer.hpp"
+#include "collections/FlatPolyBuffer.hpp"
 
 namespace K3 {
 namespace Libdynamic {
@@ -52,9 +52,9 @@ struct UPBHash : std::unary_function<UPBKey<Tag>, std::size_t> {
 // UniquePolyBuffer
 
 template<class Ignore, class Derived>
-class UniquePolyBuffer : public FlatPolyBuffer<Ignore> {
+class UniquePolyBuffer : public FlatPolyBuffer<Ignore, Derived> {
 public:
-  using Super = FlatPolyBuffer<Ignore>;
+  using Super = FlatPolyBuffer<Ignore, Derived>;
   using Tag = typename Super::Tag;
 
   using FContainer = typename Super::FContainer;

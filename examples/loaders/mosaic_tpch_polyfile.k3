@@ -493,13 +493,13 @@ declare rebuffer : mut int = 0
 
 declare tpch_copy : poly_tpch -> poly_tpch -> int -> int -> int -> poly_tpch
 = \orig -> \new -> \tg -> \idx -> \offset -> (
-           if tg == 0            then ((orig.sentinel_safe_at idx offset (\_ -> ()) (\v -> new.append_sentinel v)); new)
-      else if tg == customer_tag then ((orig.customer_safe_at idx offset (\_ -> ()) (\v -> new.append_customer v)); new)
-      else if tg == lineitem_tag then ((orig.lineitem_safe_at idx offset (\_ -> ()) (\v -> new.append_lineitem v)); new)
-      else if tg == orders_tag   then ((orig.orders_safe_at   idx offset (\_ -> ()) (\v -> new.append_orders   v)); new)
-      else if tg == part_tag     then ((orig.part_safe_at     idx offset (\_ -> ()) (\v -> new.append_part     v)); new)
-      else if tg == partsupp_tag then ((orig.partsupp_safe_at idx offset (\_ -> ()) (\v -> new.append_partsupp v)); new)
-      else if tg == supplier_tag then ((orig.supplier_safe_at idx offset (\_ -> ()) (\v -> new.append_supplier v)); new)
+           if tg == 0            then ((new.append_sentinel (orig.sentinel_at idx offset)); new)
+      else if tg == customer_tag then ((new.append_customer (orig.customer_at idx offset)); new)
+      else if tg == lineitem_tag then ((new.append_lineitem (orig.lineitem_at idx offset)); new)
+      else if tg == orders_tag   then ((new.append_orders   (orig.orders_at   idx offset)); new)
+      else if tg == part_tag     then ((new.append_part     (orig.part_at     idx offset)); new)
+      else if tg == partsupp_tag then ((new.append_partsupp (orig.partsupp_at idx offset)); new)
+      else if tg == supplier_tag then ((new.append_supplier (orig.supplier_at idx offset)); new)
       else new
   )
 
