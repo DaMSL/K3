@@ -39,6 +39,13 @@ class DataFile {
     string policy;
 };
 
+// Mosaic sequence files
+struct SeqFile {
+  string var;
+  int switch_index;
+  int num_switches;
+  std::list<string> paths;
+};
 
 
 // exec -- exec system command, pipe to stdout, return exit code
@@ -80,13 +87,13 @@ void packageSandbox(string host_name, string app_name, string job_id, string web
 
 
 
-void runK3Job (TaskInfo task, 
-            string k3_cmd, 
-            ExecutorDriver* driver, 
-            bool isMaster, 
-            string webaddr, 
-            string app_name, 
-            string job_id, 
+void runK3Job (TaskInfo task,
+            string k3_cmd,
+            ExecutorDriver* driver,
+            bool isMaster,
+            string webaddr,
+            string app_name,
+            string job_id,
             string host_name)  {
 
     TaskStatus status;
@@ -134,16 +141,14 @@ class KDExecutor : public Executor
 protected:
   std::thread *thread;
   vector<DataFile> dataFiles;
-
-
-
+  vector<SeqFile> seqFiles;
 
 public:
   KDExecutor() : dataFiles() { thread=0; }
   virtual ~KDExecutor() { delete thread; }
 
 
- 
+
   virtual void registered(ExecutorDriver* driver,
                           const ExecutorInfo& executorInfo,
                           const FrameworkInfo& frameworkInfo,
@@ -165,7 +170,7 @@ public:
 
 
   virtual void launchTask(ExecutorDriver* driver, const TaskInfo& task)    {
-    
+
     job_id   = task.task_id().value();
 
     TaskStatus status;
@@ -250,6 +255,20 @@ public:
               f.policy = d["policy"].as<string>();
               dataFiles.push_back(f);
             }
+        }
+        else if (key == "seq_files") {
+          Node seqNode = param->second[0];
+          for(YAML::const_iterator it=seqNode.begin(); it!=seqNode.end(); ++it) {
+            SeqFile f;
+            auto d = *it;
+            f.var = d["var"].as<string>();
+            f.switch_index = d["switch_index"].as<int>();
+            f.num_switches = d["num_switches"].as<int>();
+            for (auto it2 : d["paths"]) {
+               f.paths.push_back(it2.as<string>());
+            }
+            seqFiles.push_back(f);
+          }
         }
 
         else if (key == "totalPeers")  {
@@ -341,6 +360,57 @@ public:
         cout << "my files: " << myfiles << endl;
     }
 
+    // Mosaic seq files
+    for (auto& seqFile : seqFiles) {
+      YAML::Node seqs;
+      for (auto& path: seqFile.paths) {
+        // Check that directory exists, or exit
+        DIR *datadir = NULL;
+        datadir = opendir(path.c_str());
+        if (!datadir) {
+          cout << "Failed to open seq_file dir: " << path << endl;
+          TaskStatus status;
+          status.mutable_task_id()->MergeFrom(task.task_id());
+          status.set_state(TASK_FAILED);
+          driver->sendStatusUpdate(status);
+          return;
+        }
+
+        // Populate a vector with all files in the directory
+        vector<string> filePaths;
+        struct dirent *srcfile = NULL;
+        while (true) {
+          srcfile = readdir(datadir);
+          if (srcfile == NULL) { break; }
+          if (strncmp (srcfile->d_name, ".", 1) != 0) {
+            filePaths.push_back(path + "/" + srcfile->d_name);
+          }
+        }
+        closedir(datadir);
+
+        // Sort and assign based on switch_index
+        vector<string> myPaths;
+        sort (filePaths.begin(), filePaths.end());
+        for (size_t i = 0; i < filePaths.size(); i++) {
+          if ((i % seqFile.num_switches) == seqFile.switch_index) {
+            myPaths.push_back(filePaths[i]);
+          }
+        }
+
+        // Build K3 YAML
+        YAML::Node seq_val;
+        for (auto& path : myPaths) {
+          YAML::Node p;
+          p["path"] = path;
+          seq_val.push_back(p);
+        }
+        YAML::Node s;
+        s["seq"] = seq_val;
+        seqs.push_back(s);
+      }
+      peerParams[seqFile.var] = seqs;
+    }
+
     // Build Parameters for All peers (on this host)
     int pph = 0;
     if (peerParams["peers"].size() >= 1) {
@@ -393,7 +463,7 @@ public:
         for (auto it : peerFiles[i])  {
                 auto datavar = it.first;
                 if (thispeer[datavar]) {
-                  thispeer.remove(datavar);
+                  thispeer[datavar] = YAML::Node();
                 }
                 for (auto &f : it.second) {
                         Node src;
@@ -418,7 +488,7 @@ public:
         for (auto it : peerFiles[i])  {
                 auto datavar = it.first;
                 if (thispeer[datavar]) {
-                  thispeer.remove(datavar);
+                  thispeer[datavar] = YAML::Node();
                 }
         }
     }
@@ -438,7 +508,7 @@ public:
     }
     cout << "Launching K3: " << endl;
     thread = new std::thread(runK3Job, task, k3_cmd, driver, isMaster, webaddr, app_name, job_id, host_name);
-    
+
 
   }
 
@@ -463,7 +533,7 @@ public:
       driver->sendFrameworkMessage("Executor at " + host_name + " ERROR");
       driver->stop();
   }
-  
+
 private:
     int state;
     int totalPeerCount;
