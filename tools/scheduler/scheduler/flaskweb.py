@@ -297,7 +297,7 @@ def getYamlInstructions():
 def trace():
   """
   #------------------------------------------------------------------------------
-  #  /trace - Debugging respose. Returns the client's HTTP request data in json
+  #  /trace - Debugging response. Returns the client's HTTP request data in json
   #------------------------------------------------------------------------------
   """
   logger.debug('[FLASKWEB  /trace] Trace debug request')
@@ -575,7 +575,7 @@ def listJobs():
   #------------------------------------------------------------------------------
   """
   logger.debug('[FLASKWEB  /jobs] Request for job listing')
-  jobs = db.getJobs()
+  jobs = db.getJobs(numdays=2)
   for job in jobs:
     job['time'] = datetime.datetime.strptime(job['time'], db.TS_FMT).replace(tzinfo=db.timezone('UTC')).isoformat()
 

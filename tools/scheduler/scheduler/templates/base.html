@@ -13,11 +13,14 @@
 
     <title>K3</title>
 
-    <!-- Bootstrap core CSS -->
-    <link href="{{ url_for('static', filename='vendor/bootstrap/bootstrap-3.2.0-dist/css/bootstrap.min.css') }}" rel="stylesheet">
-
+    <!-- Bootstrap core CSS. Updated 11/2/15: Latest version of 3.3.5 direct from maxcdn -->
+    <!--<link href="{{ url_for('static', filename='vendor/bootstrap/bootstrap-3.2.0-dist/css/bootstrap.min.css') }}" rel="stylesheet">-->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/css/bootstrap.min.css" integrity="sha512-dTfge/zgoMYpP7QbHy4gWMEGsbsdZeCXz7irItjcC3sPUFtf0kuFbDz/ixG7ArTxmDjLXDmezHubeNikyKGVyQ==" crossorigin="anonymous">
     <!-- Genericons core CSS -->
     <link href="{{ url_for('static', filename='vendor/genericons/genericons/genericons.css') }}" rel="stylesheet">
+
+
+
 
     <!-- Page specific CSS files -->
     {% block head %}{% endblock %}
@@ -32,6 +35,11 @@
       <script src="https://oss.maxcdn.com/vendors/html5shiv/3.7.0/html5shiv.js"></script>
       <script src="https://oss.maxcdn.com/vendors/respond.js/1.4.2/respond.min.js"></script>
     <![endif]-->
+
+    <!-- Compiled JS for bootstrap from maxcdn. Updated 11/2/15 -->
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.5/js/bootstrap.min.js" integrity="sha512-K1qjQ+NcF2TYO/eI3M6v8EiNYZfA95pQumfvcVrTHtwQVDG+aHRqLi/ETn2uB+1JqwYqVG3LIvdm9lj6imS/pQ==" crossorigin="anonymous"></script>
+
+
   </head>
 
   <body>
