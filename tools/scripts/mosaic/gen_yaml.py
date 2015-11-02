@@ -142,7 +142,7 @@ def create_dist_file(args):
     k3_roles.append(('Nodes', args.nmask, num_nodes, args.perhost, node_env))
 
     launch_roles = []
-    for (name, addr, peers, perh, peer_envs) in k3_roles:
+    for (name, addr, peers, perhost, peer_envs) in k3_roles:
         newrole = {
             'hostmask'  : addr,
             'name'      : name,
@@ -152,8 +152,8 @@ def create_dist_file(args):
                            {'host':'/data', 'container':'/data'}]
         }
 
-        if perh is not None:
-            newrole['peers_per_host'] = perh
+        if perhost is not None:
+            newrole['peers_per_host'] = perhost
 
         newrole.update(peer_envs)
         launch_roles.append(newrole)
@@ -196,7 +196,7 @@ def main():
     parser.add_argument("-n", "--nodes", type=int, help="number of nodes",
                         dest="num_nodes", default=4)
     parser.add_argument("--nmask", type=str, help="mask for nodes", default="qp-hm.|qp-hd.?")
-    parser.add_argument("--perhost", type=int, help="peers per host", default=1)
+    parser.add_argument("--perhost", type=int, help="peers per host", default=None)
 
     parser.add_argument("--csv_path", type=str, help="path of csv data source", default=None)
     parser.add_argument("--tpch_data_path", type=str, help="path of tpch flatpolys", default=None)
