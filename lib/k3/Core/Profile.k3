@@ -138,7 +138,7 @@ control MosaicPreEvent[lbl:label, tl:expr, ve:expr, ce:expr] {
         $.[e]
   +> {
     declare $[lbl]_event_buffer : collection {etag: int, evid: int, pcomponent: int, t: int} @Vector
-    declare $[lbl]_event_buffer_batch_sz : mut int = 100
+    declare $[lbl]_event_buffer_batch_sz : mut int = 1000
   }
 }
 
@@ -151,6 +151,6 @@ control MosaicPostEvent[lbl:label, tl:expr, ve:expr, ce:expr] {
           else ())
   +> {
     declare $[lbl]_event_buffer : collection {etag:int, evid:int, pcomponent:int, t:int} @Vector
-    declare $[lbl]_event_buffer_batch_sz : mut int = 100
+    declare $[lbl]_event_buffer_batch_sz : mut int = 1000
   }
 }
