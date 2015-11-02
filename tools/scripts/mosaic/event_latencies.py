@@ -60,7 +60,7 @@ def process_events(switch_files, node_files):
   # Build an interval tree with switch files.
   # Probe and reconstruct latencies from node files.
   for fn in switch_files:
-    with open(fn, newline='') as csvfile:
+    with open(fn) as csvfile:
       swreader = csv.reader(csvfile, delimiter=',')
       prev_vid = 0
       prev_v = 0
@@ -72,12 +72,12 @@ def process_events(switch_files, node_files):
           prev_t = t
         elif tg == 1:
           switchspans[prev_vid:vid] = t
-          latencies[vid][events['switch_process']] = t - prev_t
+          latencies[vid] = {events['switch_process'] : t - prev_t}
         else:
           print("Unknown switch tag: {tg}".format(**locals()))
 
   for fn in node_files:
-    with open(fn, newline='') as csvfile:
+    with open(fn) as csvfile:
       swreader = csv.reader(csvfile, delimiter=',')
       for row in swreader:
         [tg, vid, comp, t] = map(lambda x: int(x), row)
