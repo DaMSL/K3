@@ -129,7 +129,13 @@ control CollectProfile[lbls: [label], coordinator: expr, nodes: expr, next: expr
 // Mosaic profiling.
 // This expects a 'mosaic_event_sink' to be defined.
 
-control MosaicPreEvent[lbl:label, tl:expr, ve:expr, ce:expr] {
+control MosaicPreEvent[lbl:label, tl:expr, ve:expr, ce:expr]
+{
+  ?e @:Flush => ($[lbl]_event_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
+                ($[lbl]_event_buffer.clear());
+                $.[e]
+  +> {}
+
   ?e => ($[lbl]_event_buffer.insert {etag: $[tl], evid: $[ve], pcomponent: $[ce], t: now_int()});
         (if $[lbl]_event_buffer.size() >= $[lbl]_event_buffer_batch_sz
           then ($[lbl]_event_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
@@ -142,7 +148,13 @@ control MosaicPreEvent[lbl:label, tl:expr, ve:expr, ce:expr] {
   }
 }
 
-control MosaicPostEvent[lbl:label, tl:expr, ve:expr, ce:expr] {
+control MosaicPostEvent[lbl:label, tl:expr, ve:expr, ce:expr]
+{
+  ?e @:Flush => ($[lbl]_event_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
+                ($[lbl]_event_buffer.clear());
+                $.[e]
+  +> {}
+
   ?e => ( $.[e] );
         ($[lbl]_event_buffer.insert {etag: $[tl], evid: $[ve], pcomponent: $[ce], t: now_int()});
         (if $[lbl]_event_buffer.size() >= $[lbl]_event_buffer_batch_sz
