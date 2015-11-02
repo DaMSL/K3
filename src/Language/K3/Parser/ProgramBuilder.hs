@@ -465,8 +465,10 @@ endpointMethods isSource eSpec argE formatE n t =
 
     {- Polyfile controller codegen. -}
     pmuxNextOrderE onFileDoneE rbsizeV rbtransferV =
-      EC.ifThenElse (EC.applyMany (EC.project "member" $ EC.variable $ cfpcompleteName n)
-                       [EC.record [("key", pmuxvar), ("value", EC.constant $ CBool True)]])
+      EC.ifThenElse (EC.binop OOr
+                      (EC.binop OGeq pmuxvar $ EC.applyMany (EC.project "size" argE) [EC.unit])
+                      $ (EC.applyMany (EC.project "member" $ EC.variable $ cfpcompleteName n)
+                                      [EC.record [("key", pmuxvar), ("value", EC.constant $ CBool True)]]))
         EC.unit
         (pmuxSafeNextChan onFileDoneE rbsizeV rbtransferV)
 
@@ -503,7 +505,7 @@ endpointMethods isSource eSpec argE formatE n t =
           EC.letIn "segmentIdx" (EC.binop ODiv (EC.variable "idx") $ EC.variable rbsizeV) $
           EC.block
             [ EC.ifThenElse
-                (EC.binop OLth (EC.applyMany (EC.project "size" $ EC.variable "acc") [EC.unit]) $ EC.variable "segmentIdx")
+                (EC.binop OLeq (EC.applyMany (EC.project "size" $ EC.variable "acc") [EC.unit]) $ EC.variable "segmentIdx")
                 (EC.applyMany (EC.project "insert_at" $ EC.variable "acc")
                               [EC.variable "segmentIdx", EC.record [("elem", defaultBuffer)]])
                 EC.unit
