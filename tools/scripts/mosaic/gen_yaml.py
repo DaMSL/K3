@@ -5,6 +5,7 @@
 import argparse
 import yaml
 import os
+import copy
 
 def address(port):
     return ['127.0.0.1', port]
@@ -77,9 +78,29 @@ def create_local_file(args):
     # dump out
     dump_yaml(peers2)
 
+def mk_k3_seq_files(num_switches, sw_index, path, inorder_path):
+    return {
+        'switch_index': sw_index,
+        'num_switches': num_switches,
+        'paths':
+            [ os.path.join(path, 'sentinel'),
+              os.path.join(path, 'customer'),
+              os.path.join(path, 'lineitem'),
+              os.path.join(path, 'orders'),
+              os.path.join(path, 'part'),
+              os.path.join(path, 'supplier'),
+              os.path.join(path, 'partsupp')
+                ],
+        'inorder_path': inorder_path
+            }
+
 def create_dist_file(args):
+    num_switches = args.num_switches
+    num_nodes = args.num_nodes
+
     extra_args = parse_extra_args(args.extra_args)
-    switch_role = "switch_old" if args.csv_file else "switch"
+
+    switch_role = "switch_old" if args.csv_path else "switch"
 
     master_role = {'role': wrap_role('master')}
     master_role.update(extra_args)
@@ -89,26 +110,36 @@ def create_dist_file(args):
 
     switch_role = {'role': wrap_role(switch_role)}
     if args.csv_path:
-        peer['switch_path'] = csv_path
-    elif args.tpch_fpb_path and args.tpch_inorder_path:
-        peer['files'] = tpch_paths(args.tpch_data_path)
-        peer['inorder'] = args.tpch_inorder_path
-
+        switch_role['switch_path'] = csv_path
     switch_role.update(extra_args)
 
     node_role = {'role': wrap_role('node')}
     node_role.update(extra_args)
 
     switch1_env = {'peer_globals': [master_role, timer_role, switch_role]}
+    if args.tpch_data_path:
+        switch1_env['k3_seq_files'] = \
+          mk_k3_seq_files(num_switches, 0, args.tpch_data_path, args.tpch_inorder_path)
+
     switch_env  = {'k3_globals': switch_role}
     node_env    = {'k3_globals': node_role}
 
-    k3_roles = []
-    k3_roles += [('Switch1', 'qp3', 3, None, switch1_env)]
-    if num_switches > 1:
-        k3_roles += [('Switch' + str(i + 1), 'qp' + str((i % 4) + 3), 1, None, switch_env) for i in range(1, num_switches)]
+    switch_res = ['qp3', 'qp4', 'qp5', 'qp6'] * 16
 
-    k3_roles += [('Node' + str(i), nmask, 1, perhost, node_env) for i in range(1, num_nodes+1)]
+    k3_roles = []
+
+    # Switch1 contains also the master and timer
+    k3_roles.append(('Switch1', switch_res.pop(0), 3, None, switch1_env))
+
+    if num_switches > 1:
+        for i in range(2, num_switches):
+            switch_env2 = copy.deepcopy(switch_env)
+            if args.tpch_data_path:
+                switch_env2['k3_seq_files'] = \
+                  mk_k3_seq_files(num_switches, i, args.tpch_data_path, args.tpch_inorder_path)
+            k3_roles.append(('Switch' + str(i), switch_res.pop(0), 1, None, switch_env2))
+
+    k3_roles.append(('Nodes', args.nmask, num_nodes, args.perhost, node_env))
 
     launch_roles = []
     for (name, addr, peers, perh, peer_envs) in k3_roles:
@@ -117,7 +148,8 @@ def create_dist_file(args):
             'name'      : name,
             'peers'     : peers,
             'privileged': True,
-            'volumes'   : [{'host':'/local', 'container':'/local'}],
+            'volumes'   : [{'host':'/local', 'container':'/local'},
+                           {'host':'/data', 'container':'/data'}]
         }
 
         if perh is not None:
@@ -165,6 +197,7 @@ def main():
                         dest="num_nodes", default=4)
     parser.add_argument("--nmask", type=str, help="mask for nodes", default="qp-hm.|qp-hd.?")
     parser.add_argument("--perhost", type=int, help="peers per host", default=1)
+
     parser.add_argument("--csv_path", type=str, help="path of csv data source", default=None)
     parser.add_argument("--tpch_data_path", type=str, help="path of tpch flatpolys", default=None)
     parser.add_argument("--tpch_inorder_path", type=str, help="path of tpch inorder file", default=None)

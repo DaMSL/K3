@@ -229,6 +229,9 @@ end
 
 def gen_yaml(role_file, script_path)
   # Generate yaml file"
+  num_nodes = 1
+  if $options[:num_nodes] then num_nodes = $options[:num_nodes] end
+
   cmd = ""
   cmd << "--switches " << $options[:num_switches].to_s << " " if $options[:num_switches]
   cmd << "--nodes " << $options[:num_nodes].to_s << " " if $options[:num_nodes]
@@ -247,8 +250,13 @@ def gen_yaml(role_file, script_path)
   extra_args << "ms_gc_interval=" + $options[:gc_epoch] if $options[:gc_epoch]
   extra_args << "sw_driver_sleep=" + $options[:msg_delay] if $options[:msg_delay]
   extra_args << "corrective_mode=false" if $options[:no_corrective]
-  extra_args << "sw_poly_batch_size=" + $options[:batch_size] if $options[:batch_size]
+  if $options[:batch_size]
+    extra_args << "sw_poly_batch_size=" + $options[:batch_size]
+    extra_args << "rebatch=" + $options[:batch_size]
+  end
   extra_args << "do_poly_reserve=false" if $options[:no_poly_reserve]
+  # if we have more than 16 nodes, we need more buckets
+  extra_args << "pmap_buckets=" + (num_nodes * 4).to_s if num_nodes > 16
   cmd << "--extra-args " << extra_args.join(',') << " " if extra_args.size > 0
 
   yaml = run("#{File.join(script_path, "gen_yaml.py")} #{cmd}")
@@ -699,6 +707,7 @@ def main()
     opts.on("--json_debug", "Debug queries that won't die") { $options[:json_debug] = true }
     opts.on("--perhost [NUM]", Integer, "How many peers to run per host") {|i| $options[:perhost] = i}
     opts.on("--nmask [MASK]", String, "Mask for node deployment") {|s| $options[:nmask] = s}
+    opts.on("--smask [MASK]", String, "Mask for switch deployment") {|s| $options[:smask] = s}
     opts.on("--uid [UID]", String, "UID of file") {|s| $options[:uid] = s}
     opts.on("--jobid [JOBID]", String, "JOBID of job") {|s| $options[:jobid] = s}
     opts.on("--mosaic-path [PATH]", String, "Path for mosaic") {|s| $options[:mosaic_path] = s}
