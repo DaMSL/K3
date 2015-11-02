@@ -130,15 +130,18 @@ def process_events(switch_files, node_files):
 
   for k, v in events.iteritems():
     with open('latency_{}.yml'.format(k), 'w') as outfile:
-      data = {b.x.center : b.value for b in lhists[v].bins()}
+      data = {b.x.center: b.value for b in lhists[v].bins()}
       yaml.dump(data, outfile, default_flow_style=True)
 
       # Interactive plot
       graph = Pyasciigraph()
 
       # Simpler example
-      for line in graph.graph('{} latency'.format(k), data.items()):
-        print(line)
+      try:
+        for line in graph.graph('{} latency'.format(k), sorted(data.items())):
+          print(line)
+      except Exception:
+        print("Exception on {}".format(k))
 
   # Finally, save intermediate data for now.
   print(banner("Saving intermediate latency data"))
