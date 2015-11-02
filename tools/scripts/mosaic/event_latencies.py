@@ -75,8 +75,13 @@ def process_events(switch_files, node_files):
           prev_t = t
         elif tg == 1:
           switchspans[prev_vid:vid] = t
+          l = t - prev_t
+
           latencies[vid] = {v : -sys.maxint - 1 for v in events.values()}
-          latencies[vid][events['switch_process']] = t - prev_t
+          latencies[vid][events['switch_process']] = l
+
+          (rmin, rmax) = latencyspans[events[tg]]
+          latencyspans[events[tg]] = (min(rmin, l), max(rmax, l))
         else:
           print("Unknown switch tag: {tg}".format(**locals()))
 
@@ -114,7 +119,7 @@ def process_events(switch_files, node_files):
   print(banner("Computing latency histograms"))
 
   for ecls, span in latencyspans.iteritems():
-    lhists[ecls] = Hist(nbins, span[0], span[1])
+    lhists[ecls] = Hist1D(nbins, span[0], span[1])
 
   for eventl in latencies.values():
     for ecls, l in eventl.iteritems():
