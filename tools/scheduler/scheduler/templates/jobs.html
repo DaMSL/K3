@@ -66,7 +66,7 @@ src="http://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></scrip
 	<a name="InactiveJob"></a>
           <h3>Inactive K3 Jobs</h3>
             <form action="/delete/jobs" method=post enctype=multipart/form-data>
-          <table id="inactiveJobs" class="table table-striped">
+          <table id="inactiveJobs" class="table table-striped pagination">
               <tr><th>Job ID</th><th>Application</th><th>User</th><th>Submitted</th>
               <th>Status</th><th>Replay</th><th>Delete</th></tr>
           {% for job in joblist %}
@@ -87,7 +87,7 @@ src="http://maxcdn.bootstrapcdn.com/bootstrap/3.2.0/js/bootstrap.min.js"></scrip
 	<a name="InactiveCompile"></a>
           <h3>Inactive Compiling Jobs</h3>
           <form action="/delete/compiles" method=post enctype=multipart/form-data>
-          <table id="inactiveCompiles" class="display table table-striped">
+          <table id="inactiveCompiles" class="display table table-striped pagination">
             <tr> <th>Build</th><th>Output</th><th>Time Submit</th><th>Time Complete</th><th>Status</th><th>Kill</th></tr>
           {% for job in compilelist %}
             {% if job.status == "COMPLETE" or job.status == "KILLED" or job.status == "FAILED" %}
