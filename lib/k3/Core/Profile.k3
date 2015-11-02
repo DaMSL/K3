@@ -132,7 +132,8 @@ control CollectProfile[lbls: [label], coordinator: expr, nodes: expr, next: expr
 control MosaicPreEvent[lbl:label, tl:expr, ve:expr, ce:expr] {
   ?e => ($[lbl]_event_buffer.insert {tag: $[tl], vid: $[ve], component: $[ce], t: now_int()});
         (if $[lbl]_event_buffer.size() >= $[lbl]_event_buffer_batch_sz
-          then $[lbl]_event_buffer.iterate (\r -> (mosaic_event_sink, me) <- r)
+          then ($[lbl]_event_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
+                $[lbl]_event_buffer.clear()
           else ());
         $.[e]
   +> {
@@ -145,7 +146,8 @@ control MosaicPostEvent[lbl:label, tl:expr, ve:expr, ce:expr] {
   ?e => ( $.[e] );
         ($[lbl]_event_buffer.insert {tag: $[tl], vid: $[ve], component: $[ce], t: now_int()});
         (if $[lbl]_event_buffer.size() >= $[lbl]_event_buffer_batch_sz
-          then $[lbl]_event_buffer.iterate (\r -> (mosaic_event_sink, me) <- r)
+          then ($[lbl]_event_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
+                $[lbl]_event_buffer.clear()
           else ())
   +> {
     declare $[lbl]_event_buffer : collection {tag:int, vid:int, component:int, t:int} @Vector
