@@ -472,5 +472,3 @@ but is neither pending nor active. Killing it now." % job)
       self.cancelJob(jobId, driver)
     self.terminate = True
     logging.info("[DISPATCHER] Terminating")
-
-
