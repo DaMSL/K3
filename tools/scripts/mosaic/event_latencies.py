@@ -2,8 +2,7 @@
 #
 # Process switch and node event files to extract Mosaic event latencies.
 
-import argparse
-import yaml
+import argparse, csv, sys, yaml
 
 from intervaltree import Interval, IntervalTree
 from pyhistogram import Hist1D
@@ -66,7 +65,7 @@ def process_events(switch_files, node_files):
       prev_vid = 0
       prev_v = 0
       for row in swreader:
-        [tg, vid, comp, t] = row
+        [tg, vid, comp, t] = map(lambda x: int(x), row)
 
         if tg == 0:
           prev_vid = vid
@@ -81,7 +80,7 @@ def process_events(switch_files, node_files):
     with open(fn, newline='') as csvfile:
       swreader = csv.reader(csvfile, delimiter=',')
       for row in swreader:
-        [tg, vid, comp, t] = row
+        [tg, vid, comp, t] = map(lambda x: int(x), row)
 
         # For each class of event, track the last event from the start of the
         # update at this vid, and the timespan of the event class.
@@ -105,7 +104,7 @@ def process_events(switch_files, node_files):
           event_span('corr_done', vid, t)
 
         else:
-          print("Unknown switch tag: {tg}".format(**locals()))
+          print("Unknown node tag: {tg}".format(**locals()))
 
   # Build latency histograms
   print(banner("Computing latency histograms"))
@@ -135,13 +134,13 @@ def process_events(switch_files, node_files):
 
 def main():
   parser = argparse.ArgumentParser()
-  parser.add_argument('--switches', metavar='SWITCH_EVENTS', nargs='+', dest='switch_files', help='switch event data files')
-  parser.add_argument('--nodes',    metavar='NODE_EVENTS',   nargs='+', dest='node_files',   help='node event data files')
+  parser.add_argument('--switches', metavar='SWITCH_EVENTS', nargs='+', required=True, dest='switch_files', help='switch event data files')
+  parser.add_argument('--nodes',    metavar='NODE_EVENTS',   nargs='+', required=True, dest='node_files',   help='node event data files')
   args = parser.parse_args()
   if args:
     process_events(args.switch_files, args.node_files)
   else:
-    print usage
+    parser.print_help()
 
 if __name__ == '__main__':
     main()
