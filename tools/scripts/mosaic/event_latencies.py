@@ -36,19 +36,22 @@ def max_from_start(tg, vid, t):
   if len(intervals) > 1:
     print("Invalid point query on switch vid intervals")
   else:
-    l = t - intervals[0].data
+    if len(intervals) == 0:
+      print("No start interval found for {}".format(vid))
+    else:
+      l = t - list(intervals)[0].data
 
-    if vid not in latencies:
-      latencies[vid] = {events[tg] : -sys.maxint - 1}
+      if vid not in latencies:
+        latencies[vid] = {v : -sys.maxint - 1 for v in events.values()}
 
-    latencies[vid][events[tg]] = max(latencies[vid][events[tg]], l)
+      latencies[vid][events[tg]] = max(latencies[vid][events[tg]], l)
 
-    (rmin, rmax) = latencyspans[events[tg]]
-    latencyspans[events[tg]] = (min(rmin, l), max(rmax, l))
+      (rmin, rmax) = latencyspans[events[tg]]
+      latencyspans[events[tg]] = (min(rmin, l), max(rmax, l))
 
 def event_span(tg, vid, t):
   if vid not in nodespans:
-    nodespans[vid] = {events[tg] : (sys.maxint, -sys.maxint -1)}
+    nodespans[vid] = {v : (sys.maxint, -sys.maxint -1) for v in events.values()}
 
   (rmin, rmax) = nodespans[vid][events[tg]]
   nodespans[vid][events[tg]] = (min(rmin, t), max(rmax, t))
@@ -72,7 +75,8 @@ def process_events(switch_files, node_files):
           prev_t = t
         elif tg == 1:
           switchspans[prev_vid:vid] = t
-          latencies[vid] = {events['switch_process'] : t - prev_t}
+          latencies[vid] = {v : -sys.maxint - 1 for v in events.values()}
+          latencies[vid][events['switch_process']] = t - prev_t
         else:
           print("Unknown switch tag: {tg}".format(**locals()))
 
