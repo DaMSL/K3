@@ -18,15 +18,6 @@ trigger t : FPB = \buf -> (
 	print ("Invoking polyfile dispatch on buffer of size: " ++ (itos (buf.size())))
 )
 
-// Rebuffering support.
-declare rebuffer : mut int = 0
+declare rebatch : mut int = 0
 
-declare transfer : FPB -> FPB -> int -> int -> int -> FPB
-  = \orig -> \new -> \tg -> \idx -> \offset -> (
-           if tg == 0 then ((new.append_foo (orig.foo_at idx offset)); new)
-      else if tg == 1 then ((new.append_bar (orig.bar_at idx offset)); new)
-      else if tg == 2 then ((new.append_baz (orig.baz_at idx offset)); new)
-      else new
-  	)
-
-source s1 : FPB = polyfile fpaths text raw orderpath rebuffer transfer
+source s1 : FPB = polyfile fpaths text raw orderpath rebatch

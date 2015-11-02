@@ -489,7 +489,7 @@ source go_exact_mux : () = value ()
 feed go_exact_mux |> create_exact_mux_order_file
 
 // Use this role to verify FPB files by counting batches.
-declare rebuffer : mut int = 0
+declare rebatch : mut int = 0
 
 declare tpch_copy : poly_tpch -> poly_tpch -> int -> int -> int -> poly_tpch
 = \orig -> \new -> \tg -> \idx -> \offset -> (
@@ -503,8 +503,8 @@ declare tpch_copy : poly_tpch -> poly_tpch -> int -> int -> int -> poly_tpch
       else new
   )
 
-source load : poly_tpch = polyfile files binary raw inorder rebuffer tpch_copy
+source load : poly_tpch = polyfile files binary raw inorder rebatch
 feed load |> load_tpch
 
-source loadseq : poly_tpch = polyfileseq seqfiles binary raw inorder rebuffer tpch_copy
+source loadseq : poly_tpch = polyfileseq seqfiles binary raw inorder rebatch
 feed loadseq |> load_tpch
