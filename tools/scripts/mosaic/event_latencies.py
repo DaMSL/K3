@@ -81,7 +81,7 @@ def process_events(switch_files, node_files):
           latencies[vid][events['switch_process']] = l
 
           (rmin, rmax) = latencyspans[events['switch_process']]
-          latencyspans[events[tg]] = (min(rmin, l), max(rmax, l))
+          latencyspans[events['switch_process']] = (min(rmin, l), max(rmax, l))
         else:
           print("Unknown switch tag: {tg}".format(**locals()))
 
