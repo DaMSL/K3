@@ -368,12 +368,14 @@ public:
 
   // Splits a polybuffer into a vector of polybuffers according to the given chunk size.
   Vector<R_elem<Derived>> splitMany(int splitSize) const {
+    if (!internalized) { throw std::runtime_error ("Invalid splitMany on externalized poly buffer"); }
+
     auto p = const_cast<FlatPolyBuffer*>(this);
     size_t foffset = 0, sz = size(unit_t{});
 
     Vector<R_elem<Derived>> result;
     auto& vec = result.getContainer();
-    vec.reserve((sz % splitSize) == 0? (sz / splitSize) : (sz / splitSize) + 1);
+    vec.resize((sz % splitSize) == 0? (sz / splitSize) : (sz / splitSize) + 1);
     auto q = &vec[0];
 
     for (size_t i = 0; i < sz; ++i) {
