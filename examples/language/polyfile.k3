@@ -1,4 +1,5 @@
 include "Annotation/Collection.k3"
+include "Annotation/Vector.k3"
 include "Annotation/FlatPolyBuffer.k3"
 include "Core/Builtins.k3"
 
@@ -17,4 +18,6 @@ trigger t : FPB = \buf -> (
 	print ("Invoking polyfile dispatch on buffer of size: " ++ (itos (buf.size())))
 )
 
-source s1 : FPB = polyfile fpaths text raw orderpath
+declare rebatch : mut int = 0
+
+source s1 : FPB = polyfile fpaths text raw orderpath rebatch

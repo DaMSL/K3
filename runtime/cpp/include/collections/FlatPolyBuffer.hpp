@@ -29,6 +29,7 @@ extern "C" {
 #include "Common.hpp"
 #include "collections/STLDataspace.hpp"
 #include "collections/Collection.hpp"
+#include "collections/Vector.hpp"
 
 namespace K3 {
 namespace Libdynamic {
@@ -143,7 +144,7 @@ private:
 //////////////////////////////////////////
 //
 // FlatPolyBuffer
-template<class Ignore>
+template<class Ignore, class Derived>
 class FlatPolyBuffer {
 public:
   using Buf = LibdynamicVector::buffer;
@@ -182,6 +183,7 @@ public:
     if (other.internalized) {
       unpack(unit_t{});
     }
+    return *this;
   }
 
   FlatPolyBuffer& operator=(FlatPolyBuffer&& other) {
@@ -189,7 +191,7 @@ public:
     return *this;
   }
 
-  ~FlatPolyBuffer() {
+  virtual ~FlatPolyBuffer() {
     freeContainer();
   }
 
@@ -201,9 +203,10 @@ public:
 
   void freeContainer() {
     if (!buffer.data()) {
+      // buffer clear just deallocates. vector clear zeroes out the vector, which we don't need
       buffer_clear(fixed());
       buffer_clear(variable());
-      vector_clear(tags());
+      buffer_clear(&(tags()->buffer));
     }
   }
 
@@ -291,6 +294,7 @@ public:
 
   // Virtual methods to be implemented by instances.
   virtual size_t elemsize(Tag t) const = 0;
+  virtual void elemappend(Tag t, char* data) = 0;
   virtual void externalize(ExternalizerT& e, Tag t, char* data) = 0;
   virtual void internalize(InternalizerT& i, Tag t, char* data) = 0;
 
@@ -303,6 +307,9 @@ public:
   // Accessors.
   // These must work on an internalized collection, and we leave
   // it to the application to ensure internalization has happened.
+  bool isInternalized() const {
+    return internalized;
+  }
 
   int size(const unit_t&) const {
     auto p = const_cast<FlatPolyBuffer*>(this);
@@ -334,6 +341,50 @@ public:
       auto p = const_cast<FlatPolyBuffer*>(this);
       return g(*reinterpret_cast<T*>(buffer_data(p->fixed()) + static_cast<size_t>(offset)));
     }
+  }
+
+  template<typename T, typename F>
+  auto unsafe_at(int i, int offset, F f) const {
+    if (!internalized) { throw std::runtime_error ("Invalid unsafe_at on externalized poly buffer"); }
+    auto p = const_cast<FlatPolyBuffer*>(this);
+    return f(*reinterpret_cast<T*>(buffer_data(p->fixed()) + static_cast<size_t>(offset)));
+  }
+
+  // Copy another polybuffer's elements into this collection.
+  unit_t extend(const FlatPolyBuffer& other) {
+    if (internalized && !other.isInternalized()) {
+      throw std::runtime_error ("Invalid extend on internalized poly buffer");
+    }
+
+    auto p = const_cast<FlatPolyBuffer*>(&other);
+    size_t foffset = 0, sz = p->size(unit_t{});
+    for (size_t i = 0; i < sz; ++i) {
+      Tag tg = p->tag_at(static_cast<int>(i));
+      elemappend(tg, buffer_data(p->fixed()) + static_cast<size_t>(foffset));
+      foffset += p->elemsize(tg);
+    }
+    return unit_t {};
+  }
+
+  // Splits a polybuffer into a vector of polybuffers according to the given chunk size.
+  Vector<R_elem<Derived>> splitMany(int splitSize) const {
+    if (!internalized) { throw std::runtime_error ("Invalid splitMany on externalized poly buffer"); }
+
+    auto p = const_cast<FlatPolyBuffer*>(this);
+    size_t foffset = 0, sz = size(unit_t{});
+
+    Vector<R_elem<Derived>> result;
+    auto& vec = result.getContainer();
+    vec.resize((sz % splitSize) == 0? (sz / splitSize) : (sz / splitSize) + 1);
+    auto q = &vec[0];
+
+    for (size_t i = 0; i < sz; ++i) {
+      if ( i > 0 && i % splitSize == 0 ) { q = &vec[i / splitSize]; }
+      Tag tg = tag_at(static_cast<int>(i));
+      q->elem.elemappend(tg, buffer_data(p->fixed()) + static_cast<size_t>(foffset));
+      foffset += elemsize(tg);
+    }
+    return result;
   }
 
   // Apply a function on the tag and offset.
@@ -377,6 +428,21 @@ public:
     return unit_t {};
   }
 
+  template<typename Fun>
+  auto traverse2(int idx, int offset, Fun f) const {
+    if (!internalized) { throw std::runtime_error ("Invalid traverse on externalized poly buffer"); }
+    size_t sz = size(unit_t{});
+    // warning: could loop infinitely
+    while (static_cast<size_t>(idx) < sz) {
+      Tag tg = tag_at(idx);
+      R_key_value<int, int> next = f(tg, idx, offset);
+      // Check for end condition
+      if (next.key == idx) break;
+      idx = next.key;
+      offset = next.value;
+    }
+    return R_key_value<int, int>{idx, offset};
+  }
 
   //////////////////////////////////
   //
@@ -449,15 +515,26 @@ public:
     return R_key_value<int, int> { j, static_cast<int>(foffset) };
   }
 
-  // Clears a container, deleting any backing buffer.
+  // Clears a container
   unit_t clear(unit_t) {
-    if ( buffer.data() ) { freeBackingBuffer(); }
+    if (buffer.data()) { freeBackingBuffer(); }
     else {
-      freeContainer();
-      initContainer();
+      // keep the inner containers ie. no deallocation
+      fixed()->size = 0;
+      variable()->size = 0;
+      tags()->buffer.size = 0;
       internalized=false;
     }
     return unit_t{};
+  }
+
+  // Reserve a certain number of elements and fixed size
+  unit_t reserve(int num_elems, int fixed_size, int var_size) {
+    if (!buffer.data()) {
+      vector_reserve(tags(), num_elems);
+      buffer_reserve(fixed(), fixed_size);
+      buffer_reserve(variable(), var_size);
+    }
   }
 
   // Externalizes an existing buffer, reusing the variable-length segment.
@@ -770,17 +847,17 @@ protected:
 
 }; // end namespace Libdynamic
 
-template<class Ignored>
-using FlatPolyBuffer = Libdynamic::FlatPolyBuffer<Ignored>;
+template<class Ignored, class Derived>
+using FlatPolyBuffer = Libdynamic::FlatPolyBuffer<Ignored, Derived>;
 
 }; // end namespace K3
 
 
 namespace YAML {
-template <class E>
-struct convert<K3::FlatPolyBuffer<E>> {
-  using Tag = typename K3::FlatPolyBuffer<E>::Tag;
-  static Node encode(const K3::FlatPolyBuffer<E>& c) {
+template <class E, class Derived>
+struct convert<K3::FlatPolyBuffer<E, Derived>> {
+  using Tag = typename K3::FlatPolyBuffer<E, Derived>::Tag;
+  static Node encode(const K3::FlatPolyBuffer<E, Derived>& c) {
     Node node;
     bool flag = true;
     c.iterate([&c, &node, &flag](Tag tg, size_t idx, size_t offset){
@@ -793,7 +870,7 @@ struct convert<K3::FlatPolyBuffer<E>> {
     return node;
   }
 
-  static bool decode(const Node& node, K3::FlatPolyBuffer<E>& c) {
+  static bool decode(const Node& node, K3::FlatPolyBuffer<E, Derived>& c) {
     for (auto i : node) {
       c.yamldecode(i);
     }
@@ -804,11 +881,18 @@ struct convert<K3::FlatPolyBuffer<E>> {
 
 namespace JSON {
 using namespace rapidjson;
-template <class E>
-struct convert<K3::FlatPolyBuffer<E>> {
-  using Tag = typename K3::FlatPolyBuffer<E>::Tag;
+template <class E, class Derived>
+struct convert<K3::FlatPolyBuffer<E, Derived>> {
+  using Tag = typename K3::FlatPolyBuffer<E, Derived>::Tag;
   template <class Allocator>
-  static Value encode(const K3::FlatPolyBuffer<E>& c, Allocator& al) {
+  static Value encode(const K3::FlatPolyBuffer<E, Derived>& c, Allocator& al) {
+    bool modified = false;
+    K3::FlatPolyBuffer<E, Derived>& non_const = const_cast<K3::FlatPolyBuffer<E, Derived>&>(c);
+    if (!c.isInternalized()) {
+      non_const.unpack(K3::unit_t {});
+      modified = true;
+    }
+
     Value v;
     v.SetObject();
     v.AddMember("type", Value("FlatPolyBuffer"), al);
@@ -818,6 +902,10 @@ struct convert<K3::FlatPolyBuffer<E>> {
       inner.PushBack(c.jsonencode(tg, idx, offset, al), al);
     });
     v.AddMember("value", inner.Move(), al);
+
+    if (modified) {
+      non_const.repack(K3::unit_t {});
+    }
     return v;
   }
 };

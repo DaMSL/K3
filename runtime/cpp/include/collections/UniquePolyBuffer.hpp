@@ -17,7 +17,7 @@
 #include "Common.hpp"
 #include "collections/STLDataspace.hpp"
 #include "collections/Collection.hpp"
-#include "FlatPolyBuffer.hpp"
+#include "collections/FlatPolyBuffer.hpp"
 
 namespace K3 {
 namespace Libdynamic {
@@ -52,9 +52,9 @@ struct UPBHash : std::unary_function<UPBKey<Tag>, std::size_t> {
 // UniquePolyBuffer
 
 template<class Ignore, class Derived>
-class UniquePolyBuffer : public FlatPolyBuffer<Ignore> {
+class UniquePolyBuffer : public FlatPolyBuffer<Ignore, Derived> {
 public:
-  using Super = FlatPolyBuffer<Ignore>;
+  using Super = FlatPolyBuffer<Ignore, Derived>;
   using Tag = typename Super::Tag;
 
   using FContainer = typename Super::FContainer;
@@ -67,21 +67,30 @@ public:
     keys = other.keys;
   }
 
-  UniquePolyBuffer(UniquePolyBuffer&& other) : Super(other) {
+  UniquePolyBuffer(UniquePolyBuffer&& other) : Super(std::move(other)) {
     keys.swap(other.keys);
   }
 
   UniquePolyBuffer& operator=(const UniquePolyBuffer& other) {
     Super::operator=(other);
     keys = other.keys;
+    return *this;
   }
+
+  UniquePolyBuffer& operator=(UniquePolyBuffer&& other) {
+    keys = std::move(other.keys);
+    Super::operator=(std::move(other));
+    return *this;
+  }
+
+  ~UniquePolyBuffer() {}
 
   void rebuildKeys() {
     size_t foffset = 0, sz = Super::size(unit_t{});
     for (size_t i = 0; i < sz; ++i) {
       Tag tg = Super::tag_at(i);
       keys.insert(std::make_pair(tg, reinterpret_cast<void*>(buffer_data(Super::fixed()) + foffset)));
-      foffset += Super::elemsize(tg);
+      foffset += this->elemsize(tg);
     }
   }
 
@@ -130,12 +139,12 @@ public:
 
   template <class archive>
   void serialize(archive& a) const {
-    a << yas::base_object<const Super>(*this);
+    Super::serialize(a);
   }
 
   template <class archive>
   void serialize(archive& a) {
-    a >> yas::base_object<Super>(*this);
+    Super::serialize(a);
     rebuildKeys();
   }
 

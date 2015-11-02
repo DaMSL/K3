@@ -27,6 +27,8 @@ class StandardBuiltins {
   template <class T>
   int hash(const T& t);
   double randomFraction(unit_t);
+  int randomBinomial(int trials, double p);
+
  protected:
   Engine& __engine_;
   static boost::mutex __mutex_;

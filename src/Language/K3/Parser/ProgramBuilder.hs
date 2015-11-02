@@ -232,7 +232,8 @@ endpointMethods isSource eSpec argE formatE n t =
     sourceReadDecls = case eSpec of
                         FileMuxEP    _ _ _ -> [sourceMuxHasRead, sourceMuxRead]
                         FileMuxseqEP _ _ _ -> [sourceMuxHasRead, sourceMuxRead]
-                        PolyFileMuxEP _ _ _ _ -> [sourcePOrdHasRead, sourcePOrdRead, sourcePolyHasRead, sourcePolyRead]
+                        PolyFileMuxEP _ _ _ _ _ -> [sourcePOrdHasRead, sourcePOrdRead, sourcePolyHasRead, sourcePolyRead]
+                        PolyFileMuxSeqEP _ _ _ _ _ -> [sourcePOrdHasRead, sourcePOrdRead, sourcePolyHasRead, sourcePolyRead]
                         _ -> [sourceHasRead, sourceRead]
 
     sourceExtraDecls = case eSpec of
@@ -251,8 +252,13 @@ endpointMethods isSource eSpec argE formatE n t =
                             , builtinGlobal (cfpName n) muxSeqPathMap Nothing
                             , builtinGlobal (cmcName n) (TC.int @+ TMutable) (Just $ EC.constant $ CInt 0) ]
 
-      PolyFileMuxEP _ _ _ _ -> [ builtinGlobal (cfpcompleteName n) pmuxDoneMap Nothing
-                               , builtinGlobal (cmcName n) (TC.int @+ TMutable) (Just $ EC.constant $ CInt 0) ]
+      PolyFileMuxEP _ _ _ _ _ -> [ builtinGlobal (cfpcompleteName n) pmuxDoneMap Nothing
+                                   , builtinGlobal (cmcName n) (TC.int @+ TMutable) (Just $ EC.constant $ CInt 0) ]
+
+      PolyFileMuxSeqEP _ _ _ _ _ -> [ builtinGlobal (cfpcompleteName n) pmuxDoneMap Nothing
+                                      , builtinGlobal (cfiName n) muxSeqIdxMap Nothing
+                                      , builtinGlobal (cfpName n) muxSeqPathMap Nothing
+                                      , builtinGlobal (cmcName n) (TC.int @+ TMutable) (Just $ EC.constant $ CInt 0) ]
 
       _ -> []
 
@@ -278,10 +284,11 @@ endpointMethods isSource eSpec argE formatE n t =
     pmuxDoneMap = mkCollection [("key", TC.int), ("value", TC.bool)] "Map"
 
     sourceController = case eSpec of
-      FileSeqEP    _ txt _  -> seqSrcController txt
-      FileMuxEP    _ _ _    -> muxSrcController
-      FileMuxseqEP _ txt _  -> muxSeqSrcController txt
-      PolyFileMuxEP _ _ _ _ -> pmuxSrcController
+      FileSeqEP    _ txt _          -> seqSrcController txt
+      FileMuxEP    _ _ _            -> muxSrcController
+      FileMuxseqEP _ txt _          -> muxSeqSrcController txt
+      PolyFileMuxEP _ _ _ _ sv      -> pmuxSrcController sv
+      PolyFileMuxSeqEP _ txt _ _ sv -> pmuxSeqSrcController txt sv
       _ -> singleSrcController
 
     sinkImpl =
@@ -397,7 +404,7 @@ endpointMethods isSource eSpec argE formatE n t =
               , EC.lambda "seqidx" $
                   EC.ifThenElse (muxSeqNotLastFileIndexE "seqc" "seqidx")
                     (EC.block [muxSeqNextFileE openFn "seqc" "seqidx" txt])
-                    (EC.block [muxFinishChan, muxSeqFinishChan]) ]]
+                    (EC.block [muxFinishChan, muxSeqFinishChan muxSeqIdx]) ]]
 
     muxSeqNextFileE openFn seqvar idxvar txt =
       EC.letIn "nextidx"
@@ -417,11 +424,9 @@ endpointMethods isSource eSpec argE formatE n t =
         EC.binop OSub (EC.applyMany (EC.project "size" $ EC.project "seq" $ EC.variable seqvar) [EC.unit])
                       (EC.constant $ CInt 1)
 
-    muxSeqFinishChan = EC.block
-      [ EC.applyMany (EC.project "erase" $ EC.variable $ cfiName n)
-          [EC.record [("key", muxidx), ("value", EC.constant $ CInt 0)]]
-      , EC.applyMany (EC.project "erase" $ EC.variable $ cfpName n)
-          [EC.record [("key", muxidx), ("value", EC.constant $ CString "")]]]
+    muxSeqFinishChan muxSeqFn = EC.block
+      [ EC.applyMany (EC.project "erase" $ EC.variable $ cfiName n) [muxSeqFn $ EC.constant $ CInt 0]
+      , EC.applyMany (EC.project "erase" $ EC.variable $ cfpName n) [muxSeqFn $ EC.constant $ CString ""]]
 
     muxSeqIdx e = EC.record [("key", muxidx), ("value", e)]
 
@@ -436,8 +441,9 @@ endpointMethods isSource eSpec argE formatE n t =
     pmuxnextvar = EC.variable pmuxnext
 
     pmuxOrderChanIdE = EC.constant $ CString $ n ++ "_order"
+    cntrlrPMuxChanIdE = muxChanIdE pmuxvar
 
-    pmuxSrcController = builtinTrigger (ccName n) TC.unit $
+    pmuxSrcControllerTrig onFileDoneE rbsizeV = builtinTrigger (ccName n) TC.unit $
       EC.lambda "_" $
         EC.ifThenElse
           (EC.binop OGth
@@ -445,31 +451,92 @@ endpointMethods isSource eSpec argE formatE n t =
              EC.applyMany (EC.project "size" $ EC.variable $ cfpcompleteName n) [EC.unit])
           (EC.ifThenElse
               (EC.applyMany (EC.variable $ cpohrName n) [EC.unit])
-              (controlE $ EC.applyMany (EC.lambda pmuxidx pmuxNextOrderE)
+              (controlE $ EC.applyMany
+                            (EC.lambda pmuxidx $ pmuxNextOrderE onFileDoneE rbsizeV)
                             [EC.applyMany (EC.variable $ cporName n) [EC.unit]])
               EC.unit)
           EC.unit
 
-    pmuxNextOrderE =
-      EC.ifThenElse (EC.applyMany (EC.project "member" $ EC.variable $ cfpcompleteName n)
-                       [EC.record [("key", pmuxvar), ("value", EC.constant $ CBool True)]])
-        EC.unit
-        (EC.ifThenElse
-          (EC.applyMany (EC.variable $ cpdhrName n) [pmuxvar])
-          (EC.applyMany
-            (EC.lambda pmuxnext $
-              EC.letIn "buffer" defaultBuffer $
-                EC.block
-                [ EC.applyMany (EC.project "load" $ EC.variable "buffer") [pmuxnextvar]
-                , EC.applyMany (EC.variable $ cfName n) [EC.variable "buffer"] ])
-            [EC.applyMany (EC.variable $ cpdrName n) [pmuxvar]])
-          (EC.applyMany (EC.project "insert" $ EC.variable $ cfpcompleteName n)
-            [EC.record [("key", pmuxvar), ("value", EC.constant $ CBool True)]]))
+    {- Polyfile controllers. -}
+    pmuxSrcController rbsizeV = pmuxSrcControllerTrig pmuxFinishChan rbsizeV
 
-      where defaultBuffer = either error debugDefault $ defaultExpression cleanT
-            debugDefault dt = if True then dt else trace (boxToString $
-              ["Default buffer expr: "] ++ prettyLines dt ++
-              ["CleanT: "] ++ prettyLines cleanT) dt
+    pmuxSeqSrcController txt rbsizeV =
+      pmuxSrcControllerTrig (pmuxSeqNextChan openFileFn txt rbsizeV) rbsizeV
+
+    {- Polyfile controller codegen. -}
+    pmuxNextOrderE onFileDoneE rbsizeV =
+      EC.ifThenElse (EC.binop OOr
+                      (EC.binop OGeq pmuxvar $ EC.applyMany (EC.project "size" argE) [EC.unit])
+                      $ (EC.applyMany (EC.project "member" $ EC.variable $ cfpcompleteName n)
+                                      [EC.record [("key", pmuxvar), ("value", EC.constant $ CBool True)]]))
+        EC.unit
+        (pmuxSafeNextChan onFileDoneE rbsizeV)
+
+    pmuxSafeNextChan onFileDoneE rbsizeV =
+      EC.ifThenElse (EC.applyMany (EC.variable $ cpdhrName n) [pmuxvar])
+                    (pmuxNextChan rbsizeV)
+                    onFileDoneE
+
+    pmuxNextChan rbsizeV =
+      EC.applyMany
+        (EC.lambda pmuxnext $
+          EC.letIn "buffer" defaultBuffer $
+            EC.block
+            [ EC.applyMany (EC.project "load" $ EC.variable "buffer") [pmuxnextvar]
+            , EC.ifThenElse
+                (EC.binop OEqu (EC.variable rbsizeV) $ EC.constant $ CInt 0)
+                noRebufferE
+                rebufferE])
+        [EC.applyMany (EC.variable $ cpdrName n) [pmuxvar]]
+
+      where
+        feedBufferE bufE = EC.applyMany (EC.variable $ cfName n) [bufE]
+        noRebufferE = feedBufferE $ EC.variable "buffer"
+
+        rebufferE =
+          EC.applyMany (EC.project "iterate" $ EC.applyMany (EC.project "splitMany" $ EC.variable "buffer")
+                                                            [EC.variable rbsizeV])
+            [EC.lambda "rebuf" $ EC.block
+              [ EC.applyMany (EC.project "unpack" $ EC.project "elem" $ EC.variable "rebuf") [EC.unit]
+              , feedBufferE $ EC.project "elem" $ EC.variable "rebuf"]]
+
+        defaultBuffer = either error debugDefault $ defaultExpression cleanT
+        debugDefault dt = if True then dt else trace (boxToString $
+          ["Default buffer expr: "] ++ prettyLines dt ++
+          ["CleanT: "] ++ prettyLines cleanT) dt
+
+
+    pmuxFinishChan =
+      EC.applyMany (EC.project "insert" $ EC.variable $ cfpcompleteName n)
+        [EC.record [("key", pmuxvar), ("value", EC.constant $ CBool True)]]
+
+    pmuxSeqNextChan openFn txt rbsizeV =
+      EC.applyMany (EC.project "safe_at" $ argE)
+        [ pmuxvar
+        , ignoreE
+        , EC.lambda "seqc" $
+            EC.applyMany (EC.project "lookup" $ EC.variable $ cfiName n)
+              [ pmuxSeqIdx $ EC.constant $ CInt 0
+              , ignoreE
+              , EC.lambda "seqidx" $
+                  EC.ifThenElse (muxSeqNotLastFileIndexE "seqc" "seqidx")
+                    (EC.block [pmuxSeqNextFileE openFn txt rbsizeV "seqc" "seqidx"])
+                    (EC.block [pmuxFinishChan, muxSeqFinishChan pmuxSeqIdx]) ]]
+
+    pmuxSeqNextFileE openFn txt rbsizeV seqvar idxvar =
+      EC.letIn "nextidx"
+        (EC.binop OAdd (EC.project "value" $ EC.variable idxvar) $ EC.constant $ CInt 1)
+        (EC.applyMany (EC.project "safe_at" $ EC.project "seq" $ EC.variable seqvar)
+          [ EC.variable "nextidx"
+          , ignoreE
+          , EC.lambda "f" $ EC.block
+              [ EC.applyMany closeFn [EC.variable "me", cntrlrPMuxChanIdE]
+              , EC.applyMany (EC.project "insert" $ EC.variable $ cfiName n) [pmuxSeqIdx $ EC.variable "nextidx"]
+              , EC.applyMany (EC.project "insert" $ EC.variable $ cfpName n) [pmuxSeqIdx $ EC.project "path" $ EC.variable "f"]
+              , EC.applyMany openFn [EC.variable "me", cntrlrPMuxChanIdE, EC.project "path" $ EC.variable "f", formatE, EC.constant $ CBool txt, modeE]
+              , pmuxSafeNextChan EC.unit rbsizeV]])
+
+    pmuxSeqIdx e = EC.record [("key", pmuxvar), ("value", e)]
 
     -- External functions
     cleanT = stripTUIDSpan $ case eSpec of
@@ -494,12 +561,13 @@ endpointMethods isSource eSpec argE formatE n t =
 
     initE = case eSpec of
       BuiltinEP     _ _ -> EC.applyMany openBuiltinFn [sourceId n, argE, formatE]
-      FileEP        _ txt _ -> openFnE openFileFn txt
-      NetworkEP     _ txt _ -> openFnE openSocketFn txt
-      FileSeqEP     _ txt _ -> openFileSeqFnE openFileFn txt
-      FileMuxEP     _ txt _ -> openFileMuxChanFnE openFileFn txt
-      FileMuxseqEP  _ txt _ -> openFileMuxSeqChanFnE openFileFn txt
-      PolyFileMuxEP _ txt _ orderpath -> openPolyFileFnE openFileFn orderpath txt
+      FileEP        _ txt _                -> openFnE openFileFn txt
+      NetworkEP     _ txt _                -> openFnE openSocketFn txt
+      FileSeqEP     _ txt _                -> openFileSeqFnE openFileFn txt
+      FileMuxEP     _ txt _                -> openFileMuxChanFnE openFileFn txt
+      FileMuxseqEP  _ txt _                -> openFileMuxSeqChanFnE openFileFn txt
+      PolyFileMuxEP _ txt _ orderpath _    -> openPolyFileFnE openFileFn orderpath txt
+      PolyFileMuxSeqEP _ txt _ orderpath _ -> openPolyFileSeqFnE openFileFn orderpath txt
       _ -> error "Invalid endpoint argument"
 
     openFnE openFn txt = EC.applyMany openFn [EC.variable "me", sourceId n, argE, formatE, EC.constant $ CBool txt, modeE]
@@ -529,19 +597,36 @@ endpointMethods isSource eSpec argE formatE n t =
             , muxSafeRefreshChan False EC.unit $ EC.variable $ cmcName n
             , EC.assign (cmcName n) $ EC.binop OAdd (EC.variable $ cmcName n) (EC.constant $ CInt 1) ]]]
 
+    {- Order file constants for polyfiles. -}
+    orderFormatE = EC.constant $ CString "csv"
+    orderTxtE    = EC.constant $ CBool True
+
+    orderPathE orderpath = if (not $ null orderpath) && (isPunctuation $ head orderpath)
+                              then EC.constant $ CString orderpath
+                              else EC.variable orderpath
+
     openPolyFileFnE openFn orderpath txt =
       EC.block [
-        EC.applyMany openFn [EC.variable "me", pmuxOrderChanIdE, orderPathE, orderFormatE, orderTxtE, modeE],
+        EC.applyMany openFn [EC.variable "me", pmuxOrderChanIdE, orderPathE orderpath, orderFormatE, orderTxtE, modeE],
         EC.applyMany (EC.project "iterate" argE)
           [ EC.lambda "f" $ EC.block
             [ EC.applyMany openFn [EC.variable "me", globalMuxChanIdE, EC.project "path" $ EC.variable "f", formatE, EC.constant $ CBool txt, modeE]
             , EC.assign (cmcName n) $ EC.binop OAdd (EC.variable $ cmcName n) (EC.constant $ CInt 1) ]]]
 
-      where orderPathE   = if (not $ null orderpath) && (isPunctuation $ head orderpath)
-                              then EC.constant $ CString orderpath
-                              else EC.variable orderpath
-            orderFormatE = EC.constant $ CString "csv"
-            orderTxtE    = EC.constant $ CBool True
+    openPolyFileSeqFnE openFn orderpath txt =
+      EC.block [
+        EC.applyMany openFn [EC.variable "me", pmuxOrderChanIdE, orderPathE orderpath, orderFormatE, orderTxtE, modeE],
+        EC.applyMany (EC.project "iterate" argE)
+          [ EC.lambda "seqc" $
+            EC.applyMany (EC.project "safe_at" $ EC.project "seq" $ EC.variable "seqc")
+            [ EC.constant $ CInt 0
+            , ignoreE
+            , EC.lambda "f" $ EC.block
+              [ EC.applyMany (EC.project "insert" $ EC.variable $ cfiName n) [openMuxSeqIdx $ EC.constant $ CInt 0]
+              , EC.applyMany (EC.project "insert" $ EC.variable $ cfpName n) [openMuxSeqIdx $ EC.project "path" $ EC.variable "f"]
+              , EC.applyMany openFn [EC.variable "me", globalMuxChanIdE, EC.project "path" $ EC.variable "f", formatE, EC.constant $ CBool txt, modeE]
+              , EC.assign (cmcName n) $ EC.binop OAdd (EC.variable $ cmcName n) (EC.constant $ CInt 1) ]]]]
+
 
     modeE = EC.constant . CString $ if isSource then "r" else "w"
 
@@ -552,7 +637,8 @@ endpointMethods isSource eSpec argE formatE n t =
       FileSeqEP    _ _ _ -> fileStartE
       FileMuxEP    _ _ _ -> fileStartE
       FileMuxseqEP _ _ _ -> fileStartE
-      PolyFileMuxEP _ _ _ _ -> fileStartE
+      PolyFileMuxEP _ _ _ _ _    -> fileStartE
+      PolyFileMuxSeqEP _ _ _ _ _ -> fileStartE
       _                -> error "Invalid endpoint argument"
 
     fileStartE = EC.send (EC.variable $ ccName n) myAddr EC.unit
@@ -560,7 +646,8 @@ endpointMethods isSource eSpec argE formatE n t =
     closeE = case eSpec of
       FileMuxEP    _ _ _ -> closeMuxE
       FileMuxseqEP _ _ _ -> closeMuxE
-      PolyFileMuxEP _ _ _ _ -> closePMuxE
+      PolyFileMuxEP _ _ _ _ _ -> closePMuxE
+      PolyFileMuxSeqEP _ _ _ _ _ -> closePMuxE
       _ -> EC.applyMany closeFn [EC.variable "me", sourceId n]
 
     closeMuxE = EC.applyMany (EC.project "iterate" $ EC.applyMany (EC.variable "range") [EC.variable $ cmcName n])
@@ -575,7 +662,8 @@ endpointMethods isSource eSpec argE formatE n t =
       FileSeqEP     _ _ _ -> fileControlE processE
       FileMuxEP     _ _ _ -> fileControlE processE
       FileMuxseqEP  _ _ _ -> fileControlE processE
-      PolyFileMuxEP _ _ _ _ -> fileControlE processE
+      PolyFileMuxEP _ _ _ _ _ -> fileControlE processE
+      PolyFileMuxSeqEP _ _ _ _ _ -> fileControlE processE
       _                -> error "Invalid endpoint argument"
 
     fileControlE processE = EC.block [processE, controlRcrE]
@@ -583,7 +671,7 @@ endpointMethods isSource eSpec argE formatE n t =
 
     sourceId n' = EC.constant $ CString n'
 
-    ignoreE = EC.applyMany (EC.variable "ignore") [EC.unit]
+    ignoreE = EC.variable "ignore"
 
 
 -- | Rewrites a source declaration's process method to access and
@@ -601,7 +689,8 @@ bindSource specs bindings d
     mkDispatchFn n eOpt t = case lookup n specs of
                               Just (FileMuxEP    _ _ _)    -> [mkFeedFn n $ head $ children t]
                               Just (FileMuxseqEP _ _ _)    -> [mkFeedFn n $ head $ children t]
-                              Just (PolyFileMuxEP _ _ _ _) -> [mkFeedFn n $ head $ children t]
+                              Just (PolyFileMuxEP _ _ _ _ _) -> [mkFeedFn n $ head $ children t]
+                              Just (PolyFileMuxSeqEP _ _ _ _ _) -> [mkFeedFn n $ head $ children t]
                               Just _  -> [mkProcessFn n eOpt]
                               Nothing -> []
 

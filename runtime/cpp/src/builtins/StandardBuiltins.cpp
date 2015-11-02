@@ -44,4 +44,9 @@ double StandardBuiltins::randomFraction(unit_t) {
   return __rand_distribution_(__rand_generator_);
 }
 
+int StandardBuiltins::randomBinomial(int trials, double p) {
+  std::binomial_distribution<> d(trials, p);
+  return d(__rand_generator_);
+}
+
 }  // namespace K3

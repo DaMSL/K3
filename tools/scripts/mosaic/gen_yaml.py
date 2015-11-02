@@ -4,6 +4,7 @@
 # Note: *requires pyyaml*
 import argparse
 import yaml
+import os
 
 def address(port):
     return ['127.0.0.1', port]
@@ -33,34 +34,52 @@ def parse_extra_args(args):
             extra_args[val[0]] = val[1]
     return extra_args
 
-def create_file(num_switches, num_nodes, file_path, extra_args, csv_data):
-    extra_args = parse_extra_args(extra_args)
-    switch_role = "switch_old" if csv_data else "switch"
+def tpch_paths(p):
+    files = []
+    names = ['psentinel.out', 'pcustomer.out', 'plineitem.out',
+             'porders.out', 'ppart.out', 'ppartsupp.out', 'psupplier.out']
+    for n in names:
+        files.append({'path': os.path.join(p, n)})
+
+    return files
+
+def create_local_file(args):
+    extra_args = parse_extra_args(args.extra_args)
+    switch_role = "switch_old" if args.csv_path else "switch"
 
     peers = []
     peers.append(('master', 40000))
     peers.append(('timer', 40001))
+
     switch_ports = 50001
-    for i in range(num_switches):
+    for i in range(args.num_switches):
         peers.append((switch_role, switch_ports + i))
+
     node_ports = 60001
-    for i in range(num_nodes):
+    for i in range(args.num_nodes):
         peers.append(('node', node_ports + i))
 
     # convert to dictionaries
     peers2 = []
     for (role, port) in peers:
-        peer = {'role': wrap_role(role), 'me':address(port), 'switch_path':file_path,
-                'peers':create_peers(peers)}
+        peer = {'role': wrap_role(role), 'me':address(port), 'peers':create_peers(peers)}
+
+        if role == 'switch' or role == 'switch_old':
+            if args.csv_path:
+                peer['switch_path'] = args.csv_path
+            if args.tpch_data_path:
+                peer['files'] = tpch_paths(args.tpch_data_path)
+                peer['inorder'] = args.tpch_inorder_path
+
         peer.update(extra_args)
         peers2.append(peer)
 
     # dump out
     dump_yaml(peers2)
 
-def create_dist_file(num_switches, perhost, num_nodes, nmask, file_path, extra_args, csv_data):
-    extra_args = parse_extra_args(extra_args)
-    switch_role = "switch_old" if csv_data else "switch"
+def create_dist_file(args):
+    extra_args = parse_extra_args(args.extra_args)
+    switch_role = "switch_old" if args.csv_file else "switch"
 
     master_role = {'role': wrap_role('master')}
     master_role.update(extra_args)
@@ -68,7 +87,13 @@ def create_dist_file(num_switches, perhost, num_nodes, nmask, file_path, extra_a
     timer_role = {'role': wrap_role('timer')}
     timer_role.update(extra_args)
 
-    switch_role = {'role': wrap_role(switch_role), 'switch_path': file_path}
+    switch_role = {'role': wrap_role(switch_role)}
+    if args.csv_path:
+        peer['switch_path'] = csv_path
+    elif args.tpch_fpb_path and args.tpch_inorder_path:
+        peer['files'] = tpch_paths(args.tpch_data_path)
+        peer['inorder'] = args.tpch_inorder_path
+
     switch_role.update(extra_args)
 
     node_role = {'role': wrap_role('node')}
@@ -91,7 +116,7 @@ def create_dist_file(num_switches, perhost, num_nodes, nmask, file_path, extra_a
             'hostmask'  : addr,
             'name'      : name,
             'peers'     : peers,
-            'privileged': False,
+            'privileged': True,
             'volumes'   : [{'host':'/local', 'container':'/local'}],
         }
 
@@ -104,12 +129,13 @@ def create_dist_file(num_switches, perhost, num_nodes, nmask, file_path, extra_a
     # dump out
     dump_yaml(launch_roles)
 
-def create_multicore_file(num_switches, perhost, num_nodes, nmask, file_path, extra_args, csv_data):
+## deprecated?? ##
+def create_multicore_file(args):
     if num_switches > 1:
         raise ValueError("Can't create multicore deployment with more than one switch just yet.")
 
-    extra_args = parse_extra_args(extra_args)
-    switch_role = "switch_old" if csv_data else "switch"
+    extra_args = parse_extra_args(args.extra_args)
+    switch_role = "switch_old" if args.csv_data else "switch"
 
     role = {
         "hostmask": "qp3",
@@ -139,20 +165,17 @@ def main():
                         dest="num_nodes", default=4)
     parser.add_argument("--nmask", type=str, help="mask for nodes", default="qp-hm.|qp-hd.?")
     parser.add_argument("--perhost", type=int, help="peers per host", default=1)
-    parser.add_argument("-f", "--file", type=str, dest="file_path", help="file path",
-                        default="/local/agenda.csv")
+    parser.add_argument("--csv_path", type=str, help="path of csv data source", default=None)
+    parser.add_argument("--tpch_data_path", type=str, help="path of tpch flatpolys", default=None)
+    parser.add_argument("--tpch_inorder_path", type=str, help="path of tpch inorder file", default=None)
     parser.add_argument("--extra-args", type=str, help="extra arguments in x=y format")
-    parser.add_argument("--csv-data", action='store_true', dest="csv_data", default=False)
     args = parser.parse_args()
     if args.run_mode == "dist":
-        create_dist_file(args.num_switches, args.perhost, args.num_nodes, args.nmask,
-                         args.file_path, args.extra_args, args.csv_data)
+        create_dist_file(args)
     elif args.run_mode == "local":
-        create_file(args.num_switches, args.num_nodes, args.file_path, args.extra_args, args.csv_data)
+        create_local_file(args)
     elif args.run_mode == "multicore":
-        create_multicore_file(args.num_switches, args.perhost, args.num_nodes, args.nmask,
-                              args.file_path, args.extra_args, args.csv_data)
-
+        create_multicore_file(args)
 
 if __name__ == '__main__':
     main()

@@ -47,6 +47,10 @@ concatLabels :: SpliceValue -> SpliceValue
 concatLabels (SList vs) = foldl concatLabel (SLabel "") vs
 concatLabels _ = error "Invalid splice value container for concatLabels"
 
+appendLabel :: SpliceValue -> String -> SpliceValue
+appendLabel (SLabel a) s = SLiteral $ LC.string $ a ++ s
+appendLabel _ _ = error "Invalid label/literal concatenation."
+
 mkRecord :: SpliceValue -> SpliceValue
 mkRecord (SList vs) = maybe err (SType . TC.record) $ mapM mkRecField vs
   where mkRecField v = do

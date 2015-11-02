@@ -1,3 +1,4 @@
+include "Annotation/Vector.k3"
 include "Annotation/FlatPolyBuffer.k3"
 include "Core/Builtins.k3"
 include "tpch/loader.k3"
@@ -220,5 +221,7 @@ feed go_nation |> convert_nation
 source go_region : () = value ()
 feed go_region |> convert_region
 
-source load : poly_tpch = polyfile files binary raw inorder
+declare rebatch : mut int = 0
+
+source load : poly_tpch = polyfile files binary raw inorder rebatch
 feed load |> load_tpch

@@ -126,4 +126,22 @@ unit_t ProfilingBuiltins::jemallocDump(unit_t) {
   return unit_t{};
 }
 
+  namespace lifetime {
+    #ifdef K3_LT_SAMPLE
+    __thread sampler __active_lt_profiler;
+    #endif
+
+    #ifdef K3_LT_HISTOGRAM
+    __thread histogram __active_lt_profiler;
+    #endif
+
+    template<size_t object_size>
+    sentinel<object_size>::~sentinel() {
+#if defined(K3_LT_SAMPLE) || defined(K3_LT_HISTOGRAM)
+      __active_lt_profiler.push(lifetime.count(), object_size);
+#endif
+    }
+  }
+
+
 }  // namespace K3

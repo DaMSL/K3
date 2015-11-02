@@ -1,7 +1,10 @@
 #ifndef K3_VECTOR
 #define K3_VECTOR
 
+#include <algorithm>
+#include <random>
 #include "boost/serialization/vector.hpp"
+
 #include "boost/serialization/base_object.hpp"
 
 #include "STLDataspace.hpp"
@@ -87,6 +90,14 @@ class Vector : public VectorDS<K3::Vector, Elem> {
     auto old = std::move(vec[i]);
     vec[i] = std::forward<Q>(q);
     return old;
+  }
+
+  unit_t shuffle(const unit_t&) {
+    auto& vec = Super::getContainer();
+    std::random_device rd;
+    std::mt19937 g(rd());
+    std::shuffle(vec.begin(), vec.end(), g);
+    return unit_t{};
   }
 
   template<class Archive>

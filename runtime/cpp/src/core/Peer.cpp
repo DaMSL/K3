@@ -61,6 +61,10 @@ Peer::Peer(shared_ptr<ContextFactory> fac, const YAML::Node& config,
       logGlobals(true);
 #endif
     }
+
+#if defined(K3_LT_SAMPLE) || defined(K3_LT_HISTOGRAM)
+    lifetime::__active_lt_profiler.dump();
+#endif
     //catch (const std::exception& e) {
     //  logger_->error() << "Peer failed: " << e.what();
     //}
