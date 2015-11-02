@@ -257,7 +257,8 @@ public:
             }
         }
         else if (key == "seq_files") {
-          Node seqNode = param->second[0];
+          std::cout << "Seq Files:\n" << YAML::Dump(param->second) << std::endl;
+          Node seqNode = param->second;
           for(YAML::const_iterator it=seqNode.begin(); it!=seqNode.end(); ++it) {
             SeqFile f;
             auto d = *it;
@@ -269,6 +270,7 @@ public:
             }
             seqFiles.push_back(f);
           }
+          std::cout << "Built seq file list" << std::endl;
         }
 
         else if (key == "totalPeers")  {
