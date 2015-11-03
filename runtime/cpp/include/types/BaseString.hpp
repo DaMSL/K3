@@ -61,7 +61,7 @@ class base_string {
   }
 
   ~base_string() {
-    __lt_sentinel.object_size = length();
+    __lt_sentinel.object_size = length() + sizeof(buffer_);
     if (!is_borrowing()) {
       delete[] bufferp_();
     }
