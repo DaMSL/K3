@@ -78,8 +78,8 @@ def create_local_file(args):
     # dump out
     dump_yaml(peers2)
 
-def mk_k3_seq_files(num_switches, sw_index, path, inorder_path):
-    return {
+def mk_k3_seq_files(num_switches, sw_index, path):
+    return [{
         'switch_index': sw_index,
         'num_switches': num_switches,
         'paths':
@@ -88,11 +88,11 @@ def mk_k3_seq_files(num_switches, sw_index, path, inorder_path):
               os.path.join(path, 'lineitem'),
               os.path.join(path, 'orders'),
               os.path.join(path, 'part'),
+              os.path.join(path, 'partsupp'),
               os.path.join(path, 'supplier'),
-              os.path.join(path, 'partsupp')
                 ],
-        'inorder_path': inorder_path
-            }
+        'var': 'seqfiles'
+            }]
 
 def create_dist_file(args):
     num_switches = args.num_switches
@@ -110,7 +110,9 @@ def create_dist_file(args):
 
     switch_role = {'role': wrap_role(switch_role)}
     if args.csv_path:
-        switch_role['switch_path'] = csv_path
+        switch_role['switch_path'] = args.csv_path
+    if args.tpch_inorder_path:
+        switch_role['inorder'] = args.tpch_inorder_path
     switch_role.update(extra_args)
 
     node_role = {'role': wrap_role('node')}
@@ -119,7 +121,7 @@ def create_dist_file(args):
     switch1_env = {'peer_globals': [master_role, timer_role, switch_role]}
     if args.tpch_data_path:
         switch1_env['k3_seq_files'] = \
-          mk_k3_seq_files(num_switches, 0, args.tpch_data_path, args.tpch_inorder_path)
+          mk_k3_seq_files(num_switches, 0, args.tpch_data_path)
 
     switch_env  = {'k3_globals': switch_role}
     node_env    = {'k3_globals': node_role}
@@ -132,13 +134,13 @@ def create_dist_file(args):
     k3_roles = []
 
     k3_roles.append(('Master', 'qp3', 1, None, master_env))
-    k3_roles.append(('Timer', 'qp3', 1, None, timer_env))
+    k3_roles.append(('Timer', 'qp5', 1, None, timer_env))
 
     for i in range(num_switches):
         switch_env2 = copy.deepcopy(switch_env)
         if args.tpch_data_path:
             switch_env2['k3_seq_files'] = \
-                mk_k3_seq_files(num_switches, i, args.tpch_data_path, args.tpch_inorder_path)
+                mk_k3_seq_files(num_switches, i, args.tpch_data_path)
         k3_roles.append(('Switch' + str(i), switch_res.pop(0), 1, None, switch_env2))
 
     k3_roles.append(('Nodes', args.nmask, num_nodes, args.perhost, node_env))
