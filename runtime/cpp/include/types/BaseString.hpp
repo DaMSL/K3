@@ -61,7 +61,9 @@ class base_string {
   }
 
   ~base_string() {
+#if defined(K3_LT_SAMPLE) || defined(K3_LT_HISTOGRAM)
     __lt_sentinel.object_size = length() + sizeof(buffer_);
+#endif
     if (!is_borrowing()) {
       delete[] bufferp_();
     }
