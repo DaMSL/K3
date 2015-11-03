@@ -17,13 +17,6 @@
 
 namespace K3 {
   namespace lifetime {
-#if defined(K3_LT_SAMPLE)
-    extern thread_local sampler<> __active_lt_profiler;
-#endif
-
-#if defined(K3_LT_HISTOGRAM)
-    extern thread_local histogram __active_lt_profiler;
-#endif
   }
 
 Peer::Peer(shared_ptr<ContextFactory> fac, const YAML::Node& config,
@@ -71,10 +64,7 @@ Peer::Peer(shared_ptr<ContextFactory> fac, const YAML::Node& config,
       logGlobals(true);
 #endif
     }
-
-#if defined(K3_LT_SAMPLE) || defined(K3_LT_HISTOGRAM)
-    lifetime::__active_lt_profiler.dump();
-#endif
+    context_.reset();
     //catch (const std::exception& e) {
     //  logger_->error() << "Peer failed: " << e.what();
     //}

@@ -41,6 +41,10 @@ namespace K3 {
         step(true);
       }
 
+      ~sampler() {
+        dump();
+      }
+
       void step(bool initial = false) {
         w = (initial? 1 : w) * exp(log(u(gen))/static_cast<double>(n));
         S = std::floor( log(u(gen)) / log(1-w) );
@@ -85,6 +89,10 @@ namespace K3 {
           lbuckets(num_buckets(lifetime_spec)), obuckets(num_buckets(objsize_spec)),
           hdata(lbuckets * obuckets)
       {}
+
+      ~histogram() {
+        dump();
+      }
 
       void push(const lifetime_t& l, const size_t& o) {
         hdata[bucket_index(l, o)] += 1;
