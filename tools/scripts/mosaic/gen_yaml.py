@@ -100,15 +100,7 @@ def mk_k3_seq_files(num_switches, sw_index, path):
     return [{
         'switch_index': sw_index,
         'num_switches': num_switches,
-        'paths':
-            [ os.path.join(path, 'sentinel'),
-              os.path.join(path, 'customer'),
-              os.path.join(path, 'lineitem'),
-              os.path.join(path, 'orders'),
-              os.path.join(path, 'part'),
-              os.path.join(path, 'partsupp'),
-              os.path.join(path, 'supplier'),
-                ],
+        'paths': [ os.path.join(path, n) for n in tpch_names ],
         'var': 'seqfiles'
             }]
 
