@@ -151,15 +151,15 @@ def create_dist_file(args):
 
     k3_roles = []
 
-    k3_roles.append(('Master', 'qp3', 1, None, master_env))
-    k3_roles.append(('Timer', 'qp5', 1, None, timer_env))
-
     for i in range(num_switches):
         switch_env2 = copy.deepcopy(switch_env)
         if args.tpch_data_path:
             switch_env2['k3_seq_files'] = \
                 mk_k3_seq_files(num_switches, i, args.tpch_data_path)
         k3_roles.append(('Switch' + str(i), switch_res.pop(0), 1, None, switch_env2))
+
+    k3_roles.append(('Master', switch_res.pop(0), 1, None, master_env))
+    k3_roles.append(('Timer',  switch_res.pop(0), 1, None, timer_env))
 
     k3_roles.append(('Nodes', args.nmask, num_nodes, args.perhost, node_env))
 
