@@ -255,6 +255,7 @@ def gen_yaml(role_path, script_path)
     extra_args << "rebatch=" + $options[:batch_size]
   end
   extra_args << "do_poly_reserve=false" if $options[:no_poly_reserve]
+  extra_args << "do_profiling=true" if $options[:event_profile]
   # if we have more than 16 nodes, we need more buckets
   extra_args << "pmap_buckets=" + (num_nodes * 4).to_s if num_nodes > 16
   cmd << "--extra-args " << extra_args.join(',') << " " if extra_args.size > 0
@@ -687,7 +688,7 @@ end
 def main()
   $options = {}
   $options[:run_mode] = :dist
-  $options[:logging] = :final
+  $options[:logging] = :none
   $options[:profile] = :none
 
   uid = nil
@@ -727,6 +728,7 @@ def main()
     opts.on("--extreme",  "Query is of extreme skew (and size)") { $options[:skew] = :extreme}
     opts.on("--dry-run",  "Dry run for Mosaic deployment (generates K3 YAML topology)") { $options[:dry_run] = true}
     opts.on("--full-ktrace", "Turn on JSON logging for ktrace") { $options[:logging] = :full }
+    opts.on("--final-ktrace", "Turn on final JSON logging for ktrace") { $options[:logging] = :final }
     opts.on("--no-ktrace", "Turn off JSON logging for ktrace") { $options[:logging] = :none }
     opts.on("--perf-profile", "Turn on perf profiling") { $options[:profile] = :perf }
     opts.on("--dots", "Get the awesome dots") { $options[:dots] = true }
@@ -735,7 +737,9 @@ def main()
     opts.on("--no-correctives", "Run in no-corrective mode") { $options[:no_corrective] = true }
     opts.on("--batch-size [SIZE]", "Set the batch size") {|s| $options[:batch_size] = s }
     opts.on("--no-reserve", "Prevent reserve on the poly buffers") { $options[:no_poly_reserve] = true }
+    opts.on("--event-profile", "Run with event profiling") { $options[:event_profile] = true }
     opts.on("--raw-yaml [FILE]", "Supply a yaml file") { |s| $options[:raw_yaml_file] = s }
+
 
     # Compile args synonyms
     opts.on("--compileargs [STRING]", "Pass arguments to compiler (distributed only)") { |s| $options[:compileargs] = s }
