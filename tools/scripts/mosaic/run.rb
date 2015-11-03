@@ -227,7 +227,7 @@ end
 
 ### Deployment stage ###
 
-def gen_yaml(role_file, script_path)
+def gen_yaml(role_path, script_path)
   # Generate yaml file"
   num_nodes = 1
   if $options[:num_nodes] then num_nodes = $options[:num_nodes] end
@@ -260,7 +260,7 @@ def gen_yaml(role_file, script_path)
   cmd << "--extra-args " << extra_args.join(',') << " " if extra_args.size > 0
 
   yaml = run("#{File.join(script_path, "gen_yaml.py")} #{cmd}")
-  File.write(role_file, yaml)
+  File.write(role_path, yaml)
 end
 
 def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
@@ -396,7 +396,7 @@ def run_deploy_k3_local(bin_path, nice_name, script_path)
   args = ""
   args << "--json #{json_dist_path} " unless $options[:logging] == :none
   args << "--json_final_only " if $options[:logging] == :final
-  cmd_suffix = "#{bin_path} -p #{role_file} #{args}"
+  cmd_suffix = "#{bin_path} -p #{role_path} #{args}"
   perf_cmd = "perf record -F 10 -a --call-graph dwarf -- "
   run($options[:profile] == :perf ? perf_cmd + cmd_suffix : cmd_suffix)
 end
