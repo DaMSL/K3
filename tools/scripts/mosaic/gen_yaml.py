@@ -35,10 +35,27 @@ def parse_extra_args(args):
             extra_args[val[0]] = val[1]
     return extra_args
 
-def tpch_paths(p):
+tpch_names = ['sentinel', 'customer', 'lineitem', 'orders', 'part', 'partsupp', 'supplier']
+
+def tpch_paths_local(path):
+    tpch_files = {}
+    for nm in tpch_names:
+        tpch_files[nm] = []
+    for nm in tpch_names:
+        full_path = os.path.join(path, nm)
+        files = os.listdir(full_path)
+        for f in files:
+            fname = os.path.join(full_path, f)
+            if os.path.isfile(fname):
+                tpch_files[nm].append({'path':fname})
+    out = []
+    for nm in tpch_names:
+        out.append({'seq':tpch_files[nm]})
+
+    return out
+
+def tpch_paths_dist(p):
     files = []
-    names = ['psentinel.out', 'pcustomer.out', 'plineitem.out',
-             'porders.out', 'ppart.out', 'ppartsupp.out', 'psupplier.out']
     for n in names:
         files.append({'path': os.path.join(p, n)})
 
@@ -62,6 +79,7 @@ def create_local_file(args):
 
     # convert to dictionaries
     peers2 = []
+    seqfiles = tpch_paths_local(args.tpch_data_path)
     for (role, port) in peers:
         peer = {'role': wrap_role(role), 'me':address(port), 'peers':create_peers(peers)}
 
@@ -69,7 +87,7 @@ def create_local_file(args):
             if args.csv_path:
                 peer['switch_path'] = args.csv_path
             if args.tpch_data_path:
-                peer['files'] = tpch_paths(args.tpch_data_path)
+                peer['seqfiles'] = seqfiles
                 peer['inorder'] = args.tpch_inorder_path
 
         peer.update(extra_args)
