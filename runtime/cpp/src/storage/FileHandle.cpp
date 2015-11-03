@@ -26,9 +26,7 @@ unique_ptr<PackedValue> SourceFileHandle::doRead() {
   // Get value size
   size_t len;
 
-  file_ >> len;
-  // file_.read( (char *) len, 4);
-
+  file_.read((char *) &len, sizeof(len));
   // Allocate new value buffer
   char* buf = new char[sizeof(len) + len + 1];
   memcpy(buf, &len, sizeof(len));
@@ -80,8 +78,10 @@ bool SinkFileHandle::hasWrite() {
 }
 
 void SinkFileHandle::doWriteHelper(const PackedValue& val) {
-  file_ << val.length();
-  file_.write (val.buf(), val.length());
+  size_t len = val.length();
+  
+  file_.write((char *) &len, sizeof(len));
+  file_.write (val.buf(), len);
 }
 
 SinkTextHandle::SinkTextHandle (std::string path, CodecFormat fmt)
