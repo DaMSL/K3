@@ -243,8 +243,8 @@ def gen_yaml(role_file, script_path)
   else
     cmd << "--csv_path " << $options[:k3_csv_path] << " "
   end
-  cmd << "--multicore" if $options[:run_mode] == :multicore
-  cmd << "--dist" if $options[:run_mode] == :dist
+  cmd << "--multicore " if $options[:run_mode] == :multicore
+  cmd << "--dist " if $options[:run_mode] == :dist
 
   extra_args = []
   extra_args << "ms_gc_interval=" + $options[:gc_epoch] if $options[:gc_epoch]
