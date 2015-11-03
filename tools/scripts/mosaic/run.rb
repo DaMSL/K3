@@ -351,11 +351,11 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
 
 end
 
-def run_deploy_k3_remote(uid, server_url, bin_path, nice_name, script_path, full_ktrace, perf_profile)
+def run_deploy_k3_remote(uid, server_url, bin_path, nice_name, script_path, perf_profile)
   role_path = if $options[:raw_yaml_file] then $options[:raw_yaml_file] else File.join($workdir, nice_name + ".yaml") end
 
   # we can either have a uid from a previous stage, or send a binary and get a uid now
-  if uid.nil?
+  if uid.nil? || $options[:compile_local]
     stage "[5] Sending binary to mesos"
     res = curl(server_url, '/apps', file:bin_path, post:true, json:true)
     uid = res['uid']
@@ -370,7 +370,13 @@ def run_deploy_k3_remote(uid, server_url, bin_path, nice_name, script_path, full
   gen_yaml(role_path, script_path) unless $options[:raw_yaml_file]
 
   stage "[5] Creating new mesos job"
-  curl_args = full_ktrace ? {'jsonlog' => 'yes'} : {'jsonfinal' => 'yes'}
+  curl_args = {}
+  case $options[:logging]
+    when :full
+      curl_args['jsonlog'] = 'yes'
+    when :final
+      curl_args['jsonfinal'] = 'yes'
+  end
   if perf_profile
     curl_args['perfprofile'] = 'yes'
   end
@@ -927,9 +933,8 @@ def main()
     elsif $options[:run_mode] == :local
       run_deploy_k3_local(bin_path, nice_name, script_path)
     else
-      log = $options[:logging] == :full
       prof = $options[:profile] == :perf
-      run_deploy_k3_remote(uid, server_url, bin_path, nice_name, script_path, log, prof)
+      run_deploy_k3_remote(uid, server_url, bin_path, nice_name, script_path, prof)
     end
   end
 
