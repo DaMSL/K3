@@ -351,7 +351,7 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
 end
 
 def run_deploy_k3_remote(uid, server_url, bin_path, nice_name, script_path, full_ktrace, perf_profile)
-  role_path = File.join($workdir, nice_name + ".yaml")
+  role_path = if $options[:raw_yaml_file] then $options[:raw_yaml_file] else File.join($workdir, nice_name + ".yaml") end
 
   # we can either have a uid from a previous stage, or send a binary and get a uid now
   if uid.nil?
@@ -366,7 +366,7 @@ def run_deploy_k3_remote(uid, server_url, bin_path, nice_name, script_path, full
   uid_s = uid == "latest" ? "" : "/#{uid}"
 
   # Generate mesos yaml file"
-  gen_yaml(role_path, script_path)
+  gen_yaml(role_path, script_path) unless $options[:raw_yaml_file]
 
   stage "[5] Creating new mesos job"
   curl_args = full_ktrace ? {'jsonlog' => 'yes'} : {'jsonfinal' => 'yes'}
@@ -385,8 +385,8 @@ end
 
 # local deployment
 def run_deploy_k3_local(bin_path, nice_name, script_path)
-  role_file = File.join($workdir, nice_name + "_local.yaml")
-  gen_yaml(role_file, script_path)
+  role_path = if $options[:raw_yaml_file] then $options[:raw_yaml_file] else File.join($workdir, nice_name + "_local.yaml") end
+  gen_yaml(role_path, script_path) unless $options[:raw_yaml_file]
 
   json_dist_path = File.join($workdir, 'json')
 
@@ -735,6 +735,7 @@ def main()
     opts.on("--no-correctives", "Run in no-corrective mode") { $options[:no_corrective] = true }
     opts.on("--batch-size [SIZE]", "Set the batch size") {|s| $options[:batch_size] = s }
     opts.on("--no-reserve", "Prevent reserve on the poly buffers") { $options[:no_poly_reserve] = true }
+    opts.on("--raw-yaml [FILE]", "Supply a yaml file") { |s| $options[:raw_yaml_file] = s }
 
     # Compile args synonyms
     opts.on("--compileargs [STRING]", "Pass arguments to compiler (distributed only)") { |s| $options[:compileargs] = s }
@@ -917,8 +918,8 @@ def main()
 
   if $options[:deploy_k3]
     if $options[:dry_run]
-      role_file = File.join($workdir, nice_name + "_local.yaml")
-      gen_yaml(role_file, script_path)
+      role_path = if $options[:raw_yaml_file] then $options[:raw_yaml_file] else File.join($workdir, nice_name + "_local.yaml") end
+      gen_yaml(role_path, script_path) unless $options[:raw_yaml_file]
     elsif $options[:run_mode] == :local
       run_deploy_k3_local(bin_path, nice_name, script_path)
     else
