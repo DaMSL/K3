@@ -1,0 +1,22 @@
+annotation GPUVector give type a, b, c, d
+{
+
+  //////////////////////////////////////
+  // Currently for testing compiler tool
+  // chains, only provides several easy
+  // methods.... Those methods are done
+  // in host vector.
+  //////////////////////////////////////
+  provides lifted size : () -> int
+    with effects \_ -> R[self]
+
+  provides lifted insert : content -> ()
+    with effects \elem -> [R[self]; R[elem]; W[self]]
+
+  @:CArgs 2
+  provides lifted erase_at : int -> content
+    with effects \i -> \c -> [R[i]; R[c]; W[self]]
+
+}
+
+
