@@ -104,16 +104,23 @@ cppBinaryStage _ copts sourceFiles =
               runtimeFiles <- getDirectoryFiles (runtimePath copts) ["//*.cpp"]
               let runtimeFiles' = [runtimePre </> f | f <- pruneBadSubDirs runtimeFiles]
                   allFiles = runtimeFiles' ++ sourceFiles
-                  objects = [bDir </> src -<.> "o" | src <- allFiles]
+                  objects = [bDir </> src -<.> "cpp.o" | src <- allFiles]
               need objects
-              cmd cc ["-o"] [out] objects (filterLinkOptions $ words $ cppFlags $ cppOptions copts)
+              cmd nvcc ["-ccbin"] [cc] ["-o"] [out] objects (filterLinkOptions $ words $ cppFlags $ cppOptions copts)
 
-            bDir ++ "//*.o" *> \out -> do
-              let source = fixRuntime $ dropDirectory1 $ out -<.> "cpp"
-              let deps   = out -<.> "m"
+            bDir ++ "//*.cpp.o" *> \out -> do
+              let source = fixRuntime $ dropDirectory1 $ dropExtension $ out
+	      let deps   = out -<.> "m"
               () <- cmd cc ["-std=c++1y"] ["-c"] [source] ["-o"] [out] ["-MMD", "-MF"] [deps]
                       (filterCompileOptions $ words $ cppFlags $ cppOptions copts)
               needMakefileDependencies deps
+
+            bDir ++ "//*.cu.o" *> \out -> do
+	      let source = fixRuntime $ dropDirectory1 $ dropExtension $ out
+	      let deps   = out -<.> "m"
+	      () <- cmd nvcc ["-ccbin"] [cc] ["-c"] [source] ["-o"] [out] ["-m64"]
+	              (filterCompileOptions $ words $ cppFlags $ cppOptions copts)
+	      needMakefileDependencies deps
 
         fixRuntime x   = if isRuntime x then substRuntime x else x
         substRuntime x = runtimePath copts ++ drop runtimeLen x
@@ -143,6 +150,8 @@ cppBinaryStage _ copts sourceFiles =
         cc       = case ccCmd copts of
                     GCC   -> "g++"
                     Clang -> "clang++"
+
+        nvcc     = "nvcc"
 
 -- Generate C++ code for a given K3 program.
 compile :: Options -> CompileOptions -> CompileContinuation -> K3 Declaration -> IO ()
