@@ -112,6 +112,7 @@
              -F logging=[True | False]
              -F jsonlog=[True | False]
              -F jsonfinal=[True | False]
+             -F perfprofile=[True | False]
              -F http://<host>:<port>/jobs/<appName>/<appUID>
              NOTE: if appUID is omitted, job will be submitted to latest version of this app
 

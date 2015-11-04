@@ -1,3 +1,6 @@
+#ifdef _WIN32
+#include <winsock2.h>
+#endif //_WIN32
 #include <spdlog/spdlog.h>
 
 #include <algorithm>
@@ -58,6 +61,10 @@ Peer::Peer(shared_ptr<ContextFactory> fac, const YAML::Node& config,
       logGlobals(true);
 #endif
     }
+
+#if defined(K3_LT_SAMPLE) || defined(K3_LT_HISTOGRAM)
+    lifetime::__active_lt_profiler.dump();
+#endif
     //catch (const std::exception& e) {
     //  logger_->error() << "Peer failed: " << e.what();
     //}
@@ -90,7 +97,6 @@ bool Peer::finished() { return finished_.load(); }
 
 Address Peer::address() { return address_; }
 
-shared_ptr<ProgramContext> Peer::getContext() { return context_; }
 
 void Peer::processBatch() {
   size_t num = queue_->dequeueBulk(batch_);

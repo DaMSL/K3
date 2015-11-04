@@ -11,11 +11,13 @@
 FROM debian:sid
 
 ENV JEMALLOC_VER 4.0.0
+ENV JAVA_HOME /usr/lib/jvm/java-8-openjdk-amd64
+ENV PATH /software/bde-tools/bin:$PATH
 
 # Install basic packages to build the image
 RUN apt-get update && apt-get install -y \
   bzip2 unzip autoconf Libtool \
-  gcc g++ make cmake git curl wget \
+  gcc g++ openjdk-8-jre make cmake git curl wget sudo \
   libyaml-cpp-dev libunwind-dev\
   subversion
 
@@ -29,6 +31,16 @@ RUN wget http://sourceforge.net/projects/boost/files/boost/1.57.0/boost_1_57_0.t
   ./b2 install threading=multi link=shared && \
   cd .. && \
   rm -Rf boost_1_57_0
+
+# Install Bloomberg BSL and BDL
+RUN mkdir -p /software && cd /software                                         && \
+    git clone https://github.com/bloomberg/bde-tools.git                       && \
+    git clone https://github.com/bloomberg/bde.git                             && \
+    cd bde                                                                     && \
+    waf configure --targets=bsl,bdl --build-type=release --library-type=shared && \
+    waf build --targets=bsl,bdl --build-type=release --library-type=shared     && \
+    waf install --targets=bsl,bdl                                              && \
+    rm -Rf bde-tools bde
 
 # Install Google Regex (re2) lib
 RUN git clone https://github.com/google/re2.git && \
@@ -96,6 +108,8 @@ RUN apt-get install -y flex bison libelf-dev libaudit-dev libdw-dev binutils-dev
 # Copy in Mesos v0.22.1 libs
 ADD assets/libmesos-0.22.1.so /usr/lib/
 ADD assets/libmesos.la /usr/lib/
+ADD assets/bin/perfj /usr/bin/
+ADD assets/lib/perfj-1.0.jar /usr/lib/
 
 # Finish & Clean up
 RUN ln -s /usr/lib/libmesos-0.22.1.so /usr/lib/libmesos.so && \
@@ -116,3 +130,5 @@ RUN ln -s /usr/lib/libmesos-0.22.1.so /usr/lib/libmesos.so && \
     rm -rf /var/log/* && \
     rm -rf /usr/include/*
 
+# Add env variables for bloomberg
+ENV CPLUS_INCLUDE_PATH=/usr/local/include/bsl:/usr/local/include/bdl

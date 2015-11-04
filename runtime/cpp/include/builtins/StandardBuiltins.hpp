@@ -4,6 +4,7 @@
 #include <climits>
 #include <boost/thread/mutex.hpp>
 #include <boost/thread/thread.hpp>
+#include <random>
 
 #include "types/BaseString.hpp"
 #include "Common.hpp"
@@ -25,9 +26,14 @@ class StandardBuiltins {
   unit_t ignore(const T& t);
   template <class T>
   int hash(const T& t);
+  double randomFraction(unit_t);
+  int randomBinomial(int trials, double p);
+
  protected:
   Engine& __engine_;
   static boost::mutex __mutex_;
+  std::default_random_engine __rand_generator_;
+  std::uniform_real_distribution<double> __rand_distribution_;
 };
 
 template <class T>

@@ -12,7 +12,7 @@ import Control.Monad.State
 
 import Data.Char
 import Data.Maybe
-import qualified Data.Map as Map
+import Debug.Trace
 
 import Criterion.Measurement
 import Database.HsSqlPpp.Parser
@@ -39,6 +39,8 @@ import Language.K3.Metaprogram.Evaluation
 
 import Language.K3.Analysis.Core ( minimalProgramDecls )
 import Language.K3.Analysis.HMTypes.Inference ( inferProgramTypes, translateProgramTypes )
+
+import qualified Language.K3.Codegen.CPP.Materialization.Inference as MatI
 
 import qualified Language.K3.Codegen.KTrace.KTraceDB as KT ( kTrace )
 
@@ -74,9 +76,11 @@ reasonM msg m = withExceptT (msg ++) m
 transformM :: CompileStages -> K3 Declaration -> TransformM (K3 Declaration, [String])
 transformM cstages prog = foldM processStage (prog, []) cstages
   where
-    processStage (p,lg) SDeclPrepare     = chainLog   lg $ ST.runDeclPreparePassesM p
-    processStage (p,lg) (SDeclOpt cSpec) = wrapReport lg $ ST.runDeclOptPassesM cSpec Nothing p
-    processStage (p,lg) SCodegen         = chainLog   lg $ ST.runCGPassesM p
+    processStage (p,lg) SDeclPrepare           = trace "Running SDeclPrepare stage."     $ chainLog   lg $ ST.runDeclPreparePassesM p
+    processStage (p,lg) SCGPrepare             = trace "Running SCGPrepare stage."       $ chainLog   lg $ ST.runCGPreparePassesM p
+    processStage (p,lg) (SMaterialization dbg) = trace "Running SMaterialization stage." $ chainLog   lg $ ST.materializationPass dbg (MatI.prepareInitialIState dbg p) p
+    processStage (p,lg) SCodegen               = trace "Running SCodegen stage."         $ chainLog   lg $ ST.runCGPassesM p
+    processStage (p,lg) (SDeclOpt cSpec)       = wrapReport lg $ ST.runDeclOptPassesM cSpec Nothing p
 
     chainLog   lg m = m >>= return . (,lg)
     wrapReport lg m = m >>= \np -> get >>= \st -> return (np, lg ++ (prettyLines $ ST.report st))
@@ -112,11 +116,11 @@ printTransformReport rp = do
   putStrLn $ boxToString rp
   where sep = replicate 20 '='
 
-printMinimal :: IOOptions -> ParseOptions -> ([String], [(String, K3 Declaration)]) -> IO ()
+printMinimal :: IOOptions -> ParseOptions -> ([String], [(String, (String, K3 Declaration))]) -> IO ()
 printMinimal ioOpts pOpts (userdecls, reqdecls) = do
   putStrLn $ unwords $ ["Declarations needed for:"] ++ userdecls
   putStrLn $ unlines $ map fst reqdecls
-  k3outIO ioOpts pOpts $ DC.role defaultRoleName $ map snd reqdecls
+  k3outIO ioOpts pOpts $ DC.role defaultRoleName $ map (snd . snd) reqdecls
 
 
 -- | AST formatting.
@@ -196,7 +200,7 @@ parse ioOpts pOpts prog = do
 
 -- | Program minimization.
 minimize :: ParseOptions -> (K3 Declaration, [String])
-         -> DriverM (Either (K3 Declaration, [String]) ([String], [(String, K3 Declaration)]))
+         -> DriverM (Either (K3 Declaration, [String]) ([String], [(String, (String, K3 Declaration))]))
 minimize (poMinimize -> userdecls) (p,rp) =
   if null userdecls
     then return $ Left (p,rp)

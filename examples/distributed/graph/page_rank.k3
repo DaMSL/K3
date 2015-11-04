@@ -56,8 +56,8 @@ declare peer_by_vertex: vertex -> int = \v -> ((v % peers.size ()))
 declare validate_vertex_partition: () -> () = \_ -> (
   let myIndex = (range (peers.size ())).fold
     (\a -> \i ->
-      case peers.at i.i of
-        { Some p -> if p.addr == me then i.i else a }
+      case peers.at i.elem of
+        { Some p -> if p.addr == me then i.elem else a }
         { None -> error () }
     )
     (-1)
@@ -71,11 +71,11 @@ declare validate_vertex_partition: () -> () = \_ -> (
 declare send_by_peer: () -> () = \_ -> (
     (range (peers.size ())).iterate (\i -> (
       (consolidated_outgoing.lookup_with2
-         { key: i.i, value: empty { key: vertex, value: page_rank} @IntMap }
-         (\_ -> peers.at_with i.i (\p -> (gather, p.addr) <- empty { key: vertex, value: page_rank} @IntMap ) )
-         (\b -> peers.at_with i.i (\p -> (gather, p.addr) <- b.value ) )
+         { key: i.elem, value: empty { key: vertex, value: page_rank} @IntMap }
+         (\_ -> peers.at_with i.elem (\p -> (gather, p.addr) <- empty { key: vertex, value: page_rank} @IntMap ) )
+         (\b -> peers.at_with i.elem (\p -> (gather, p.addr) <- b.value ) )
       );
-      (peers.at_with i.i (\p -> (gatherSinks, p.addr) <- outgoingSinkContribs))
+      (peers.at_with i.elem (\p -> (gatherSinks, p.addr) <- outgoingSinkContribs))
       )
     )
 )

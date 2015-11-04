@@ -18,12 +18,21 @@ class StorageManager {
       files_ = make_shared<ConcurrentMap<pair<Address, Identifier>, shared_ptr<FileHandle>>> ();
       logger_ = spdlog::get("engine");
   }
+
+  ~StorageManager() {
+      files_->apply([](auto& filemap){
+        for (auto elem : filemap) { elem.second->close(); }
+      });
+  }
+
   void openFile(Address peer, Identifier id, std::string path,
-                      StorageFormat fmt, CodecFormat codec, IOMode io);
+                StorageFormat fmt, CodecFormat codec, IOMode io);
+
   void closeFile(Address peer, Identifier id);
 
   // Reading
   bool hasRead(Address peer, Identifier id);
+
   template <class T>
   T doRead(Address peer, Identifier id) {
     try {
@@ -32,8 +41,9 @@ class StorageManager {
       return std::move(*unpack<T>(std::move(pval)));
     }
     catch (std::ios_base::failure e) {
-      logger_->error ("ERROR Reading from {}", id);
-      throw std::runtime_error ("File I/O Error. Program is Halting.");
+      logger_->error ("ERROR: Reading from {}", id);
+      throw e;
+      //throw std::runtime_error ("File I/O Error. Program is Halting.");
     }
   }
 
@@ -53,8 +63,8 @@ class StorageManager {
       }
     }
     catch (std::exception e)  {
-      logger_->error ("ERROR Reading from {}", id);
-      throw std::runtime_error ("File I/O Error. Program is Halting.");
+      logger_->error ("ERROR: Reading from {}", id);
+      throw e;
     }
     return std::move(vals);
   }

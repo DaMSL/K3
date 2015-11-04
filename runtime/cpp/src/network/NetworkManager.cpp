@@ -7,6 +7,8 @@
 
 namespace K3 {
 
+std::atomic<unsigned long> NetworkManager::timer_cnt_(0);
+
 NetworkManager::NetworkManager() {
   logger_ = spdlog::get("engine");
   if (!logger_) {
@@ -21,6 +23,7 @@ NetworkManager::NetworkManager() {
   external_out_conns_ = make_shared<ExternalConnectionMap>();
   internal_format_ = K3_INTERNAL_FORMAT;
   running_ = true;
+  timers_ = make_shared<TimerMap>();
   for (int i = 0; i < 4; i ++) {
     addThread();
   }
@@ -61,7 +64,7 @@ void NetworkManager::listenInternal(shared_ptr<Peer> peer) {
   shared_ptr<ListenerMap> listener_map = internal_listeners_;
   auto e_handler =
       make_shared<ErrorHandler>([listener_map, listen_addr](boost_error ec) {
-        std::cout << "Listener error handler: " << ec.message() << std::endl;
+        throw std::runtime_error("Listener error handler: " + ec.message());
         listener_map->erase(listen_addr);
       });
   listener->acceptConnection(e_handler);
@@ -84,7 +87,7 @@ void NetworkManager::listenExternal(shared_ptr<Peer> peer, Address listen_addr,
   shared_ptr<ListenerMap> listener_map = external_listeners_;
   auto e_handler =
       make_shared<ErrorHandler>([listener_map, listen_addr](boost_error ec) {
-        std::cout << "Listener error handler: " << ec.message() << std::endl;
+        throw std::runtime_error("Listener error handler: " + ec.message());
         listener_map->erase(listen_addr);
       });
   listener->acceptConnection(e_handler);
@@ -98,7 +101,7 @@ void NetworkManager::sendInternal(const Address& dst, shared_ptr<NetworkMessage>
   // Send, removing the connection upon error
   shared_ptr<InternalConnectionMap> conn_map = internal_out_conns_;
   auto e_handler = make_shared<ErrorHandler>([conn_map, dst, pm](boost_error ec) {
-    std::cout << "Send error: " << ec.message() << std::endl;
+    throw std::runtime_error("Send error: "  + ec.message());
     conn_map->erase(dst);
   });
 
@@ -114,7 +117,7 @@ void NetworkManager::sendExternal(const Address& addr,
   // Send, removing the connection upon error
   shared_ptr<ExternalConnectionMap> conn_map = external_out_conns_;
   auto e_handler = make_shared<ErrorHandler>([addr, conn_map](boost_error ec) {
-    std::cout << "Send error: " << ec.message() << std::endl;
+    throw std::runtime_error("Send error: " + ec.message());
     conn_map->erase(addr);
   });
 
@@ -147,6 +150,45 @@ shared_ptr<ExternalOutgoingConnection> NetworkManager::connectExternal(
 
 void NetworkManager::addThread() {
   threads_->create_thread([this]() { io_service_->run(); });
+}
+
+std::shared_ptr<TimerKey>
+NetworkManager::timerKey(const TimerType& ty, const Address& src, const Address& dst, const TriggerID& trig)
+{
+  std::shared_ptr<TimerKey> key;
+  switch (ty) {
+    case TimerType::Delay:
+      key = std::make_shared<DelayTimerT>(timer_cnt_.fetch_add(1UL));
+
+    case TimerType::DelayOverride:
+      key = std::make_shared<DelayOverrideT>(dst, trig);
+
+    case TimerType::DelayOverrideEdge:
+      key = std::make_shared<DelayOverrideEdgeT>(src, dst, trig);
+
+    default:
+      break;
+  }
+
+  if ( !key ) { throw std::runtime_error("Invalid timer type"); }
+  return key;
+}
+
+void NetworkManager::addTimer(std::shared_ptr<TimerKey> k, const Delay& delay)
+{
+  auto& ios = *io_service_;
+  timers_->apply([k, &ios, &delay](auto& map) mutable {
+    auto it = map.find(k);
+    if ( it == map.end() ) {
+      map[k] = std::move(std::make_unique<Timer>(ios, delay));
+    } else {
+      size_t num_expired = it->second->expires_from_now(delay);
+    }
+  });
+}
+
+void NetworkManager::removeTimer(std::shared_ptr<TimerKey> k) {
+  timers_->erase(k);
 }
 
 }  // namespace K3

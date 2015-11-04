@@ -52,7 +52,6 @@ import Data.Serialize
 import Data.List
 import Data.Tree
 import Data.Typeable
-import Data.Word (Word8)
 
 import qualified Data.Map as M
 

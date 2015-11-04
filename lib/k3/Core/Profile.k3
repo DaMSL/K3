@@ -1,4 +1,5 @@
 include "Annotation/Map.k3"
+include "Annotation/Vector.k3"
 include "Core/Barrier.k3"
 include "Core/Builtins.k3"
 
@@ -122,5 +123,54 @@ control CollectProfile[lbls: [label], coordinator: expr, nodes: expr, next: expr
       )); $[next]
       ) @OnCounter(id=[# global_profiles_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
     )
+  }
+}
+
+// Mosaic profiling.
+// This expects a 'mosaic_event_sink' to be defined.
+
+control MosaicPreEvent[lbl:label, tl:expr, ve:expr, ce:expr]
+{
+  ?e @:Flush => ($[lbl]_event_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
+                ($[lbl]_event_buffer.clear());
+                $.[e]
+  +> {}
+
+  ?e => (if ($[lbl]_event_sample_mod == 0 or $[ve] % $[lbl]_event_sample_mod == 0)
+         then (
+          ($[lbl]_event_buffer.insert {etag: $[tl], evid: $[ve], pcomponent: $[ce], t: now_int()});
+          (if $[lbl]_event_buffer.size() >= $[lbl]_event_buffer_batch_sz
+            then ($[lbl]_event_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
+                  $[lbl]_event_buffer.clear()
+            else ())
+        ) else ());
+        $.[e]
+  +> {
+    declare $[lbl]_event_buffer : collection {etag: int, evid: int, pcomponent: int, t: int} @Vector
+    declare $[lbl]_event_buffer_batch_sz : mut int = 1000
+    declare $[lbl]_event_sample_mod      : mut int = 5
+  }
+}
+
+control MosaicPostEvent[lbl:label, tl:expr, ve:expr, ce:expr]
+{
+  ?e @:Flush => ($[lbl]_event_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
+                ($[lbl]_event_buffer.clear());
+                $.[e]
+  +> {}
+
+  ?e => ( $.[e] );
+        (if ($[lbl]_event_sample_mod == 0 or $[ve] % $[lbl]_event_sample_mod == 0)
+         then (
+          ($[lbl]_event_buffer.insert {etag: $[tl], evid: $[ve], pcomponent: $[ce], t: now_int()});
+          (if $[lbl]_event_buffer.size() >= $[lbl]_event_buffer_batch_sz
+            then ($[lbl]_event_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
+                  $[lbl]_event_buffer.clear()
+            else ())
+        ) else ())
+  +> {
+    declare $[lbl]_event_buffer : collection {etag:int, evid:int, pcomponent:int, t:int} @Vector
+    declare $[lbl]_event_buffer_batch_sz : mut int = 1000
+    declare $[lbl]_event_sample_mod      : mut int = 5
   }
 }

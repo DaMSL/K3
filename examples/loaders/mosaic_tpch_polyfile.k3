@@ -1,0 +1,498 @@
+include "Annotation/Vector.k3"
+include "Annotation/FlatPolyBuffer.k3"
+include "Core/Builtins.k3"
+
+// Mosaic TPCH loader.
+// This can generate insert-only files, delete-only files, and
+// insert+delete files with a count-based delete lag, per relation
+// (e.g., lineitem deletes 2000 tuples after the insert).
+//
+declare batch_sz  : mut int   = 100
+
+declare files     : collection {path: string} @Collection
+
+typedef fileseq   = collection {path: string} @Collection
+declare seqfiles  : collection {seq: fileseq} @Collection
+
+// Parameters for generating separate delete files.
+declare as_insert_file : mut bool = true
+
+// Parameters for generating deletes with inserts.
+declare with_inline_deletes : mut bool  = false
+declare delete_lag          : mut int   = 2000
+
+// Multiplexing order file
+declare inorder  : mut string = "in_order.csv"
+declare outorder : mut string = "out_order.csv"
+
+control ConvertPSVToFPB [on_batch_fn: expr, batch_size: expr, batch_buffer: expr, sink_trig: expr]
+{
+ ?loader ?files (?col : collection ?t)
+ => print "Loading files:";
+    ($.[files].iterate (\f -> print ("  " ++ f.path)));
+    $.[loader] $.[files] $.[col];
+    print ("Loaded: " ++ (itos ($.[col].size())) ++ " tuples.");
+    let last_batch =
+      $.[col].fold
+        (\acc -> \e -> (
+          if acc.size() < $[batch_size]
+          then ((acc.insert e); acc)
+          else ( (tuple_count = tuple_count + (acc.size()));
+                 (batch_count = batch_count + 1);
+                 ($[on_batch_fn] acc (acc.size()));
+                 (($[sink_trig], me) <- $[batch_buffer].save());
+                 ($[batch_buffer].clear());
+                 let emp = empty $::[t] @Collection in
+                 ((emp.insert e); emp)
+               )
+        )) empty $::[t] @Collection
+    in
+    ( (tuple_count = tuple_count + (last_batch.size()));
+      (batch_count = batch_count + 1);
+      ($[on_batch_fn] last_batch (last_batch.size()));
+      (($[sink_trig], me) <- $[batch_buffer].save());
+      ($[batch_buffer].clear());
+      (print ("Saved: " ++ (itos tuple_count) ++ " tuples."));
+       print ("Saved: " ++ (itos batch_count) ++ " batches.") )
+ +> {
+    declare tuple_count: mut int = 0
+    declare batch_count: mut int = 0
+ }
+}
+
+control DeleteWindow[window_elem_fn: expr]
+{
+  ?e => (if with_inline_deletes then (
+          if (tuple_count < delete_lag)
+          then ()
+          else (let start = tuple_count - delete_lag
+                in (range batch_size).iterate $[window_elem_fn])
+        ) else ());
+        $.[e]
+  +> {}
+}
+
+
+/////////////////
+// Typedefs.
+
+// Schema types for PSV loading.
+typedef customer_r = { rb:int, rc:string, rd:string, re:int, rf:string, rg:real, rh:string, ri:string }
+typedef lineitem_r = { rb:int, rc:int, rd:int, re:int, rf:real, rg:real, rh:real, ri:real, rj:string,
+                       rk:string, rl:int, rm:int, rn:int, ro:string, rp:string, rq:string }
+typedef orders_r   = { rb:int, rc:int, rd:string, re:real, rf:int, rg:string, rh:string, ri:int, rj:string }
+typedef part_r     = { rb:int, rc:string, rd:string, re:string, rf:string, rg:int, rh:string, ri:real, rj:string }
+typedef partsupp_r = { rb:int, rc:int, rd:int, re:real, rf:string }
+typedef supplier_r = { rb:int, rc:string, rd:string, re:int, rf:string, rg:real, rh:string }
+
+
+// Schema types with booleans to indiciate insert/delete.
+typedef customer_rb = { ra:bool, rb:int, rc:string, rd:string, re:int, rf:string, rg:real, rh:string, ri:string }
+typedef lineitem_rb = { ra:bool, rb:int, rc:int, rd:int, re:int, rf:real, rg:real, rh:real, ri:real, rj:string,
+                        rk:string, rl:int, rm:int, rn:int, ro:string, rp:string, rq:string }
+typedef orders_rb   = { ra:bool, rb:int, rc:int, rd:string, re:real, rf:int, rg:string, rh:string, ri:int, rj:string }
+typedef part_rb     = { ra:bool, rb:int, rc:string, rd:string, re:string, rf:string, rg:int, rh:string, ri:real, rj:string }
+typedef partsupp_rb = { ra:bool, rb:int, rc:int, rd:int, re:real, rf:string }
+typedef supplier_rb = { ra:bool, rb:int, rc:string, rd:string, re:int, rf:string, rg:real, rh:string }
+
+
+typedef lineitem_bag    = collection lineitem_r    @Collection
+typedef customer_bag    = collection customer_r    @Collection
+typedef orders_bag      = collection orders_r      @Collection
+typedef supplier_bag    = collection supplier_r    @Collection
+typedef partsupp_bag    = collection partsupp_r    @Collection
+typedef part_bag        = collection part_r        @Collection
+typedef tpch_agenda_bag = collection tpch_agenda_r @Collection
+
+
+/////////////////
+// PSV loaders.
+
+@:CArgs 2
+declare lineitemLoaderP : collection {path: string} @Collection -> lineitem_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare customerLoaderP : collection {path: string} @Collection -> customer_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare ordersLoaderP : collection {path: string} @Collection -> orders_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare supplierLoaderP : collection {path: string} @Collection -> supplier_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare partsuppLoaderP : collection {path: string} @Collection -> partsupp_bag -> ()
+  with effects \_ -> \_ -> io
+
+@:CArgs 2
+declare partLoaderP : collection {path: string} @Collection -> part_bag -> ()
+  with effects \_ -> \_ -> io
+
+
+//////////////////////////////////
+// Tag and variant definitions.
+
+declare sentinel_tag : int = 0
+declare customer_tag : int = 1
+declare lineitem_tag : int = 2
+declare orders_tag :   int = 3
+declare part_tag :     int = 4
+declare partsupp_tag : int = 5
+declare supplier_tag : int = 6
+
+typedef poly_tpch = collection {elem : ()} @FlatPolyBuffer(
+  variants=[:#>
+    sentinel => { elem:() }  : 0,
+    customer => customer_rb  : 1,
+    lineitem => lineitem_rb  : 2,
+    orders   => orders_rb    : 3,
+    part     => part_rb      : 4,
+    partsupp => partsupp_rb  : 5,
+    supplier => supplier_rb  : 6
+  ])
+
+
+//////////////////////////
+// Global datastructures.
+
+declare buffer : poly_tpch
+
+declare lineitem : lineitem_bag
+declare customer : customer_bag
+declare orders   : orders_bag
+declare supplier : supplier_bag
+declare partsupp : partsupp_bag
+declare part     : part_bag
+
+
+///////////////////////
+// Batch constructors.
+
+declare lineitem_fpb : lineitem_bag -> int -> () = \c -> \batch_size -> (
+  (c.iterate (\r -> buffer.append_lineitem
+    {ra:as_insert_file,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh,
+     ri:r.ri,rj:r.rj,rk:r.rk,rl:r.rl,rm:r.rm,rn:r.rn,ro:r.ro,rp:r.rp,rq:r.rq}));
+
+  buffer.unpack() @DeleteWindow(
+    window_elem_fn = [$
+      (\i ->
+        lineitem.safe_at (start + i.elem) (\_ -> ()) (\r ->
+          buffer.append_lineitem
+            {ra:false,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh,
+             ri:r.ri,rj:r.rj,rk:r.rk,rl:r.rl,rm:r.rm,rn:r.rn,ro:r.ro,rp:r.rp,rq:r.rq}
+        ))])
+)
+
+declare customer_fpb : customer_bag -> int -> () = \c -> \batch_size -> (
+  (c.iterate (\r -> buffer.append_customer
+    {ra:as_insert_file,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh,ri:r.ri}));
+
+  buffer.unpack() @DeleteWindow(
+    window_elem_fn = [$
+      (\i ->
+        customer.safe_at (start + i.elem) (\_ -> ()) (\r ->
+          buffer.append_customer
+            {ra:false,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh,ri:r.ri}
+        ))])
+)
+
+declare orders_fpb : orders_bag -> int -> () = \c -> \batch_size -> (
+  (c.iterate (\r -> buffer.append_orders
+    {ra:as_insert_file,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh,ri:r.ri,rj:r.rj}));
+
+  buffer.unpack() @DeleteWindow(
+    window_elem_fn = [$
+      (\i ->
+        orders.safe_at (start + i.elem) (\_ -> ()) (\r ->
+          buffer.append_orders
+            {ra:false,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh,ri:r.ri,rj:r.rj}
+        ))])
+)
+
+declare supplier_fpb : supplier_bag -> int -> () = \c -> \batch_size -> (
+  (c.iterate (\r -> buffer.append_supplier
+    {ra:as_insert_file,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh}));
+
+  buffer.unpack() @DeleteWindow(
+    window_elem_fn = [$
+      (\i ->
+        supplier.safe_at (start + i.elem) (\_ -> ()) (\r ->
+          buffer.append_supplier
+            {ra:false,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh}
+        ))])
+)
+
+declare partsupp_fpb : partsupp_bag -> int -> () = \c -> \batch_size -> (
+  (c.iterate (\r -> buffer.append_partsupp
+    {ra:as_insert_file,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf}));
+
+  buffer.unpack() @DeleteWindow(
+    window_elem_fn = [$
+      (\i ->
+        partsupp.safe_at (start + i.elem) (\_ -> ()) (\r ->
+          buffer.append_partsupp {ra:false,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf}
+        ))])
+)
+
+declare part_fpb : part_bag -> int -> () = \c -> \batch_size -> (
+  (c.iterate (\r -> buffer.append_part
+    {ra:as_insert_file,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh,ri:r.ri,rj:r.rj}));
+
+  buffer.unpack() @DeleteWindow(
+    window_elem_fn = [$
+      (\i ->
+        part.safe_at (start + i.elem) (\_ -> ()) (\r ->
+          buffer.append_part
+            {ra:false,rb:r.rb,rc:r.rc,rd:r.rd,re:r.re,rf:r.rf,rg:r.rg,rh:r.rh,ri:r.ri,rj:r.rj}
+        ))])
+)
+
+trigger convert_lineitem : () = \_ -> (
+  ( lineitemLoaderP files lineitem
+  ) @ConvertPSVToFPB(
+      on_batch_fn  = [$ lineitem_fpb ],
+      batch_size   = [$ batch_sz ],
+      batch_buffer = [$ buffer ],
+      sink_trig    = [$ lsink ]
+  );
+  (halt, me) <- () delay 2s
+)
+
+trigger convert_customer : () = \_ -> (
+  ( customerLoaderP files customer
+  ) @ConvertPSVToFPB(
+      on_batch_fn  = [$ customer_fpb ],
+      batch_size   = [$ batch_sz ],
+      batch_buffer = [$ buffer ],
+      sink_trig    = [$ csink ]
+  );
+  (halt, me) <- () delay 2s
+)
+
+trigger convert_orders : () = \_ -> (
+  ( ordersLoaderP files orders
+  ) @ConvertPSVToFPB(
+      on_batch_fn  = [$ orders_fpb ],
+      batch_size   = [$ batch_sz ],
+      batch_buffer = [$ buffer ],
+      sink_trig    = [$ osink ]
+  );
+  (halt, me) <- () delay 2s
+)
+
+trigger convert_supplier : () = \_ -> (
+  ( supplierLoaderP files supplier
+  ) @ConvertPSVToFPB(
+      on_batch_fn  = [$ supplier_fpb ],
+      batch_size   = [$ batch_sz ],
+      batch_buffer = [$ buffer ],
+      sink_trig    = [$ ssink ]
+  );
+  (halt, me) <- () delay 2s
+)
+
+trigger convert_partsupp : () = \_ -> (
+  ( partsuppLoaderP files partsupp
+  ) @ConvertPSVToFPB(
+      on_batch_fn  = [$ partsupp_fpb ],
+      batch_size   = [$ batch_sz ],
+      batch_buffer = [$ buffer ],
+      sink_trig    = [$ pssink ]
+  );
+  (halt, me) <- () delay 2s
+)
+
+trigger convert_part : () = \_ -> (
+  ( partLoaderP files part
+  ) @ConvertPSVToFPB(
+      on_batch_fn  = [$ part_fpb ],
+      batch_size   = [$ batch_sz ],
+      batch_buffer = [$ buffer ],
+      sink_trig    = [$ psink ]
+  );
+  (halt, me) <- () delay 2s
+)
+
+trigger create_sentinel_file : () = \_ -> (
+  (buffer.append_sentinel {elem:()});
+  (buffer.unpack());
+  ((stsink, me) <- buffer.save());
+  (buffer.clear());
+  (halt, me) <- () delay 2s
+)
+
+// Counters used for both loading, and order file generation.
+declare numst : mut int = 0
+declare numli : mut int = 0
+declare numcs : mut int = 0
+declare numor : mut int = 0
+declare numsu : mut int = 0
+declare numps : mut int = 0
+declare numpt : mut int = 0
+
+// Create a random multiplexer order file by sampling from a
+// categorical distribution with parameters corresponding to
+// the weights in the batch counts (numli,numcs,...) above.
+//
+// This is taken from the 'draw_categorical' pseudocode at:
+// https://en.wikipedia.org/wiki/Categorical_distribution
+//
+declare dcg_n : mut int  = 100
+declare dcg_r : mut real = 1.0
+declare dcg_s : mut int  = 0
+
+declare mux_order : mut collection {elem: int} @Vector
+declare mux_cnt   : mut int = 0
+
+declare get_categorical_weight : real -> int -> real = \n -> \i -> (
+  (     if i == 0 then numli
+   else if i == 1 then numcs
+   else if i == 2 then numor
+   else if i == 3 then numsu
+   else if i == 4 then numps
+   else if i == 5 then numpt
+   else                0
+  ) / n
+)
+
+trigger create_random_mux_order_file : () = \_ -> (
+  let nbatches = 1.0 * (numli + numcs + numor + numsu + numps + numpt) in (
+    dcg_r = 1.0;
+    dcg_s = 0;
+
+    // Draw samples.
+    (range 6).iterate (\r ->
+      let p = get_categorical_weight nbatches r.elem in
+      let v = randomBinomial dcg_n (p / dcg_r) in (
+      (print ("Mux idx: " ++ (itos (r.elem + 1)) ++ "p: " ++ (rtos p) ++ " v: " ++ (itos v)));
+      (range v).iterate (\s -> (
+        mux_order.insert_at dcg_s {elem: r.elem + 1};
+        dcg_s = dcg_s + 1 ));
+      dcg_n = dcg_n - v;
+      dcg_r = dcg_r - p)
+    );
+
+    // Shuffle the order vector, and push its elements to a sink.
+    print ("Created order vector with " ++ (itos (mux_order.size())) ++ " elements.");
+    (mux_order.shuffle ());
+    (mux_order.iterate (\r -> (muxsink, me) <- r.elem));
+    ((muxsink, me) <- 0);
+    (halt, me) <- () delay 2s
+  )
+)
+
+declare get_batch_count : int -> int = \i -> (
+        if i == 0 then numcs
+   else if i == 1 then numli
+   else if i == 2 then numor
+   else if i == 3 then numpt
+   else if i == 4 then numps
+   else if i == 5 then numsu
+   else                0
+)
+
+trigger create_exact_mux_order_file : () = \_ -> (
+  (range 6).iterate (\r ->
+    let v = get_batch_count r.elem in
+    (range v).iterate (\s -> (
+      mux_order.insert_at mux_cnt {elem: r.elem + 1};
+      mux_cnt = mux_cnt + 1))
+  );
+
+  // Shuffle the order vector, and push its elements to a sink.
+  print ("Created order vector with " ++ (itos (mux_order.size())) ++ " elements.");
+  (mux_order.shuffle ());
+  (mux_order.iterate (\r -> (muxsink, me) <- r.elem));
+  ((muxsink, me) <- 0);
+  (halt, me) <- () delay 2s
+)
+
+// Loader trigger for simple count-based file verification.
+trigger load_tpch : poly_tpch = \buf -> (
+  (buf.iterate (\tg -> \idx -> \offset ->
+      if tg == 0 then (numst = numst + 1)
+      else if tg == customer_tag then (numcs = numcs + 1)
+      else if tg == lineitem_tag then (numli = numli + 1)
+      else if tg == orders_tag then (numor = numor + 1)
+      else if tg == part_tag then (numpt = numpt + 1)
+      else if tg == partsupp_tag then (numps = numps + 1)
+      else if tg == supplier_tag then (numsu = numsu + 1)
+      else ( print ("Unknown tag " ++ (itos tg)) )
+    ));
+
+  // Halt the engine if no other load event overrides this in 5 seconds.
+  (halt, me) <- () delay override 5s
+)
+
+trigger halt : () = \_ -> (
+  (print ("Loaded " ++
+          "  numli: " ++ (itos numli) ++ "\\n" ++
+          "  numcs: " ++ (itos numcs) ++ "\\n" ++
+          "  numor: " ++ (itos numor) ++ "\\n" ++
+          "  numsu: " ++ (itos numsu) ++ "\\n" ++
+          "  numps: " ++ (itos numps) ++ "\\n" ++
+          "  numpt: " ++ (itos numpt) ++ "\\n" ++
+          "  numst: " ++ (itos numst) ++ "\\n"
+    ));
+  haltEngine()
+)
+
+
+sink lsink   : string = file "plineitem.out" binary raw
+sink csink   : string = file "pcustomer.out" binary raw
+sink osink   : string = file "porders.out"   binary raw
+sink ssink   : string = file "psupplier.out" binary raw
+sink pssink  : string = file "ppartsupp.out" binary raw
+sink psink   : string = file "ppart.out"     binary raw
+sink stsink  : string = file "psentinel.out" binary raw
+sink muxsink : int    = file outorder text csv
+
+
+// Use the go_* roles to create binary FPB files for specific relations.
+
+source go_lineitem : () = value ()
+feed go_lineitem |> convert_lineitem
+
+source go_customer : () = value ()
+feed go_customer |> convert_customer
+
+source go_orders : () = value ()
+feed go_orders |> convert_orders
+
+source go_supplier : () = value ()
+feed go_supplier |> convert_supplier
+
+source go_partsupp : () = value ()
+feed go_partsupp |> convert_partsupp
+
+source go_part : () = value ()
+feed go_part |> convert_part
+
+
+// Use this role to create a sentinel file.
+
+source go_sentinel : () = value ()
+feed go_sentinel |> create_sentinel_file
+
+
+// Use this role, along with the numli, numcs, etc. values to create
+// a randomly multiplexed order file.
+
+source go_random_mux : () = value ()
+feed go_random_mux |> create_random_mux_order_file
+
+source go_exact_mux : () = value ()
+feed go_exact_mux |> create_exact_mux_order_file
+
+// Use this role to verify FPB files by counting batches.
+declare rebatch : mut int = 0
+
+source load : poly_tpch = polyfile files binary raw inorder rebatch
+feed load |> load_tpch
+
+source loadseq : poly_tpch = polyfileseq seqfiles binary raw inorder rebatch
+feed loadseq |> load_tpch

@@ -12,6 +12,9 @@ annotation MapCE[key: type, value: type] given type a,b,c,d
   provides lifted size : () -> int
     with effects \_ -> R[self]
 
+  provides lifted clear : () -> ()
+    with effects \_ -> [R[self]; W[self]]
+
   //////////////////////////////////////////////////////////
   // Map retrieval, with explicit keys.
 

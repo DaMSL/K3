@@ -822,7 +822,7 @@ instance Pretty CandidateTree where
       ++ (indent 2 $ concatMap prettyCandidates cands)
       ++ drawSubTrees ch
 
-    where prettyCandidates (e, cnt) = [show cnt ++ " "] %+ prettyLines e
+    where prettyCandidates (e, cnt) = [show cnt ++ " "] %+ (prettyLines $ stripECompare e)
 
 commonProgramSubexprElim :: Maybe ParGenSymS -> K3 Declaration -> Either String (Maybe ParGenSymS, K3 Declaration)
 commonProgramSubexprElim cseCntOpt prog = foldExpression commonSubexprElim cseCntOpt prog
@@ -865,7 +865,7 @@ commonSubexprElim cseCntOpt expr = do
                        EBindAs b -> [[], bindingVariables b]
                        _         -> repeat []
 
-              filteredCands = nub $ concatMap filterOpenCandidates $ zip bnds subAcc
+              filteredCands = nub $ concatMap pruneOpenCandidates $ zip bnds subAcc
               localCands    = sortBy ((flip compare) `on` snd) $
                                 foldl (addCandidateIfLCA subAcc) [] filteredCands
 
@@ -883,8 +883,8 @@ commonSubexprElim cseCntOpt expr = do
         _ -> uidError n
 
       where
-        filterOpenCandidates ([], cands) = cands
-        filterOpenCandidates (bnds, cands) =
+        pruneOpenCandidates ([], cands) = cands
+        pruneOpenCandidates (bnds, cands) =
           filter (\e -> null $ freeVariables e `intersect` bnds) cands
 
     leafTreeAccumulator :: K3 Expression
@@ -946,7 +946,7 @@ commonSubexprElim cseCntOpt expr = do
 
         foldSubstitutions :: ParGenSymS -> [Substitution] -> Either String (ParGenSymS, [NamedSubstitution])
         foldSubstitutions startsymS subs = do
-          (nsymS,namedSubs) <- foldM nameSubstitution (startsymS, []) subs
+          (nsymS, namedSubs) <- foldM nameSubstitution (startsymS, []) subs
           nnsubs <- foldM (\subAcc sub -> mapM (closeOverSubstitution sub) subAcc) namedSubs namedSubs
           return (nsymS, nnsubs)
 
@@ -956,9 +956,16 @@ commonSubexprElim cseCntOpt expr = do
 
         closeOverSubstitution :: NamedSubstitution -> NamedSubstitution -> Either String NamedSubstitution
         closeOverSubstitution (uid, n, e, _) (uid2, n2, e2, i2)
-          | uid == uid2 && n == n2 = return $ (uid, n, e2, i2)
-          | e2 `covers` e          = return $ (uid2, n2, substituteExpr e (EC.variable n) e2, i2)
-          | otherwise              = return $ (uid2, n2, e2, i2)
+          | uid == uid2 && n == n2           = return $ (uid, n, e2, i2)
+          | e2 `covers` e && e2 `hasUID` uid = return $ (uid2, n2, substituteExpr e (EC.variable n) e2, i2)
+          | otherwise                        = return $ (uid2, n2, e2, i2)
+
+        hasUID :: K3 Expression -> UID -> Bool
+        hasUID e u = runIdentity $ foldMapTree checkUID False e
+          where checkUID (or -> inCh) n =
+                  case n @~ isEUID of
+                    Just (EUID u2) -> return $ inCh || u == u2
+                    _ -> return $ inCh
 
         substituteAtUID :: K3 Expression -> NamedSubstitution -> Either String (K3 Expression)
         substituteAtUID targetE (uid, n, e, _) = mapTree (letAtUID uid n e) targetE

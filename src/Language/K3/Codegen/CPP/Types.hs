@@ -1,4 +1,11 @@
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE StandaloneDeriving #-}
+
 module Language.K3.Codegen.CPP.Types where
+
+import GHC.Generics (Generic)
+import Data.Binary (Binary)
+import Data.Serialize (Serialize)
 
 import Control.Monad.State
 import Control.Monad.Trans.Except
@@ -85,14 +92,31 @@ data CPPGenS = CPPGenS {
         optRefs :: Bool,
 
         -- | Whether to optimize moves
-        optMoves :: Bool
+        optMoves :: Bool,
 
+        flags :: CPPCGFlags
 
     } deriving Show
 
+data CPPCGFlags
+  = CPPCGFlags
+    { isolateLoopIndex :: Bool
+    , enableLifetimeProfiling :: Bool
+    } deriving (Eq, Generic, Ord, Read, Show)
+
+instance Binary CPPCGFlags
+instance Serialize CPPCGFlags
+
+defaultCPPCGFlags :: CPPCGFlags
+defaultCPPCGFlags
+  = CPPCGFlags
+    { isolateLoopIndex = True
+    , enableLifetimeProfiling = False
+    }
+
 -- | The default code generation state.
 defaultCPPGenS :: CPPGenS
-defaultCPPGenS = CPPGenS 0 [] [] [] [] [] [] [] [] M.empty M.empty M.empty [] BoostSerialization 0 False False
+defaultCPPGenS = CPPGenS 0 [] [] [] [] [] [] [] [] M.empty M.empty M.empty [] BoostSerialization 0 False False defaultCPPCGFlags
 
 refreshCPPGenS :: CPPGenM ()
 refreshCPPGenS = do
@@ -144,3 +168,21 @@ incApplyLevel = modify (\env -> env {applyLevel = applyLevel env + 1})
 
 resetApplyLevel :: CPPGenM ()
 resetApplyLevel = modify (\env -> env {applyLevel = 0})
+
+withLifetimeProfiling :: a -> CPPGenM a -> CPPGenM a
+withLifetimeProfiling def action = gets (enableLifetimeProfiling . flags) >>= \b -> if b then action else return def
+
+genLTGuardFor :: Identifier -> CPPGenM R.Statement
+genLTGuardFor i = do
+  let guardName = R.Name $ "__lt_guard_" ++ i
+  let guardedSize = R.Call (R.Variable $ R.Name "sizeof") [R.Variable $ R.Name i]
+  let guardedStack = R.Qualified (R.Name "lifetime") (R.Qualified (R.Name "allocation_t") (R.Name "STACK"))
+  let guardInit = R.Initialization (R.Named $ R.Specialized [R.ConstExpr guardedSize, R.Named guardedStack]
+                                    (R.Qualified (R.Name "lifetime") (R.Name "sentinel"))) []
+
+  return $ R.Forward $ R.ScalarDecl guardName R.Inferred (Just guardInit)
+
+instrumentWithLifetimeFor :: Identifier -> [R.Statement] -> CPPGenM [R.Statement]
+instrumentWithLifetimeFor i s = withLifetimeProfiling s $ do
+  guard <- genLTGuardFor i
+  return $ (guard:s)

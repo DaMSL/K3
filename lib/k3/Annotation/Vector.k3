@@ -3,17 +3,23 @@ annotation Vector given type a, b, c, d
   provides lifted size : () -> int
     with effects \_ -> R[self]
 
+  provides lifted clear : () -> ()
+    with effects \_ -> [R[self]; W[self]]
+
   @:CArgs 2
   provides lifted peek : (() -> a) -> (content -> a) -> a
-    with effects \f -> \g -> [R[self]; f content; g content]
+    with effects \f -> \g -> [R[self]; f none; g content]
 
   provides lifted at : int -> content
     with effects \i -> [R[i]; R[self]]
 
   @:CArgs 3
   provides lifted safe_at : int -> (() -> a) -> (content -> a) -> a
-    with effects \i -> \f -> \g -> [R[i]; R[self]; f content; g content]
+    with effects \i -> \f -> \g -> [R[i]; R[self]; f none; g content]
 
+  @:CArgs 2
+  provides lifted unsafe_at : int -> (content -> a) -> a
+    with effects \i -> \f -> [R[i]; R[self]; f content]
 
   ///////////////////////////////////////////////////////
   // Modifiers.
@@ -22,6 +28,9 @@ annotation Vector given type a, b, c, d
   provides lifted set : int -> content -> ()
     with effects \i -> \elem -> [R[self]; R[i]; R[elem]; W[self]]
 
+  provides lifted set_all : content -> ()
+    with effects \elem -> [R[self]; R[elem]; W[self]]
+
   @:CArgs 2
   provides lifted swap : int -> content -> content
     with effects \i -> \c -> [R[i]; R[c]; W[self]]
@@ -29,9 +38,8 @@ annotation Vector given type a, b, c, d
   provides lifted insert : content -> ()
     with effects \elem -> [R[self]; R[elem]; W[self]]
 
-  @:CArgs 2
-  provides lifted insert_at : int -> content -> ()
-    with effects \i -> \c -> [R[i]; R[c]; W[self]]
+  provides lifted extend : self -> ()
+    with effects \col -> [R[self]; R[col]; W[self]]
 
   @:CArgs 2
   provides lifted update : content -> (content -> ())
@@ -39,6 +47,18 @@ annotation Vector given type a, b, c, d
 
   provides lifted erase : content -> ()
     with effects \elem -> [R[self]; R[elem]; W[self]]
+
+  @:CArgs 2
+  provides lifted insert_at : int -> content -> ()
+    with effects \i -> \c -> [R[i]; R[c]; W[self]]
+
+  @:CArgs 3
+  provides lifted update_at : int -> (content -> content) -> ()
+    with effects \idx -> \newElem -> [R[self]; R[idx]; R[newElem]; W[self]]
+
+  @:CArgs 2
+  provides lifted erase_at : int -> content
+    with effects \i -> \c -> [R[i]; R[c]; W[self]]
 
 
   ///////////////////////////////////////////////////
@@ -114,5 +134,10 @@ annotation Vector given type a, b, c, d
   provides lifted ext : (content -> collection {elem : a} @Vector)
                          -> collection {elem : a} @Vector
     with effects \extF -> [R[self]; ([R[content]; extF content])*]
+
+
+  // Vector permutation.
+  provides lifted shuffle : () -> ()
+    with effects \_ -> [R[self]; W[self]]
 
 }

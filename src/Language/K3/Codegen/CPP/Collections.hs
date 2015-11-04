@@ -15,7 +15,7 @@ import Language.K3.Core.Expression
 import Language.K3.Core.Type
 
 import Language.K3.Codegen.CPP.Types
-import Language.K3.Codegen.CPP.MultiIndex (indexes)
+import Language.K3.Codegen.CPP.CollectionMembers (indexes,polybuffer)
 
 import qualified Language.K3.Codegen.CPP.Representation as R
 
@@ -32,7 +32,7 @@ import qualified Language.K3.Codegen.CPP.Representation as R
 --  - Serialization function, which should proxy the dataspace serialization.
 composite :: Identifier -> [(Identifier, [AnnMemDecl])] -> [K3 Type] -> CPPGenM [R.Definition]
 composite name ans content_ts = do
-    let overrideGeneratedName n = case find (`isInfixOf` n) ["Array", "SortedMapE", "MapE", "MapCE"] of
+    let overrideGeneratedName n = case find (`isInfixOf` n) reservedGeneratedAnnotations of
                                     Nothing -> n
                                     Just i -> i
 
@@ -55,11 +55,17 @@ composite name ans content_ts = do
                                            _ -> acc
 
 
+    -- MultiIndex member generation.
     -- When dealing with Indexes, we need to specialize the MultiIndex* classes on each index type
     (indexTypes, indexDefns) <- indexes name as content_ts
 
+
+    let selfType = R.Named $ R.Specialized [R.Named $ R.Name "__CONTENT"] $ R.Name name
+
     let addnSpecializations n = if "Array" `isInfixOf` n then arraySize $ lookup n ans
                                 else if "MultiIndex" `isInfixOf` n then indexTypes
+                                else if "FlatPolyBuffer" `isInfixOf` n then [selfType]
+                                else if "UniquePolyBuffer" `isInfixOf` n then [selfType]
                                 else []
 
     let baseClass (n,_) = R.Qualified (R.Name "K3")
@@ -68,7 +74,8 @@ composite name ans content_ts = do
 
     let baseClasses = map baseClass ras
 
-    let selfType = R.Named $ R.Specialized [R.Named $ R.Name "__CONTENT"] $ R.Name name
+    -- FlatPolyBuffer member generation.
+    pbufDefns <- polybuffer name ras
 
     let defaultConstructor
             = R.FunctionDefn (R.Name name) [] Nothing [R.Call (R.Variable b) [] | b <- baseClasses] False []
@@ -121,10 +128,21 @@ composite name ans content_ts = do
              (Just $ R.Named $ R.Name "void")
              [] False $ serializeStatements asYas)
 
-    let methods = [defaultConstructor, superConstructor, superMoveConstructor, serializeFn False, serializeFn True] ++ indexDefns
+    let methods = [defaultConstructor, superConstructor, superMoveConstructor]
+                    ++ [serializeFn False, serializeFn True]
+                    ++ indexDefns ++ pbufDefns
+
+    sentinelDefn <- withLifetimeProfiling [] $ return [
+      R.GlobalDefn $
+        R.Forward $
+          R.ScalarDecl (R.Name "__lifetime_sentinel")
+            (R.Named $ R.Qualified (R.Name "K3") $ R.Qualified (R.Name "lifetime") (R.Name "sentinel")) Nothing
+
+      ]
+    let members = sentinelDefn
 
     let collectionClassDefn = R.TemplateDefn [("__CONTENT", Nothing)]
-             (R.ClassDefn (R.Name name) [] (map R.Named baseClasses) methods [] [])
+             (R.ClassDefn (R.Name name) [] (map R.Named baseClasses) (members ++ methods) [] [])
 
     let parent = head baseClasses
 
@@ -284,7 +302,16 @@ record (sort -> ids) = do
 
     let constructors = (defaultConstructor:initConstructors)
     let comparators = [equalityOperator, logicOp "!=", logicOp "<", logicOp ">", logicOp "<=", logicOp ">="]
-    let members = typedefs ++ constructors ++ comparators ++ [serializeFn False, serializeFn True] ++ fieldDecls ++ [x_alize "internalize", x_alize "externalize"]
+    sentinelDefn <- withLifetimeProfiling [] $ return [
+      R.GlobalDefn $
+        R.Forward $
+          R.ScalarDecl (R.Name "__lifetime_sentinel")
+            (R.Named $ R.Qualified (R.Name "K3") $ R.Qualified (R.Name "lifetime") (R.Name "sentinel")) Nothing
+
+      ]
+
+    let members = sentinelDefn ++ typedefs ++ constructors ++ comparators ++
+                  [serializeFn False, serializeFn True] ++ fieldDecls ++ [x_alize "internalize", x_alize "externalize"]
 
     let recordStructDefn
             = R.GuardedDefn ("K3_" ++ recordName) $
@@ -473,5 +500,8 @@ reservedAnnotations =
   , "IntSet", "SortedSet"
   , "IntMap", "StrMap", "VMap", "SortedMap", "MapE", "SortedMapE", "MapCE"
   , "MultiIndexBag", "MultiIndexMap", "MultiIndexVMap", "RealVector"
-  , "BulkFlatCollection"
+  , "BulkFlatCollection", "FlatPolyBuffer", "UniquePolyBuffer"
   ]
+
+reservedGeneratedAnnotations :: [Identifier]
+reservedGeneratedAnnotations = ["Array", "SortedMapE", "MapE", "MapCE", "FlatPolyBuffer", "UniquePolyBuffer"]

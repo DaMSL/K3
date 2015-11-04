@@ -6,9 +6,9 @@ declare randReal : mut real = 0.0
 declare modInt   : mut int = 0
 declare modReal  : mut int = 0
 
-declare rangeC   : mut collection {i : int} @ {Collection} = empty {i:int} @ {Collection}
+declare rangeC   : mut collection {elem : int} @ {Collection} = empty {elem:int} @ {Collection}
 declare sumC     : mut int = 0
-declare sortC    : mut collection {i : int} @ {Seq} = {|i:int| 4,3,2 |} @ {Seq} 
+declare sortC    : mut collection {i : int} @ {Seq} = {|i:int| 4,3,2 |} @ {Seq}
 
 declare hashC    : mut int = 0
 declare hashS    : mut int = 0
@@ -22,13 +22,13 @@ trigger t : () = \_ -> (
     modInt   = 100 % 3;
     modReal  = 101.0 % 5.0;
     rangeC   = range 10;
-    sumC     = rangeC.fold (\acc -> (\x -> acc + x.i)) 0;
+    sumC     = rangeC.fold (\acc -> (\x -> acc + x.elem)) 0;
     sortC    = sortC.sort (\a -> (\b -> a.i - b.i));
     hashC    = hash sortC;
     hashS    = hash "K3 hashing works";
     hashO    = hash {x : \y -> y + 1};
     testString = substring 4 testString
   )
-  
+
 source s1 : () = value ()
 feed s1 |> t

@@ -5,7 +5,7 @@ declare c :     collection {elem : int} @IntSet
 declare d : mut collection {elem : int} @IntSet
 
 trigger t : () = \_ -> (
-  ((range 10).iterate (\r -> c.insert {elem : r.i + 100}));
+  ((range 10).iterate (\r -> c.insert {elem : r.elem + 100}));
 
   // Print total size.
   (print ("IntSet size: " ++ (itos (c.size ())) ++ "\\n"));

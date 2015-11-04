@@ -3,9 +3,15 @@ annotation Seq given type a, b, c, d
   provides lifted size : () -> int
     with effects \_ -> R[self]
 
+  provides lifted clear : () -> ()
+    with effects \_ -> [R[self]; W[self]]
+
   @:CArgs 2
   provides lifted peek : (() -> a) -> (content -> a) -> a
     with effects \f -> \g -> [R[self]; f content; g content]
+
+  provides lifted pop : () -> ()
+    with effects \_ -> [R[self]; W[self]]
 
   provides lifted at : int -> content
     with effects \i -> [R[i]; R[self]]

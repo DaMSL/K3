@@ -446,7 +446,7 @@ class StrMap {
 
   bool operator==(const StrMap& other) const {
     return get_map_str() == other.get_map_str() ||
-           (size() == other.size() &&
+           (size(unit_t{}) == other.size(unit_t{}) &&
             std::is_permutation(begin(), end(), other.begin(), other.end()));
   }
 

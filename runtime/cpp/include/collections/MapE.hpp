@@ -87,6 +87,11 @@ class MapE {
   // Functionality
   int size(unit_t) const { return container.size(); }
 
+  unit_t clear(const unit_t&) {
+    container.clear();
+    return unit_t();
+  }
+
   template <typename F, typename G>
   auto peek(F f, G g) const {
     auto it = container.begin();
@@ -135,6 +140,16 @@ class MapE {
   unit_t erase(const K& k) {
     container.erase(k.key);
     return unit_t();
+  }
+
+  template <typename K, typename F, typename G>
+  RT<G,R> erase_with(const K& k, F f, G g) {
+    auto existing = container.find(k.key);
+    if (existing == std::end(container)) {
+      return f(unit_t{});
+    } else {
+      return g(std::move(existing->second));
+    }
   }
 
   template <class F>
@@ -309,7 +324,7 @@ class MapE {
   // Mosaic-specific functionality.
 
   template<class Other, class OtherKeyFun, class Folder, class Acc>
-  Acc equijoinkf_kv(Collection<Other> other, OtherKeyFun keyf, Folder f, Acc acc) const
+  Acc equijoinkf_kv(const Collection<Other>& other, OtherKeyFun keyf, Folder f, Acc acc) const
   {
     // Probe and accumulate.
     for (const auto& otherelem : other.getConstContainer()) {

@@ -47,6 +47,10 @@ concatLabels :: SpliceValue -> SpliceValue
 concatLabels (SList vs) = foldl concatLabel (SLabel "") vs
 concatLabels _ = error "Invalid splice value container for concatLabels"
 
+appendLabel :: SpliceValue -> String -> SpliceValue
+appendLabel (SLabel a) s = SLiteral $ LC.string $ a ++ s
+appendLabel _ _ = error "Invalid label/literal concatenation."
+
 mkRecord :: SpliceValue -> SpliceValue
 mkRecord (SList vs) = maybe err (SType . TC.record) $ mapM mkRecField vs
   where mkRecField v = do
@@ -89,6 +93,7 @@ listTypes _ = error "Invalid splice value container for listTypes"
 labelExpr :: SpliceValue -> SpliceValue
 labelExpr (SExpr (tag -> EConstant (CString i))) = SLabel i
 labelExpr (SExpr (tag -> EConstant (CInt i)))    = SLabel $ show i
+labelExpr (SExpr (tag -> EConstant (CReal r)))   = SLabel $ show r
 labelExpr (SExpr (tag -> EConstant (CBool b)))   = SLabel $ show b
 labelExpr _ = error "Invalid splice expression for labelExpr"
 
@@ -101,6 +106,13 @@ labelLiteral _ = error "Invalid splice literal for labelLiteral"
 literalLabel :: SpliceValue -> SpliceValue
 literalLabel (SLabel i) = SLiteral $ LC.string i
 literalLabel _ = error "Invalid splice label for literalLabel"
+
+literalExpr :: SpliceValue -> SpliceValue
+literalExpr (SExpr (tag -> EConstant (CString i))) = SLiteral $ LC.string i
+literalExpr (SExpr (tag -> EConstant (CInt i)))    = SLiteral $ LC.int i
+literalExpr (SExpr (tag -> EConstant (CReal r)))   = SLiteral $ LC.real r
+literalExpr (SExpr (tag -> EConstant (CBool b)))   = SLiteral $ LC.bool b
+literalExpr _ = error "Invalid splice expression for labelExpr"
 
 literalType :: SpliceValue -> SpliceValue
 literalType (SType t) = SLiteral . LC.string $ show t

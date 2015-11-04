@@ -107,6 +107,18 @@ struct Address {
     ar& port;
   }
 
+  template <class T>
+  Address& internalize(T& internalizer) {
+    internalizer.internalize(ip);
+    internalizer.internalize(port);
+  }
+
+  template <class T>
+  Address& externalize(T& externalizer) {
+    externalizer.externalize(ip);
+    externalizer.externalize(port);
+  }
+
   unsigned long ip;
   unsigned short port;
 };
@@ -161,19 +173,32 @@ class EndOfProgramException : public std::runtime_error {
 
 // Thread-safe map from Key to Val.
 // Val should be a pointer type.
-template <class Key, class Val>
+template <class Key, class Val, typename Compare = std::less<Key>>
 class ConcurrentMap : public boost::basic_lockable_adapter<boost::mutex> {
+  using Container = std::map<Key, Val, Compare>;
+  using CContainer = ConcurrentMap<Key, Val, Compare>;
+
  public:
   ConcurrentMap()
       : boost::basic_lockable_adapter<boost::mutex>(), map_(*this) {}
 
-  void insert(const Key& key, Val v) {
-    boost::strict_lock<ConcurrentMap<Key, Val>> lock(*this);
+  void insert(const Key& key, const Val& v) {
+    boost::strict_lock<CContainer> lock(*this);
     map_.get(lock)[key] = v;
   }
 
+  void insert(const Key& key, Val&& v) {
+    boost::strict_lock<CContainer> lock(*this);
+    map_.get(lock)[key] = std::move(v);
+  }
+
+  void insert(Key&& key, Val&& v) {
+    boost::strict_lock<CContainer> lock(*this);
+    map_.get(lock)[std::move(key)] = std::move(v);
+  }
+
   Val lookup(const Key& key) {
-    boost::strict_lock<ConcurrentMap<Key, Val>> lock(*this);
+    boost::strict_lock<CContainer> lock(*this);
     Val result;
     auto it = map_.get(lock).find(key);
     if (it != map_.get(lock).end()) {
@@ -182,19 +207,102 @@ class ConcurrentMap : public boost::basic_lockable_adapter<boost::mutex> {
     return result;
   }
 
+  template<typename F>
+  void apply(F f) {
+    boost::strict_lock<CContainer> lock(*this);
+    auto& map = map_.get(lock);
+    f(map);
+  }
+
+  template<typename F>
+  void apply(const Key& key, F f) {
+    boost::strict_lock<CContainer> lock(*this);
+    auto it = map_.get(lock).find(key);
+    if (it != map_.get(lock).end()) {
+      f(it->second);
+    }
+  }
+
   void erase(const Key& key) {
-    boost::strict_lock<ConcurrentMap<Key, Val>> lock(*this);
+    boost::strict_lock<CContainer> lock(*this);
     map_.get(lock).erase(key);
     return;
   }
 
   int size() {
-    boost::strict_lock<ConcurrentMap<Key, Val>> lock(*this);
+    boost::strict_lock<CContainer> lock(*this);
     return map_.get(lock).size();
   }
 
  protected:
-  boost::externally_locked<std::map<Key, Val>, ConcurrentMap<Key, Val>> map_;
+  boost::externally_locked<Container, CContainer> map_;
+};
+
+// A hashtable-backed concurrent map.
+template <class Key, class Val, typename Hash = std::hash<Key>, typename Equal = std::equal_to<Key>>
+class ConcurrentHashMap : public boost::basic_lockable_adapter<boost::mutex>
+{
+  using Container = std::unordered_map<Key, Val, Hash, Equal>;
+  using CContainer = ConcurrentHashMap<Key, Val, Hash, Equal>;
+
+ public:
+  ConcurrentHashMap()
+      : boost::basic_lockable_adapter<boost::mutex>(), map_(*this) {}
+
+  void insert(const Key& key, const Val& v) {
+    boost::strict_lock<CContainer> lock(*this);
+    map_.get(lock)[key] = v;
+  }
+
+  void insert(const Key& key, Val&& v) {
+    boost::strict_lock<CContainer> lock(*this);
+    map_.get(lock)[key] = std::move(v);
+  }
+
+  void insert(Key&& key, Val&& v) {
+    boost::strict_lock<CContainer> lock(*this);
+    map_.get(lock)[std::move(key)] = std::move(v);
+  }
+
+  Val lookup(const Key& key) {
+    boost::strict_lock<CContainer> lock(*this);
+    Val result;
+    auto it = map_.get(lock).find(key);
+    if (it != map_.get(lock).end()) {
+      result = it->second;
+    }
+    return result;
+  }
+
+  template<typename F>
+  void apply(F f) {
+    boost::strict_lock<CContainer> lock(*this);
+    auto& map = map_.get(lock);
+    f(map);
+  }
+
+  template<typename F>
+  void apply(const Key& key, F f) {
+    boost::strict_lock<CContainer> lock(*this);
+    auto it = map_.get(lock).find(key);
+    if (it != map_.get(lock).end()) {
+      f(it->second);
+    }
+  }
+
+  void erase(const Key& key) {
+    boost::strict_lock<CContainer> lock(*this);
+    map_.get(lock).erase(key);
+    return;
+  }
+
+  int size() {
+    boost::strict_lock<CContainer> lock(*this);
+    return map_.get(lock).size();
+  }
+
+ protected:
+  boost::externally_locked<Container, CContainer> map_;
 };
 
 class base_string;
@@ -216,16 +324,27 @@ template <class _T0>
 class R_elem {
  public:
   R_elem() {}
-  R_elem(_T0 _elem) : elem(_elem) {}
+  R_elem(_T0 const& _elem): elem(_elem)  {}
+  R_elem(_T0&& _elem): elem(std::move(_elem))  {}
 
-  bool operator==(const R_elem& _r) const {
-    if (elem == _r.elem) return true;
-    return false;
+  bool operator==(R_elem<_T0> const& __other) const {
+    return elem == __other.elem;
   }
-
-  bool operator!=(const R_elem& _r) const { return !(*this == _r); }
-
-  bool operator<(const R_elem& _r) const { return elem < _r.elem; }
+  bool operator!=(R_elem<_T0> const& __other) const {
+    return std::tie(elem) != std::tie(__other.elem);
+  }
+  bool operator<(R_elem<_T0> const& __other) const {
+    return std::tie(elem) < std::tie(__other.elem);
+  }
+  bool operator>(R_elem<_T0> const& __other) const {
+    return std::tie(elem) > std::tie(__other.elem);
+  }
+  bool operator<=(R_elem<_T0> const& __other) const {
+    return std::tie(elem) <= std::tie(__other.elem);
+  }
+  bool operator>=(R_elem<_T0> const& __other) const {
+    return std::tie(elem) >= std::tie(__other.elem);
+  }
 
   template <class archive>
   void serialize(archive& _archive, const unsigned int) {
@@ -236,17 +355,20 @@ class R_elem {
   void serialize(archive& _archive) {
     _archive& elem;
   }
-  _T0 elem;
+
   template <class T>
   R_elem<_T0>& internalize(T& arg)  {
     arg.internalize(elem);
     return *this;
   }
+
   template <class T>
   R_elem<_T0>& externalize(T& arg)  {
     arg.externalize(elem);
     return *this;
   }
+
+  _T0 elem;
 };
 #endif  // K3_R_elem
 
@@ -283,6 +405,16 @@ class R_i {
       template <class archive>
       void serialize(archive& _archive)  {
         _archive & i;
+      }
+      template <class T>
+      R_i<_T0>& internalize(T& arg)  {
+        arg.internalize(i);
+        return *this;
+      }
+      template <class T>
+      R_i<_T0>& externalize(T& arg)  {
+        arg.externalize(i);
+        return *this;
       }
       _T0 i;
 };
@@ -327,6 +459,18 @@ class R_key_value {
   }
   bool operator>=(const R_key_value<_T0, _T1>& __other) const {
     return std::tie(key, value) >= std::tie(__other.key, __other.value);
+  }
+  template <class T>
+  R_key_value<_T0, _T1>& internalize(T& arg)  {
+    arg.internalize(key);
+    arg.internalize(value);
+    return *this;
+  }
+  template <class T>
+  R_key_value<_T0, _T1>& externalize(T& arg)  {
+    arg.externalize(key);
+    arg.externalize(value);
+    return *this;
   }
   _T0 key;
   _T1 value;

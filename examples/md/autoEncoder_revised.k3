@@ -25,7 +25,7 @@ declare weightsLastUpdated    : mut collection {elem : real } @RealVector // l l
 
 declare row_number           : mut int = -1
 declare epochSize            : int = 8
-declare peerMessagesReceived : mut int 
+declare peerMessagesReceived : mut int
 declare rows : mut int = 0
 
 declare s : mut int 
@@ -107,7 +107,7 @@ declare calculateError : int -> real = \i -> (
 
 declare neuronIdAccess : int -> int = \index -> (
 	bind (
-		topology.fold(\acc -> \t -> (
+		topology.fold(\acc -> \t -> ( 
 		if (acc.flag) 
 			then (
 				if (acc.nid < t.elem ) 
@@ -257,7 +257,7 @@ declare slaveBackPropagation : () -> () = \_ -> (
     //zValue.iterate(\zv -> print (rtos zv.elem));
     //print ("\\n");
 
-    //calculate the hidden layer deltas
+    //Calculate the hidden layer deltas
 	((xrange 2 (topology.size ()+1) ).iterate (\i -> (
 		let presentLayerId = (  (topology.size ()) - i.i) in
 		let numNeuronsPresentLayer = ((topology.at presentLayerId).elem) in 

@@ -1,0 +1,34 @@
+include "Annotation/Collection.k3"
+include "Annotation/FlatPolyBuffer.k3"
+include "Annotation/UniquePolyBuffer.k3"
+include "Core/Builtins.k3"
+
+declare c : collection {ignored:()} @FlatPolyBuffer(
+  variants=[:#>
+    foo => {a:int, b:int} : 0,
+    bar => {c:int, d:int} : 1,
+    baz => {e:int, f:int} : 2
+  ])
+
+declare d : collection {ignored:()} @UniquePolyBuffer(
+  variants=[:#>
+    foo => {a:int, b:int} : 0,
+    bar => {c:int, d:int} : 1,
+    baz => {e:int, f:int} : 2
+  ])
+
+trigger t : () = \_ -> (
+  (range 10).iterate (\r ->
+    ((c.append_foo {a:r.elem, b:r.elem+1});
+     (c.append_foo {a:r.elem, b:r.elem+1});
+     (d.append_foo {a:r.elem, b:r.elem+1});
+     (d.append_foo {a:r.elem, b:r.elem+1})
+    )
+  );
+
+  print ("c size " ++ (itos (c.size())));
+  print ("d size " ++ (itos (d.size())))
+)
+
+source s1 : () = value ()
+feed s1 |> t

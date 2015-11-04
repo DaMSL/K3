@@ -1,0 +1,23 @@
+include "Annotation/Collection.k3"
+include "Annotation/Vector.k3"
+include "Annotation/FlatPolyBuffer.k3"
+include "Core/Builtins.k3"
+
+typedef FPB = collection {ignored: ()} @FlatPolyBuffer(
+  variants=[:#>
+    foo => {a:int, b:int} : 0,
+    bar => {c:int, d:int} : 1,
+    baz => {e:int, f:int} : 2
+  ])
+
+declare fpaths : collection {path:string} @Collection
+
+declare orderpath : mut string = "muxorder.csv"
+
+trigger t : FPB = \buf -> (
+	print ("Invoking polyfile dispatch on buffer of size: " ++ (itos (buf.size())))
+)
+
+declare rebatch : mut int = 0
+
+source s1 : FPB = polyfile fpaths text raw orderpath rebatch

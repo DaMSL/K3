@@ -17,7 +17,7 @@ declare bfc5: collection R2 @BulkFlatCollection
 
 trigger t : () = \_ -> (
   // Create regular collection, append to a BFC
-  ((range 10).iterate (\r -> c.insert {elem: {a:r.i, b:r.i*2, c: "foo" ++ (itos r.i)}}));
+  ((range 10).iterate (\r -> c.insert {elem: {a:r.elem, b:r.elem*2, c: "foo" ++ (itos r.elem)}}));
   (bfc.append c);
 
   // Play with BCF
@@ -56,7 +56,7 @@ trigger t : () = \_ -> (
 
 trigger t2: () = \_ -> (
   // Create regular collection, append to a BFC
-  ((range 10).iterate (\r -> c2.insert {elem: {a: "a" ++ (itos r.i), b: "b" ++ (itos r.i)}}));
+  ((range 10).iterate (\r -> c2.insert {elem: {a: "a" ++ (itos r.elem), b: "b" ++ (itos r.elem)}}));
   (bfc4.append c2);
 
   // Play with BCF

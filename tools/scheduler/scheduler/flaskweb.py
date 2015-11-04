@@ -156,7 +156,7 @@ def initWeb(port, **kwargs):
     webapp.config['COMPILELOG'] = compileFile
 
     compile_fmt = ServiceFormatter(u'[%(asctime)s] %(message)s'.encode("utf8", errors='ignore'))
-    compile_file = logging.handlers.RotatingFileHandler(compileFile, maxBytes=1024*1024, backupCount=5, mode='w')
+    compile_file = logging.handlers.RotatingFileHandler(compileFile, maxBytes=5*1024*1024, backupCount=20, mode='w')
     compile_file.setFormatter(compile_fmt)
     compileLogger.addHandler(compile_file)
 
@@ -201,7 +201,7 @@ def shutdown_server():
 
 def shutdown_dispatcher():
     # driver.stop()
-    # driver_t.join() 
+    # driver_t.join()
     for k, v in compile_tasks.items():
       v.kill()
     logging.info ("[FLASKWEB] Detached from Mesos")
@@ -297,7 +297,7 @@ def getYamlInstructions():
 def trace():
   """
   #------------------------------------------------------------------------------
-  #  /trace - Debugging respose. Returns the client's HTTP request data in json
+  #  /trace - Debugging response. Returns the client's HTTP request data in json
   #------------------------------------------------------------------------------
   """
   logger.debug('[FLASKWEB  /trace] Trace debug request')
@@ -349,7 +349,7 @@ def staticFile(path):
   """
   #------------------------------------------------------------------------------
   #  /fs - File System Exposure for the local webroot folder
-  #        Note: Direct file access via curl should include a trailing slash (/) 
+  #        Note: Direct file access via curl should include a trailing slash (/)
   #           Otherwise, you will get a 302 redirect to the actual file
   #------------------------------------------------------------------------------
   """
@@ -397,9 +397,9 @@ def uploadAppRedir():
 def uploadApp():
   """
   #------------------------------------------------------------------------------
-  #  /apps, /app - Application Level interface    
+  #  /apps, /app - Application Level interface
   #     POST   Upload new application
-  #       curl -i -X POST -H "Accept: application/json" 
+  #       curl -i -X POST -H "Accept: application/json"
   #           -F file=@<filename> http://<host>:<port>/apps
   #
   #     GET    Display both list of loaded apps and form to upload new ones
@@ -484,7 +484,7 @@ def archiveAppRedir(appName, appUID):
   """
     Redirect to archiveApp
   """
-  logger.debug('[FLASKWEB  /app/<appName>/<appUID>] Redirec to /apps/%s/%s' 
+  logger.debug('[FLASKWEB  /app/<appName>/<appUID>] Redirec to /apps/%s/%s'
       % (appName, appUID))
   return archiveApp(appName, appUID)
 
@@ -533,7 +533,7 @@ def deleteApp(appName):
   """
   #------------------------------------------------------------------------------
   #  /delete/app/<appName>
-  #     POST     Deletes an app from the web server 
+  #     POST     Deletes an app from the web server
   #         NOTE: Data files will remain in webroot on the server, but
   #           the app will be inaccessible through the interface
   #           (metadata is removed from the internal db)
@@ -575,7 +575,7 @@ def listJobs():
   #------------------------------------------------------------------------------
   """
   logger.debug('[FLASKWEB  /jobs] Request for job listing')
-  jobs = db.getJobs()
+  jobs = db.getJobs(numdays=2)
   for job in jobs:
     job['time'] = datetime.datetime.strptime(job['time'], db.TS_FMT).replace(tzinfo=db.timezone('UTC')).isoformat()
 
@@ -608,7 +608,7 @@ def createJobLatest(appName):
     return createJob(appName, app['uid'])
   else:
     return returnError("Application %s does not exist" % appName, 404)
-    
+
 @webapp.route('/jobs/<appName>/<appUID>', methods=['GET', 'POST'])
 def createJob(appName, appUID):
   """
@@ -616,11 +616,12 @@ def createJob(appName, appUID):
   #  /jobs/<appName>
   #  /jobs/<appName>/<appUID  - Launch a new K3 Job
   #         POST    Create new K3 Job
-  #          curl -i -X POST -H "Accept: application/json" 
-  #             -F "file=@<rolefile>" 
+  #          curl -i -X POST -H "Accept: application/json"
+  #             -F "file=@<rolefile>"
   #             -F logging=[True | False]
   #             -F jsonlog=[True | False]
   #             -F jsonfinal=[True | False]
+  #             -F perfprofile=[True | False]
   #             -F http://<host>:<port>/jobs/<appName>/<appUID>
   #             NOTE: if appUID is omitted, job will be submitted to latest version of this app
   #
@@ -639,6 +640,7 @@ def createJob(appName, appUID):
         k3logging = True if 'logging' in request.form else False
         jsonlog = True if 'jsonlog' in request.form else False
         jsonfinal = True if 'jsonfinal' in request.form else False
+        perfprofile = True if 'perfprofile' in request.form else False
         stdout = request.form['stdout'] if 'stdout' in request.form else False
         user = request.form['user'] if 'user' in request.form else 'anonymous'
         tag = request.form['tag'] if 'tag' in request.form else ''
@@ -650,6 +652,7 @@ def createJob(appName, appUID):
         logger.debug("K3 LOGGING is :  %s" %  ("ON" if k3logging else "OFF"))
         logger.debug("JSON LOGGING is :  %s" %  ("ON" if jsonlog else "OFF"))
         logger.debug("JSON FINAL LOGGING is :  %s" %  ("ON" if jsonfinal else "OFF"))
+        logger.debug("PERF PROFILING is :  %s" %  ("ON" if perfprofile else "OFF"))
         # trials = int(request.form['trials']) if 'trials' in request.form else 1
 
         # Check for valid submission
@@ -682,8 +685,8 @@ def createJob(appName, appUID):
         apploc = webapp.config['ADDR']+os.path.join(webapp.config['UPLOADED_APPS_URL'], appName, appUID, appName)
 
         newJob = Job(binary=apploc, appName=appName, jobId=jobId,
-                     rolefile=os.path.join(path, filename), logging=k3logging, 
-                     jsonlog=jsonlog, jsonfinal=jsonfinal)
+                     rolefile=os.path.join(path, filename), logging=k3logging,
+                     jsonlog=jsonlog, jsonfinal=jsonfinal, perfprofile=perfprofile)
 
         # Submit to Mesos
         dispatcher.submit(newJob)
@@ -966,7 +969,7 @@ def deleteJobs():
 #     link = resolve(MASTER)
 #     print link
 #     sandbox = dispatcher.getSandboxURL(jobId)
-#     if sandbox:if 
+#     if sandbox:if
 #       print sandbox
 #       return '<a href="%s">%s</a>' % (sandbox, sandbox)
 #     else:
@@ -1006,19 +1009,19 @@ def compServiceUp():
   #  /compileservice/up
   #        POST     Starts compile service
   #           curl -i -X POST -H "Accept: application/json"
-  #                   -F numworkers=<numworkers> 
+  #                   -F numworkers=<numworkers>
   #                   -F gitpull=[True|False]
   #                   -F branch=<k3_branch>
-  #                   -F cabalbuild=[True|False] 
-  #                   -F m_workerthread=<#master_service_threads> 
-  #                   -F w_workerthread=<#worker_service_threads> 
-  #                   -F heartbeat=<heartbeat_interval_in_secs> 
+  #                   -F cabalbuild=[True|False]
+  #                   -F m_workerthread=<#master_service_threads>
+  #                   -F w_workerthread=<#worker_service_threads>
+  #                   -F heartbeat=<heartbeat_interval_in_secs>
   #                   http://<host>:<port>/compile
   #
-  #    Default vals:  numworkers=(max workers), gitpull=True, 
-  #                   branch=development, cabalbuild=False, 
-  #                   m_workerthread=1, w_workerthread=1, 
-  #                   heartbeat=300, cppthread=12 
+  #    Default vals:  numworkers=(max workers), gitpull=True,
+  #                   branch=development, cabalbuild=False,
+  #                   m_workerthread=1, w_workerthread=1,
+  #                   heartbeat=300, cppthread=12
 
   #
   #        GET     Redirect to Compile Form (html) or compile service setting (json)
@@ -1077,7 +1080,7 @@ def compServiceUp():
   if request.headers['Accept'] == 'application/json':
     return jsonify(compileService.getItems()), 200
   else:
-    return render_template("compile.html", status=compileService.state.name, hostlist=compileService.getAllNodes())    
+    return render_template("compile.html", status=compileService.state.name, hostlist=compileService.getAllNodes())
 
 
 
@@ -1097,7 +1100,7 @@ def compServiceStop():
   if request.headers['Accept'] == 'application/json':
     return jsonify(compileService.getItems()), 200
   else:
-    return render_template("compile.html", status=compileService.state.name, hostlist=compileService.getAllNodes())    
+    return render_template("compile.html", status=compileService.state.name, hostlist=compileService.getAllNodes())
 
 
 @webapp.route('/compileservice/down')
@@ -1131,9 +1134,9 @@ def compile():
     #  /compile
     #        POST    Submit new K3 Compile task
     #           curl -i -X POST -H "Accept: application/json"
-    #                   -F name=<appName>  
-    #                   -F file=@<sourceFile> 
-    #                   -F blocksize=<blocksize> 
+    #                   -F name=<appName>
+    #                   -F file=@<sourceFile>
+    #                   -F blocksize=<blocksize>
     #                   -F compilestage=['both'|'cpp'|'bin']
     #                   -F compileargs=<compile_args>
     #                   -F mem=<mem_in_GB>
@@ -1141,7 +1144,7 @@ def compile():
     #                   -F workload=['balanced'|'moderate'|'moderate2'|'extreme']
     #                   -F user=<userName> http://<host>:<port>/compile
     #
-    #    NOTE:  -user & compileargs are optional. 
+    #    NOTE:  -user & compileargs are optional.
     #           -If name is omitted, it is inferred from filename
     #    Default vals:  blocksize=8, compilestage='both', workload='balanced'
     #
@@ -1259,7 +1262,7 @@ def compile():
       if request.headers['Accept'] == 'application/json':
         return ('TO SUBMIT A NEW COMPILATION:\n\n\tcurl -i -X POST -H "Accept: application/json" \
 -F name=<appName> -F file=@<sourceFile> -F blocksize=<blocksize> -F compilestage=<compilestage> \
-http://<host>:<port>/compile' if compileService.isUp() 
+http://<host>:<port>/compile' if compileService.isUp()
           else 'START THE SERVICE: curl -i -H "Accept: application/json" http://<host>:<port>/compileservice/up')
 
       else:
@@ -1293,7 +1296,7 @@ def getCompile(uid):
     return returnError("Compilation Features are not available", 400)
 
   logger.debug("[FLASKWEB] Retrieving last compilation status")
-  
+
   result = db.getCompiles(uid=uid)
   if len(result) == 0:
     result = db.getCompiles(uid=AppID.getUID(uid))
@@ -1433,7 +1436,7 @@ if __name__ == '__main__':
   args = parser.parse_args()
 
   #  TODO:  Move to a Common module
-  # 
+  #
   # console.setFormatter(formatter)
   # log.addHandler(console)
 
@@ -1487,7 +1490,7 @@ if __name__ == '__main__':
     threadDispatch = threading.Thread(target=driverDispatch.run)
     threadDispatch.start()
 
-    # Create Compiler Service 
+    # Create Compiler Service
     logging.debug("[FLASKWEB] Compiler Service is initializing")
     compileService = CompileServiceManager(webapp.config['LOG_DEST'], webapp.config['ADDR'])
     if compileService == None:

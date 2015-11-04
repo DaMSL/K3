@@ -276,8 +276,9 @@ applyCAnnotation targetE cAnnId sEnv = do
       (rewriteE, decls) <- p
       rewriteESub       <- bindEAnnVars nsctxt rewriteE
       declsSub          <- mapM (bindDAnnVars nsctxt) decls
+      splicedDeclsSub   <- generateInSpliceCtxt nsctxt $ mapM spliceDecl declsSub
       localLog (debugRewrite rewriteESub)
-      modifyGDeclsF_ (Right . addCGenDecls cAnnId declsSub) >> return rewriteESub
+      modifyGDeclsF_ (Right . addCGenDecls cAnnId splicedDeclsSub) >> return rewriteESub
 
     injectRewrite _ _ = throwG "Invalid control annotation rewrite"
 
@@ -359,28 +360,29 @@ typeSplicer t = Splicer $ \spliceEnv -> SRType $ generateInSpliceEnv spliceEnv $
 
 {- Splice evaluation -}
 spliceDeclaration :: K3 Declaration -> DeclGenerator
-spliceDeclaration = mapProgram doSplice spliceAnnMem spliceExpression (Just spliceType)
-  where
-    doSplice d@(tag -> DGlobal n t eOpt) = do
-      ((nn, nt, neOpt), nanns) <- spliceDeclParts n t eOpt >>= newAnns d
-      return $ Node (DGlobal nn nt neOpt :@: nanns) $ children d
+spliceDeclaration = mapProgram spliceDecl spliceAnnMem spliceExpression (Just spliceType)
 
-    doSplice d@(tag -> DTrigger n t e) = do
-      ((nn, nt, Just ne), nanns) <- spliceDeclParts n t (Just e) >>= newAnns d
-      return $ Node (DTrigger nn nt ne :@: nanns) $ children d
+spliceDecl :: K3 Declaration -> DeclGenerator
+spliceDecl d = case d of
+  (tag -> DGlobal n t eOpt) -> do
+    ((nn, nt, neOpt), nanns) <- spliceDeclParts n t eOpt >>= newAnns d
+    return $ Node (DGlobal nn nt neOpt :@: nanns) $ children d
 
-    doSplice d@(tag -> DDataAnnotation n tvars mems) =
-      mapM spliceAnnMem mems >>= newAnns d >>= \(nmems, nanns) ->
-        return $ Node (DDataAnnotation n tvars nmems :@: nanns) $ children d
+  (tag -> DTrigger n t e) -> do
+    ((nn, nt, Just ne), nanns) <- spliceDeclParts n t (Just e) >>= newAnns d
+    return $ Node (DTrigger nn nt ne :@: nanns) $ children d
 
-    doSplice d@(tag -> DTypeDef n t) =
-      spliceType t >>= newAnns d >>= \(nt, nanns) -> return $ Node (DTypeDef n nt :@: nanns) $ children d
+  (tag -> DDataAnnotation n tvars mems) ->
+    mapM spliceAnnMem mems >>= newAnns d >>= \(nmems, nanns) ->
+    return $ Node (DDataAnnotation n tvars nmems :@: nanns) $ children d
 
-    doSplice d@(Node (tg :@: _) ch) =
-      newAnns d () >>= \(_,nanns) -> return $ Node (tg :@: nanns) ch
+  (tag -> DTypeDef n t) ->
+    spliceType t >>= newAnns d >>= \(nt, nanns) -> return $ Node (DTypeDef n nt :@: nanns) $ children d
 
-    newAnns d v = mapM spliceDAnnotation (annotations d) >>= return . (v,)
-
+  (Node (tg :@: _) ch) ->
+    newAnns d () >>= \(_,nanns) -> return $ Node (tg :@: nanns) ch
+ where
+  newAnns d v = mapM spliceDAnnotation (annotations d) >>= return . (v,)
 
 spliceMPAnnMem :: MPAnnMemDecl -> GeneratorM [AnnMemDecl]
 spliceMPAnnMem (MPAnnMemDecl i c mems) = spliceWithValue c

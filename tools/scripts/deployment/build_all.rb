@@ -121,8 +121,8 @@ def build(name)
       Dir.chdir(K3) do
         puts "Cleaning build directory..."
         `tools/scripts/run/clean.sh`
-        puts "Compiling K3 -> C++ ..."
-        `tools/scripts/run/compile.sh #{path}`
+        puts "Compiling K3 -> C++ with options: #{ENV["K3_BUILDOPTS"]}"
+        `tools/scripts/run/compile.sh #{ENV["K3_BUILDOPTS"]} #{path}`
         puts "Copying artifacts..."
         `mkdir -p #{target}`
         `mv __build/#{File.basename(path, ".k3")}.cpp #{target}/#{slugify(experiment, query)}.cpp`
@@ -263,7 +263,7 @@ def harvest(statuses, out_folder)
         $stats[group_key] << time_ms
       end
     else
-      results[job_id]["status"] = "FAILED"
+      results[job_id] = { "status" =>  "FAILED" }
       puts "\t#{job_id} FAILED."
     end
   end
@@ -354,7 +354,7 @@ def main()
       f.write(jobs.to_json)
     end
   elsif File.exists?("#{workdir}/jobs.json")
-    jobs = JSON.parse(File.read("#{workdir}/jobs.json", "r"))
+    jobs = JSON.parse(File.read("#{workdir}/jobs.json"))
   end
 
   if $options[:gather]

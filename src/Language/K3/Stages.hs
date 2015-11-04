@@ -59,6 +59,8 @@ import qualified Language.K3.Analysis.SEffects.Inference   as SEffects
 
 import qualified Language.K3.Analysis.SendGraph as SG
 
+import qualified Language.K3.Codegen.CPP.Materialization.Inference as Mat
+
 import Language.K3.Transform.Simplification
 import Language.K3.Transform.TriggerSymbols (triggerSymbols)
 
@@ -94,7 +96,8 @@ data TransformSt = TransformSt { nextuid    :: ParGenSymS
                                , prenv      :: Properties.PIEnv
                                , penv       :: Provenance.PIEnv
                                , fenv       :: SEffects.FIEnv
-                               , report     :: TransformReport }
+                               , report     :: TransformReport
+                               , mzFlags    :: MZFlags }
                   deriving (Eq, Read, Show, Generic)
 
 -- | Monoid instance for transform reports.
@@ -133,10 +136,13 @@ cs0 = CompilerSpec 16 ss0
 rp0 :: TransformReport
 rp0 = TransformReport Map.empty Map.empty
 
+mz0 :: MZFlags
+mz0 = MZFlags
+
 st0 :: Maybe ParGenSymS -> K3 Declaration -> IO (Either String TransformSt)
 st0 symSOpt prog =
   return $ mkEnv >>= \(stpe, stfe) ->
-    return $ TransformSt uidSymS cseSymS tienv0 Properties.pienv0 stpe stfe rp0
+    return $ TransformSt uidSymS cseSymS tienv0 Properties.pienv0 stpe stfe rp0 mz0
 
   where puid = let UID i = maxProgramUID prog in i + 1
         uidSymS = maybe (contigsymAtS puid) (lowerboundsymS puid) symSOpt
@@ -521,18 +527,28 @@ refreshProgram prog = runPasses [inferFreshTypesAndEffects, inferFreshProperties
 
 {- Whole program pass aliases -}
 
+cgPreparePasses :: [ProgramTransform]
+cgPreparePasses = [ withRepair "TID" $ transformE $ triggerSymbols
+                  , \d -> (liftIO (SG.generateSendGraph d) >> return d)
+                  , \d -> return (mangleReservedNames d)
+                  , refreshProgram
+                  , transformF CArgs.runAnalysis
+                  , transformE markProgramLambdas ]
+
+materializationPass :: Bool -> Mat.IState -> ProgramTransform
+materializationPass dbg mst d = do
+  s  <- get
+  rE <- liftIO (Mat.optimizeMaterialization dbg mst (penv s, fenv s) d)
+  either throwE return rE
+
 cgPasses :: [ProgramTransform]
-cgPasses = [ withRepair "TID" $ transformE $ triggerSymbols
-           , \d -> (liftIO (SG.generateSendGraph d) >> return d)
-           , \d -> return (mangleReservedNames d)
-           , refreshProgram
-           , transformF CArgs.runAnalysis
-           , transformE markProgramLambdas
-           , \d -> get >>= \s -> liftIO (optimizeMaterialization (penv s, fenv s) d) >>= either throwE return
-           ]
+cgPasses = cgPreparePasses ++ [\p -> materializationPass False (Mat.prepareInitialIState False p) p]
 
 runCGPassesM :: ProgramTransform
 runCGPassesM prog = runPasses cgPasses prog
+
+runCGPreparePassesM :: ProgramTransform
+runCGPreparePassesM prog = runPasses cgPreparePasses prog
 
 
 {- Declaration-at-a-time analyses and optimizations. -}

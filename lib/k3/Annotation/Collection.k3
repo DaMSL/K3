@@ -3,6 +3,9 @@ annotation Collection given type a, b, c, d
   provides lifted size : () -> int
     with effects \_ -> R[self]
 
+  provides lifted clear : () -> ()
+    with effects \_ -> [R[self]; W[self]]
+
   @:CArgs 2
   provides lifted peek : (() -> a) -> (content -> a) -> a
     with effects \f -> \g -> [R[self]; f content; g content]
@@ -27,10 +30,6 @@ annotation Collection given type a, b, c, d
   @:CArgs 2
   provides lifted update : content -> content -> ()
     with effects \oldElem -> \newElem -> [R[self]; R[oldElem]; R[newElem]; W[self]]
-
-  provides lifted erase : content -> ()
-    with effects \elem -> [R[self]; R[elem]; W[self]]
-
 
   ///////////////////////////////////////////////////
   // Bulk transformations.

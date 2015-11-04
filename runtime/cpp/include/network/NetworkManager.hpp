@@ -3,10 +3,12 @@
 
 #include <boost/asio.hpp>
 #include <boost/asio/read.hpp>
+#include <boost/asio/deadline_timer.hpp>
 #include <boost/thread.hpp>
 
 #include "Common.hpp"
 #include "types/Message.hpp"
+#include "types/Timers.hpp"
 #include "spdlog/spdlog.h"
 
 namespace K3 {
@@ -40,10 +42,10 @@ class ConnectionMap : public ConcurrentMap<Address, shared_ptr<Connection>> {
 typedef ConcurrentMap<Address, shared_ptr<Listener>> ListenerMap;
 typedef ConnectionMap<InternalOutgoingConnection> InternalConnectionMap;
 typedef ConnectionMap<ExternalOutgoingConnection> ExternalConnectionMap;
-typedef ConcurrentMap<Address, shared_ptr<IncomingConnection>>
-    IncomingConnectionMap;
+typedef ConcurrentMap<Address, shared_ptr<IncomingConnection>> IncomingConnectionMap;
 typedef std::function<void(std::unique_ptr<Message>)> MessageHandler;
 typedef std::function<void(boost_error)> ErrorHandler;
+
 
 class NetworkManager {
  public:
@@ -53,14 +55,23 @@ class NetworkManager {
   void stop();
   void join();
   void listenInternal(shared_ptr<Peer> p);
-  void listenExternal(shared_ptr<Peer> p, Address listen_addr, TriggerID trig,
-                      CodecFormat format);
+  void listenExternal(shared_ptr<Peer> p, Address listen_addr, TriggerID trig, CodecFormat format);
   void sendInternal(const Address& dst, shared_ptr<NetworkMessage> pm);
   void sendExternal(const Address& a, shared_ptr<PackedValue> pv);
 
   // Utilities
   shared_ptr<Listener> getListener(const Address& addr);
   CodecFormat internalFormat();
+
+  // Timers.
+  std::shared_ptr<TimerKey>
+  timerKey(const TimerType& ty, const Address& src, const Address& dst, const TriggerID& trig);
+
+  void addTimer(std::shared_ptr<TimerKey> k, const Delay& delay);
+  void removeTimer(std::shared_ptr<TimerKey> k);
+
+  template<typename F>
+  void asyncWaitTimer(std::shared_ptr<TimerKey> k, F handler);
 
  protected:
   shared_ptr<InternalOutgoingConnection> connectInternal(const Address& a);
@@ -85,7 +96,18 @@ class NetworkManager {
 
   // State
   std::atomic<bool> running_;
+
+  // Timers
+  shared_ptr<TimerMap> timers_;
+  static std::atomic<unsigned long> timer_cnt_;
 };
+
+template<typename F>
+void NetworkManager::asyncWaitTimer(std::shared_ptr<TimerKey> k, F handler) {
+  timers_->apply(k, [handler = std::forward<F>(handler)](std::unique_ptr<Timer>& t) mutable {
+    t->async_wait(handler);
+  });
+}
 
 }  // namespace K3
 

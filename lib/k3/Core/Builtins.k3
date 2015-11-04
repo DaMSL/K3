@@ -157,6 +157,10 @@ declare random : int -> int
 // Uniform random real generation in [0,1)
 declare randomFraction : () -> real
 
+// Perform n trials with probability p, where n and p are the
+// first and second arguments respectively.
+declare randomBinomial : int -> real -> int
+
 // Polymorphic hash function
 declare hash : forall a . a -> int
   with effects \x -> R[x]
@@ -193,7 +197,7 @@ declare sqrt : real -> real
 
 // Collection enumeration [0,1,..n-1]
 @:ErrorFn
-declare range : int -> collection {i : int} @ { Seq }
+declare range : int -> collection {elem : int} @Seq
   with effects \x -> R[x]
 
 ///////////////////////
@@ -246,6 +250,6 @@ declare haltEngine : () -> ()
 // Terminate engine once queues are empty
 declare drainEngine : () -> ()
 
-// Sleep the engine (microseconds)
+// Sleep the engine (milliseconds)
 declare sleep : int -> ()
 with effects  \_ -> io

@@ -1,0 +1,68 @@
+include "Annotation/Collection.k3"
+include "Annotation/Vector.k3"
+include "Annotation/FlatPolyBuffer.k3"
+include "Core/Builtins.k3"
+
+typedef FPB = collection {ignored: ()} @FlatPolyBuffer(
+  variants=[:#>
+    foo => {a:int, b:int} : 0,
+    bar => {c:int, d:int} : 1,
+    baz => {e:int, f:int} : 2
+  ])
+
+declare c : FPB
+declare d : FPB
+declare e : FPB
+trigger tconstruct : () = \_ -> (
+  (range 100).iterate (\r -> (
+	  (c.append_foo {a:r.elem,      b:r.elem});
+	  (d.append_bar {c:1000+r.elem, d:2000+r.elem});
+	  (e.append_baz {e:100+r.elem,  f:200+r.elem});
+    (if ( (r.elem + 1) % 10 ) == 0 and r.elem > 0
+      then (
+        ((range 3).iterate (\o -> (osink, me) <- o.elem));
+        ((csink, me) <- c.save ());
+        ((dsink, me) <- d.save ());
+        ((esink, me) <- e.save ());
+        (c.clear());
+        (d.clear());
+         e.clear()
+      )
+      else ())
+  ));
+  (halt, me) <- () delay 2s
+)
+
+trigger halt : () = \_ -> haltEngine()
+
+declare fpaths : collection {path:string} @Collection
+declare outorder : mut string = "out_order.csv"
+declare inorder  : mut string = "in_order.csv"
+
+declare numc : mut int = 0
+declare numd : mut int = 0
+declare nume : mut int = 0
+
+trigger tload : FPB = \buf -> (
+  print ("Invoking polyfile dispatch on buffer of size: " ++ (itos (buf.size())));
+  (buf.iterate (\tg -> \idx -> \offset ->
+      if tg == 0 then ( numc = numc + 1 )
+      else if tg == 1 then ( numd = numd + 1 )
+      else if tg == 2 then ( nume = nume + 1 )
+      else ( print ("Unknown tag " ++ (itos tg)) )
+    ));
+  print ("Counts: " ++ (itos numc) ++ " " ++ (itos numd) ++ " " ++ (itos nume))
+)
+
+source construct : () = value ()
+feed construct |> tconstruct
+
+sink osink: int    = file outorder text csv
+sink csink: string = file "poly_c.out" binary raw
+sink dsink: string = file "poly_d.out" binary raw
+sink esink: string = file "poly_e.out" binary raw
+
+declare rebatch : mut int = 0
+
+source load : FPB = polyfile fpaths binary raw inorder rebatch
+feed load |> tload

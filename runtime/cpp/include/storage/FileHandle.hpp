@@ -40,7 +40,7 @@ class FileHandle {
 //    Binary File Handle  (explicit sized delimited values)
 class SourceFileHandle : public FileHandle  {
 public:
-  SourceFileHandle() { }
+  SourceFileHandle() {}
   SourceFileHandle (std::string path, CodecFormat codec);
 
   virtual bool hasRead();
@@ -70,11 +70,11 @@ public:
 //  Sink File Hande
 class SinkFileHandle : public FileHandle  {
 public:
+  SinkFileHandle() {}
   SinkFileHandle (std::string path, CodecFormat fmt);
 
   virtual bool hasWrite();
   virtual void doWriteHelper(const PackedValue& val);
-
 
   virtual unique_ptr<PackedValue> doRead() {
     throw std::ios_base::failure ("ERROR trying to read from sink.");
@@ -90,7 +90,7 @@ protected:
 
 class SinkTextHandle : public SinkFileHandle  {
 public:
-  SinkTextHandle (std::string path, CodecFormat fmt) : SinkFileHandle (path, fmt) {}
+  SinkTextHandle (std::string path, CodecFormat fmt);
   virtual void doWriteHelper(const PackedValue& val);
 };
 

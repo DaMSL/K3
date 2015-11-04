@@ -135,20 +135,23 @@ def taskInfo(k3job, tnum, webaddr, slaveId):
   peerStart = k3task.peers[0].index,
   peerEnd   = k3task.peers[-1].index,
 
-  task_data = {"binary": str(k3job.appName),
-      "totalPeers": len(k3job.all_peers),
-      "peerStart": k3task.peers[0].index,
-      "peerEnd": k3task.peers[-1].index,
-      "me": [ [p.ip, p.port] for p in k3task.peers],
-      "peers": [ {"addr": [p.ip, p.port] } for p in k3job.all_peers],
-      "globals": [p.variables for p in k3task.peers],
-      "master": [k3job.all_peers[0].ip, k3job.all_peers[0].port ],
+  task_data = {
+      "binary"           : str(k3job.appName),
+      "totalPeers"       : len(k3job.all_peers),
+      "peerStart"        : k3task.peers[0].index,
+      "peerEnd"          : k3task.peers[-1].index,
+      "me"               : [ [p.ip, p.port] for p in k3task.peers],
+      "peers"            : [ {"addr": [p.ip, p.port] } for p in k3job.all_peers],
+      "globals"          : [p.variables for p in k3task.peers],
+      "master"           : [k3job.all_peers[0].ip, k3job.all_peers[0].port ],
       "archive_endpoint" : "%s/jobs/" % webaddr,
-      "data": [role.inputs for p in range(len(k3task.peers))],
-      "logging":  k3job.logging,
-      "jsonlog":  k3job.jsonlog,
-      "jsonfinal":  k3job.jsonfinal,
-      "stdout": k3job.stdout}
+      "data"             : [role.inputs for p in range(len(k3task.peers))],
+      "seq_files"        : role.seq_files,
+      "logging"          : k3job.logging,
+      "jsonlog"          : k3job.jsonlog,
+      "jsonfinal"        : k3job.jsonfinal,
+      "perfprofile"      : k3job.perfprofile,
+      "stdout"           : k3job.stdout }
 
   # TODO:  When logging is fully implemented, remove this & update executor to accept
   #       the logging level
@@ -161,6 +164,8 @@ def taskInfo(k3job, tnum, webaddr, slaveId):
   if task_data['jsonfinal'] == False:
     del task_data['jsonfinal']
 
+  if task_data['perfprofile'] == False:
+    del task_data['perfprofile']
 
 
 

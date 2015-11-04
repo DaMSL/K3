@@ -65,6 +65,9 @@ $(loggingFunctions)
 hmtcTraceLogging :: Bool
 hmtcTraceLogging = False
 
+reasonWithEnv :: Bool
+reasonWithEnv = False
+
 localLog :: (Functor m, Monad m) => Text -> m ()
 localLog t = logVoid hmtcTraceLogging $ T.unpack t
 
@@ -411,8 +414,14 @@ runTInfES e m = either (Left . T.unpack) Right $ runTInfE e m
 
 reasonM :: (Text -> Text) -> TInfM a -> TInfM a
 reasonM errf = mapExceptT $ \m -> m >>= \case
-  Left  err -> get >>= \env -> (return . Left $ errf $ T.unlines [err, T.pack "Type environment:", PT.pretty env])
+  Left  err -> get >>= \env -> (return . Left $ errf $ reasonMsg err env)
   Right r   -> return $ Right r
+
+  where
+    reasonMsg err env =
+      if reasonWithEnv
+        then T.unlines [err, T.pack "Type environment:", PT.pretty env]
+        else err
 
 errorM :: Text -> TInfM a
 errorM msg = reasonM id $ throwE msg
@@ -1498,7 +1507,9 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
       (T.append $ T.unlines [ T.pack "Invalid function application:", PT.pretty fnqt
                             , T.pack "and", PT.pretty (tfun argqt retqt), T.pack ":"])
 
-    lookupError j reason      = errorM $ T.unwords [T.pack "No type environment binding for ", T.pack j, T.pack ":", reason]
+    lookupError j reason      = errorM $ PT.boxToString
+                                $ [T.unwords [T.pack "No type environment binding for ", T.pack j, T.pack ":", reason]]
+                                ++ [T.pack "On ["] ++ PT.prettyLines expr ++ [T.pack "]"]
     lambdaBindingErr i reason = errorM $ T.unwords [T.pack "Could not find typevar for lambda binding: ", T.pack i, reason]
     polyLambdaBindingErr      = errorM $ T.pack "Invalid forall type in lambda binding"
 

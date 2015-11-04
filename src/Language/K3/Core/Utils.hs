@@ -124,8 +124,6 @@ import Data.Tree
 import Data.Map ( Map )
 import qualified Data.Map as Map
 
-import Debug.Trace
-
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 import Language.K3.Core.Declaration
@@ -694,8 +692,8 @@ defaultExpression typ = mapTree mkExpr typ
                                         in withQualifier t $ EC.constant $ CNone nm
 
         mkExpr [e] t@(tag -> TIndirection) = withQualifier t $ EC.indirect e
-        mkExpr ch t@(tag -> TTuple)        = withQualifier t $ EC.tuple ch
-        mkExpr ch t@(tag -> TRecord ids)   = withQualifier t $ EC.record $ zip ids ch
+        mkExpr ch  t@(tag -> TTuple)       = withQualifier t $ EC.tuple ch
+        mkExpr ch  t@(tag -> TRecord ids)  = withQualifier t $ EC.record $ zip ids ch
 
         mkExpr _ t@(tag -> TCollection) = withQualifier t $
           foldl (@+) (EC.empty $ head $ children t) $ extractTCAnns $ annotations t
@@ -708,7 +706,8 @@ defaultExpression typ = mapTree mkExpr typ
         mkExpr _ t = Left $ boxToString $ ["Cannot create a default expression for: "] %+ prettyLines t
 
         extractTCAnns as = concatMap extract as
-          where extract (TAnnotation i) = [EAnnotation i]
+          where extract (TAnnotation i)    = [EAnnotation i]
+                extract (TApplyGen i senv) = [EApplyGen False i senv]
                 extract _ = []
 
         withQualifier t e = case t @~ isTQualified of

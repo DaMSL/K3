@@ -5,6 +5,7 @@
 
 #include "boost/functional/hash.hpp"
 
+#include "types/BaseString.hpp"
 #include "Common.hpp"
 
 namespace std {
@@ -39,8 +40,10 @@ template <>
 struct hash<K3::base_string> {
   size_t operator()(const K3::base_string& s) const {
     std::size_t seed = 0;
-    for (int i = 0; i < s.length(); i++) {
-      hash_combine(seed, s.c_str()[i]);
+    std::size_t len = s.length();
+    auto s_c = s.c_str();
+    for (int i = 0; i < len; i++) {
+      hash_combine(seed, s_c[i]);
     }
     return seed;
   }
