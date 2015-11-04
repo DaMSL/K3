@@ -1,5 +1,2 @@
 digraph {
-  "fibonacci" -> "result";
-  "fibonacci" -> "fibonacci";
-  "start" -> "fibonacci";
 }
