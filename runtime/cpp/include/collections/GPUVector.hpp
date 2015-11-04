@@ -37,4 +37,53 @@ class GPUVector : public GPUVectorDS<K3::GPUVector, Elem> {
 };
 
 } // end namespace K3
+
+namespace YAML {
+template <class E>
+struct convert<K3::GPUVector<E>> {
+  static Node encode(const K3::GPUVector<E>& c) {
+    Node node;
+    auto container = c.getConstContainer();
+    if (container.size() > 0) {
+      for (auto i : container) {
+        node.push_back(convert<E>::encode(i));
+      }
+    } else {
+      node = YAML::Load("[]");
+    }
+    return node;
+}
+
+  static bool decode(const Node& node, K3::GPUVector<E>& c) {
+    for (auto& i : node) {
+      c.insert(i.as<E>());
+    }
+
+    return true;
+  }
+};
+} // end namespace YAML
+
+namespace JSON {
+using namespace rapidjson;
+template <class E>
+struct convert<K3::GPUVector<E>> {
+  template <class Allocator>
+  static Value encode(const K3::GPUVector<E>& c, Allocator& al) {
+    Value v;
+    v.SetObject();
+    v.AddMember("type", Value("GPUVector"), al);
+    Value inner;
+    inner.SetArray();
+    for (const auto& e : c.getConstContainer()) {
+      inner.PushBack(convert<E>::encode(e, al), al);
+    }
+    v.AddMember("value", inner.Move(), al);
+    return v;
+  }
+};
+
+} // end namespace JSON
+
+
 #endif
