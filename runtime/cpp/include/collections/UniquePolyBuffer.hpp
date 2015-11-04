@@ -61,7 +61,7 @@ public:
   using VContainer = typename Super::VContainer;
   using TContainer = typename Super::TContainer;
 
-  UniquePolyBuffer() {}
+  UniquePolyBuffer() { internalized = true; }
 
   UniquePolyBuffer(const UniquePolyBuffer& other) : Super(other) {
     keys = other.keys;

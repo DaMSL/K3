@@ -479,17 +479,19 @@ public:
     if (buffer.data()) {
       throw std::runtime_error("Invalid append on a FPB: backed by a base_string");
     }
-    if (internalized) { throw std::runtime_error ("Invalid append on internalized poly buffer"); }
 
     FContainer* ncf = const_cast<FContainer*>(fixedc());
     VContainer* ncv = const_cast<VContainer*>(variablec());
 
     ExternalizerT etl(ncv, ExternalizerT::ExternalizeOp::Create);
+    InternalizerT itl(ncv);
 
     size_t offset = buffer_size(ncf);
     int status = buffer_insert(ncf, offset, reinterpret_cast<char*>(const_cast<T*>(&t)), sizeof(t));
     if ( status == 0 ) {
-      reinterpret_cast<T*>(buffer_data(ncf)+offset)->externalize(etl);
+      T* elem = reinterpret_cast<T*>(buffer_data(ncf)+offset);
+      elem->externalize(etl);
+      if ( internalized ) { elem->internalize(itl); }
       vector_push_back(tags(), const_cast<Tag*>(&tg));
     } else {
       throw std::runtime_error("Append failed on a FPB");
