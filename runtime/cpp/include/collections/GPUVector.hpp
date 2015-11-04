@@ -9,12 +9,12 @@
 
 namespace K3 {
 template <template <class> class Derived, class Elem>
-using VectorDS = STLDS<Derived, thrust::host_vector, Elem>;
+using GPUVectorDS = STLDS<Derived, thrust::host_vector, Elem>;
 
 template <class Elem>
-class GPUVector : public VectorDS<K3::GPUVector, Elem> {
+class GPUVector : public GPUVectorDS<K3::GPUVector, Elem> {
 
-  using Super = VectorDS<K3::GPUVector, Elem>;
+  using Super = GPUVectorDS<K3::GPUVector, Elem>;
 
  public:
   GPUVector() : Super() {}
@@ -37,4 +37,4 @@ class GPUVector : public VectorDS<K3::GPUVector, Elem> {
 };
 
 } // end namespace K3
-
+#endif
