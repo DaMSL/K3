@@ -1,0 +1,20 @@
+include "Annotation/GPUVector.k3"
+include "Core/Builtins.k3"
+
+declare c : collection {elem: int} @GPUVector
+declare d : collection {elem: bool} @GPUVector
+declare f : mut int = 0
+
+trigger t : () = \_ -> (
+  (range 10).iterate (\r -> c.insert {elem: r.elem});
+  print ("Initial size: " ++ (itos (c.size())));
+
+  c.unsafe_at 3 (\r -> print ("unsafe_at elem@3: " ++ (itos r.elem)));
+  (print ("erase_at elem@3: " ++ (itos (c.erase_at 3).elem)));
+
+  (range 10).iterate (\r -> d.insert {elem: r.elem > 5});
+  print ("d size: " ++ (itos (d.size())));
+)
+
+source s1 : () = value ()			    
+feed s1 |> t
