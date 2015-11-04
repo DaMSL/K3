@@ -1,4 +1,4 @@
-annotation GPUVector give type a, b, c, d
+annotation GPUVector given type a, b, c, d
 {
 
   //////////////////////////////////////
