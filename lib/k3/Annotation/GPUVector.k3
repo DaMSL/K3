@@ -17,6 +17,10 @@ annotation GPUVector given type a, b, c, d
   provides lifted erase_at : int -> content
     with effects \i -> \c -> [R[i]; R[c]; W[self]]
 
+  @:CArgs 2
+  provides lifted unsafe_at : int -> (content -> a) -> a 
+    with effects \i -> \f -> [R[i]; R[self]; f content]
+
 }
 
 

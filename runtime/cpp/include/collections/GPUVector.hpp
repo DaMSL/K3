@@ -29,6 +29,11 @@ class GPUVector : public VectorDS<K3::GPUVector, Elem> {
     return std::move(vec[i]);
   }
 
+  template<class F>
+  auto unsafe_at(int i, F f) const {
+    auto& vec = Super::getConstContainer();
+    return f(vec[i]);
+  }
 };
 
 } // end namespace K3
