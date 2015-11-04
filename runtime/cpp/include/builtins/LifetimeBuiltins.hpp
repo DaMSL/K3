@@ -52,6 +52,7 @@ namespace K3 {
 
       void push(const lifetime_t& l, const size_t& o) {
         memory_load += l * o;
+        ++object_counter;
         if ( sz < n ) { x[sz] = std::make_pair(l,o); sz++; }
         else if ( S > 0 ) { S--; }
         else {
@@ -61,7 +62,7 @@ namespace K3 {
       }
 
       void dump() {
-        out << -1 << "," << memory_load << std::endl;
+        out << object_counter << "," << memory_load << std::endl;
         for (const auto& i : x) {
           out << i.first << "," << i.second << std::endl;
         }
@@ -78,6 +79,7 @@ namespace K3 {
       double w;
       std::array<LOSample, n> x;
       double memory_load = 0.0;
+      uint64_t object_counter = 0;
     };
 
     class histogram {
