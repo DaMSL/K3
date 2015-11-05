@@ -116,6 +116,7 @@ def create_local_file(args):
                 peer['switch_path'] = args.csv_path
             if args.tpch_data_path:
                 peer['seqfiles'] = seqfiles
+            if args.tpch_inorder_path:
                 peer['inorder'] = args.tpch_inorder_path
 
         peer.update(extra_args)
@@ -125,12 +126,11 @@ def create_local_file(args):
     dump_yaml(peers2)
 
 def mk_k3_seq_files(total_switches, sw_indexes, path, tables):
-    return [{
-        'switch_indexes': sw_indexes,
-        'num_switches': total_switches,
-        'data_dir': path,
-        'tables': tables
-            }]
+    return { 'switch_indexes': sw_indexes,
+             'num_switches'  : total_switches,
+             'data_dir'      : path,
+             'tables'        : tables
+           }
 
 def create_dist_file(args):
     query = args.tpch_query

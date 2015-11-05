@@ -240,9 +240,11 @@ def gen_yaml(role_path, script_path)
   cmd << "--tpch_query " << $options[:query] << " " 
   if $options[:tpch_data_path]
     cmd << "--tpch_data_path " << $options[:tpch_data_path] << " "
-    cmd << "--tpch_inorder_path " << $options[:tpch_inorder_path] << " "
   else
     cmd << "--csv_path " << $options[:k3_csv_path] << " "
+  end
+  if $options[:tpch_inorder_path]
+    cmd << "--tpch_inorder_path " << $options[:tpch_inorder_path] << " "
   end
   cmd << "--multicore " if $options[:run_mode] == :multicore
   cmd << "--dist " if $options[:run_mode] == :dist
@@ -813,13 +815,6 @@ def main()
   # handle json options
   if $options.has_key?(:json_file)
     update_from_json(JSON.parse($options[:json_file]))
-  end
-
-  # Check that we have both tpch_file and in_order
-  if $options.has_key?(:tpch_data_path) && !$options.has_key?(:tpch_inorder_path) ||
-     !$options.has_key?(:tpch_data_path) && $options.has_key?(:tpch_inorder_path)
-    puts "TPCH path must be used together with an inorder path"
-    exit(1)
   end
 
   ### fill in default options (must happen after filling in from json)
