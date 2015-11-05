@@ -198,6 +198,17 @@ class IntMap {
     return unit_t();
   }
 
+  unit_t erase_key(int key) {
+    mapi* m = get_mapi();
+    if (m->size > 0) {
+      auto existing = mapi_find(m, key);
+      if (existing != nullptr) {
+        mapi_erase(m, key);
+      }
+    }
+    return unit_t();
+  }
+
   template <class F>
   unit_t insert_with(const R& rec, F f) {
     mapi* m = get_mapi();
