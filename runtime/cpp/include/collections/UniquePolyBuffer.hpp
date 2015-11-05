@@ -134,15 +134,12 @@ public:
 
   UniquePolyBuffer()
     : Super(), comparator(this), hasher(this), keys(10, hasher, comparator)
-  {
-    debugUPBSetContainer();
-  }
+  {}
 
   UniquePolyBuffer(const UniquePolyBuffer& other)
     : Super(other), comparator(this), hasher(this), keys(10, hasher, comparator)
   {
     std::copy(other.keys.begin(), other.keys.end(), std::inserter(keys, keys.begin()));
-    debugUPBSetContainer();
   }
 
   UniquePolyBuffer(UniquePolyBuffer&& other)
@@ -150,14 +147,11 @@ public:
       comparator(std::move(other.comparator)),
       hasher(std::move(other.hasher)),
       keys(std::move(other.keys))
-  {
-    debugUPBSetContainer();
-  }
+  {}
 
   UniquePolyBuffer& operator=(const UniquePolyBuffer& other) {
     Super::operator=(other);
     std::copy(other.keys.begin(), other.keys.end(), std::inserter(keys, keys.begin()));
-    debugUPBSetContainer();
     return *this;
   }
 
@@ -166,17 +160,10 @@ public:
     hasher = std::move(other.hasher);
     keys = std::move(other.keys);
     Super::operator=(std::move(other));
-    debugUPBSetContainer();
     return *this;
   }
 
   ~UniquePolyBuffer() {}
-
-  void debugUPBSetContainer() {
-    if ( keys.hash_function().container != this->container.get() ) {
-      std::cout << "Invalid UPB container " << keys.hash_function().container << " vs " << this->container.get() << std::endl;
-    }
-  }
 
   void rebuildKeys() {
     size_t foffset = 0, sz = Super::size(unit_t{});

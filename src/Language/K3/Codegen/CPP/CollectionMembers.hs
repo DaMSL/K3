@@ -435,7 +435,7 @@ polybuffer name ans  = do
           [R.Call (R.Variable super_type) [R.Variable $ R.Name "other"]]
           False
           [ R.IfThenElse
-              (R.Project (R.Variable $ R.Name "other") (R.Name "internalized"))
+              (R.Project "internalized" $ R.Dereference $ R.Project (R.Variable $ R.Name "other") (R.Name "container"))
               [R.Ignore $ R.Call
                 (R.Variable $ R.Qualified (R.Name "Super") (R.Name "unpack"))
                 [R.Initialization R.Unit []]
