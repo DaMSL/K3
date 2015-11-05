@@ -26,22 +26,48 @@ namespace Libdynamic {
 //
 // Buffer functors.
 
+struct UPBValueProxy {
+  UPBValueProxy(size_t o) : asOffset(true), offset(o) {}
+  UPBValueProxy(const void* p) : asOffset(false), elem(p) {}
+
+  bool asOffset;
+  union {
+    void* elem;
+    size_t offset;
+  };
+};
+
 template<typename Tag>
-using UPBKey = std::pair<Tag, void*>;
+using UPBKey = std::pair<Tag, UPBValueProxy>;
 
 template<class T, typename Tag>
-struct UPBEqual : std::binary_function<UPBKey<Tag>, UPBKey<Tag>, bool> {
+struct UPBEqual : std::binary_function<UPBKey<Tag>, UPBKey<Tag>, bool>
+{
+  using Buf = LibdynamicVector::buffer;
+  Buf* buffer;
+
+  UPBEqual(Buf* b) : buffer(b) {}
+
   bool operator()(const UPBKey<Tag>& left, const UPBKey<Tag>& right) const {
+    void* lp = left.asOffset? buffer_data(buf) + left.second.offset : left.second.elem;
+    void* rp = right.asOffset? buffer_data(buf) + right.second.offset : right.second.elem;
     return T::equalelem(left.first, left.second, right.first, right.second);
   }
 };
 
 template<typename T, typename Tag>
-struct UPBHash : std::unary_function<UPBKey<Tag>, std::size_t> {
+struct UPBHash : std::unary_function<UPBKey<Tag>, std::size_t>
+{
+  using Buf = LibdynamicVector::buffer;
+  Buf* buffer;
+
+  UPBHash(Buf* b) : buffer(b) {}
+
   std::size_t operator()(const UPBKey<Tag>& k) const {
     std::hash<Tag> hash;
     size_t h1 = hash(k.first);
-    boost::hash_combine(h1, T::hashelem(k.first, k.second));
+    void* p = k.asOffset? buffer_data(buf) + k.second.offset : k.second.elem;
+    boost::hash_combine(h1, T::hashelem(k.first, p));
     return h1;
   }
 };
@@ -61,24 +87,32 @@ public:
   using VContainer = typename Super::VContainer;
   using TContainer = typename Super::TContainer;
 
-  UniquePolyBuffer() { this->internalized = true; }
+  UniquePolyBuffer() : Super(), comparator(fixed()), hasher(fixed()), keys(10, comparator, hasher)  {}
 
   UniquePolyBuffer(const UniquePolyBuffer& other) : Super(other) {
+    comparator = other.comparator;
+    hasher = other.hasher;
     keys = other.keys;
   }
 
   UniquePolyBuffer(UniquePolyBuffer&& other) : Super(std::move(other)) {
+    comparator = std::move(other.comparator);
+    hasher = std::move(other.hasher);
     keys.swap(other.keys);
   }
 
   UniquePolyBuffer& operator=(const UniquePolyBuffer& other) {
     Super::operator=(other);
+    comparator = other.comparator;
+    hasher = other.hasher;
     keys = other.keys;
     return *this;
   }
 
   UniquePolyBuffer& operator=(UniquePolyBuffer&& other) {
     keys = std::move(other.keys);
+    comparator = std::move(other.comparator);
+    hasher = std::move(other.hasher);
     Super::operator=(std::move(other));
     return *this;
   }
@@ -89,7 +123,7 @@ public:
     size_t foffset = 0, sz = Super::size(unit_t{});
     for (size_t i = 0; i < sz; ++i) {
       Tag tg = Super::tag_at(i);
-      keys.insert(std::make_pair(tg, reinterpret_cast<void*>(buffer_data(Super::fixed()) + foffset)));
+      keys.insert(std::make_pair(tg, std::move(UPBValueProxy { foffset })));
       foffset += this->elemsize(tg);
     }
   }
@@ -100,11 +134,12 @@ public:
 
   template<typename T>
   unit_t append(Tag tg, const T& t) {
-    if ( keys.find(std::make_pair(tg, reinterpret_cast<void*>(const_cast<T*>(&t)))) == keys.end() ) {
+    UPBValueProxy probe { reinterpret_cast<void*>(const_cast<T*>(&t)) };
+    if ( keys.find(std::make_pair(tg, probe)) == keys.end() ) {
       FContainer* ncf = const_cast<FContainer*>(Super::fixedc());
       size_t offset = buffer_size(ncf);
       Super::append(tg, t);
-      keys.insert(std::make_pair(tg, buffer_data(ncf)+offset));
+      keys.insert(std::make_pair(tg, std::move(UPBValueProxy proxy { offset })));
     }
     return unit_t{};
   }
@@ -151,6 +186,8 @@ public:
   BOOST_SERIALIZATION_SPLIT_MEMBER()
 
 private:
+  UPBEqual<Derived, Tag> comparator;
+  UPBHash<Derived, Tag> hasher;
   std::unordered_set<UPBKey<Tag>, UPBHash<Derived, Tag>, UPBEqual<Derived, Tag>> keys;
 };
 
