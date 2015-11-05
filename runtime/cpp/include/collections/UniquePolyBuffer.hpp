@@ -22,9 +22,6 @@
 namespace K3 {
 namespace Libdynamic {
 
-// Forward declaration.
-template<class Ignore, class Derived>
-class UniquePolyBuffer;
 
 //////////////////////////////////////////
 //
@@ -47,16 +44,16 @@ using UPBKey = std::pair<Tag, UPBValueProxy>;
 template<class Ignore, class T, typename Tag>
 struct UPBEqual : std::binary_function<UPBKey<Tag>, UPBKey<Tag>, bool>
 {
-  using UPB = UniquePolyBuffer<Ignore, T>;
+  using Container = FlatPolyBuffer<Ignore, T>::Container;
   using ExternalizerT = BufferExternalizer;
   using InternalizerT = BufferInternalizer;
 
-  UPB* container;
+  Container* container;
   ExternalizerT etl;
   InternalizerT itl;
 
   UPBEqual(UPB* c)
-    : container(c),
+    : container(c->container),
       etl(container->variable(), ExternalizerT::ExternalizeOp::Reuse),
       itl(container->variable())
   {}
@@ -66,14 +63,14 @@ struct UPBEqual : std::binary_function<UPBKey<Tag>, UPBKey<Tag>, bool>
     char* lp = left.second.asOffset? buffer_data(buffer) + left.second.offset : left.second.elem;
     char* rp = right.second.asOffset? buffer_data(buffer) + right.second.offset : right.second.elem;
 
-    if ( !container->isInternalized() ) {
+    if ( !container->internalized ) {
       if ( left.second.asOffset ) { T::internalize(const_cast<InternalizerT&>(itl), left.first, lp); }
       if ( right.second.asOffset ) { T::internalize(const_cast<InternalizerT&>(itl), right.first, rp); }
     }
 
     bool r = T::equalelem(left.first, lp, right.first, rp);
 
-    if ( !container->isInternalized() ) {
+    if ( !container->internalized ) {
       if ( left.second.asOffset ) { T::externalize(const_cast<ExternalizerT&>(etl), left.first, lp); }
       if ( right.second.asOffset ) { T::externalize(const_cast<ExternalizerT&>(etl), right.first, rp); }
     }
@@ -84,7 +81,7 @@ struct UPBEqual : std::binary_function<UPBKey<Tag>, UPBKey<Tag>, bool>
 template<typename Ignore, typename T, typename Tag>
 struct UPBHash : std::unary_function<UPBKey<Tag>, std::size_t>
 {
-  using UPB = UniquePolyBuffer<Ignore, T>;
+  using Container = FlatPolyBuffer<Ignore, T>::Container;
   using ExternalizerT = BufferExternalizer;
   using InternalizerT = BufferInternalizer;
 
@@ -93,7 +90,7 @@ struct UPBHash : std::unary_function<UPBKey<Tag>, std::size_t>
   InternalizerT itl;
 
   UPBHash(UPB* c)
-    : container(c),
+    : container(c->container),
       etl(container->variable(), ExternalizerT::ExternalizeOp::Reuse),
       itl(container->variable())
   {}
@@ -103,13 +100,13 @@ struct UPBHash : std::unary_function<UPBKey<Tag>, std::size_t>
     size_t h1 = hash(k.first);
     auto buffer = container->fixed();
     char* p = k.second.asOffset? buffer_data(buffer) + k.second.offset : k.second.elem;
-    if ( !container->isInternalized() && k.second.asOffset ) {
+    if ( !container->internalized && k.second.asOffset ) {
       T::internalize(const_cast<InternalizerT&>(itl), k.first, p);
     }
 
     boost::hash_combine(h1, T::hashelem(k.first, p));
 
-    if ( !container->isInternalized() && k.second.asOffset ) {
+    if ( !container->internalized && k.second.asOffset ) {
       T::externalize(const_cast<ExternalizerT&>(etl), k.first, p);
     }
     return h1;
@@ -133,12 +130,15 @@ public:
 
   UniquePolyBuffer()
     : Super(), comparator(this), hasher(this), keys(10, hasher, comparator)
-  {}
+  {
+    debugUPBSetContainer();
+  }
 
   UniquePolyBuffer(const UniquePolyBuffer& other)
     : Super(other), comparator(this), hasher(this), keys(10, hasher, comparator)
   {
     std::copy(other.keys.begin(), other.keys.end(), std::inserter(keys, keys.begin()));
+    debugUPBSetContainer();
   }
 
   UniquePolyBuffer(UniquePolyBuffer&& other)
@@ -146,11 +146,14 @@ public:
       comparator(std::move(other.comparator)),
       hasher(std::move(other.hasher)),
       keys(std::move(other.keys))
-  {}
+  {
+    debugUPBSetContainer();
+  }
 
   UniquePolyBuffer& operator=(const UniquePolyBuffer& other) {
     Super::operator=(other);
     std::copy(other.keys.begin(), other.keys.end(), std::inserter(keys, keys.begin()));
+    debugUPBSetContainer();
     return *this;
   }
 
@@ -159,10 +162,17 @@ public:
     hasher = std::move(other.hasher);
     keys = std::move(other.keys);
     Super::operator=(std::move(other));
+    debugUPBSetContainer();
     return *this;
   }
 
   ~UniquePolyBuffer() {}
+
+  void debugUPBSetContainer() {
+    if ( keys.hash_function().container != container.get() ) {
+      std::cout << "Invalid UPB container " << keys.hash_function().container << " vs " << container.get() << std::endl;
+    }
+  }
 
   void rebuildKeys() {
     size_t foffset = 0, sz = Super::size(unit_t{});

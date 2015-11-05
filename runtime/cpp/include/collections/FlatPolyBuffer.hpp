@@ -156,15 +156,27 @@ public:
   using TContainer = Vec;
 
   typedef struct {
+    bool internalized;
+
     FContainer cfixed;
     VContainer cvariable;
     TContainer ctags;
+
+    FContainer* fixed()    const { return const_cast<FContainer*>(&cfixed);    }
+    VContainer* variable() const { return const_cast<VContainer*>(&cvariable); }
+    TContainer* tags()     const { return const_cast<TContainer*>(&ctags);     }
+
+    const FContainer* fixedc()    const { return &(cfixed);    }
+    const VContainer* variablec() const { return &(cvariable); }
+    const TContainer* tagsc()     const { return &(ctags);     }
+
   } Container;
 
   using ExternalizerT = BufferExternalizer;
   using InternalizerT = BufferInternalizer;
 
-  FlatPolyBuffer() : container(new Container()), buffer(), internalized(false) {
+  FlatPolyBuffer() : container(make_unique<Container>()), buffer() {
+    container->internalized = false;
     initContainer();
   }
 
@@ -180,7 +192,7 @@ public:
   FlatPolyBuffer& operator=(const FlatPolyBuffer& other) {
     clear(unit_t{});
     copyPolyBuffer(other);
-    if (other.internalized) {
+    if ( other.isInternalized() ) {
       unpack(unit_t{});
     }
     return *this;
@@ -207,7 +219,6 @@ public:
       buffer_clear(fixed());
       buffer_clear(variable());
       buffer_clear(&(tags()->buffer));
-      delete container;
     }
   }
 
@@ -220,7 +231,7 @@ public:
     auto p = const_cast<FlatPolyBuffer*>(&other);
 
     // Ensure the other container is externalized so that pointers are stored as offsets.
-    if ( other.internalized ) {
+    if ( other.isInternalized() ) {
       otherModified = true;
       p->repack(unit_t{});
     }
@@ -232,7 +243,7 @@ public:
 
     // This container is left externalized.
     // We expect the callsite to internalize if necessary
-    internalized = false;
+    container->internalized = false;
 
     // Return other container to original state
     if ( otherModified ) { p->unpack(unit_t{}); }
@@ -240,8 +251,7 @@ public:
 
   void swapPolyBuffer(FlatPolyBuffer&& other) {
     if ( other.buffer.data() != nullptr ) { swap(buffer, other.buffer); }
-    if ( other.container != nullptr ) { std::swap(container, other.container); }
-    std::swap(internalized, other.internalized);
+    std::swap(container, other.container);
   }
 
   void copyBuffer(Buf* a, Buf* b) {
@@ -293,7 +303,7 @@ public:
   // These must work on an internalized collection, and we leave
   // it to the application to ensure internalization has happened.
   bool isInternalized() const {
-    return internalized;
+    return container->internalized;
   }
 
   int size(const unit_t&) const {
@@ -308,7 +318,7 @@ public:
 
   template<typename T>
   T at(int i, int offset) const {
-    if (!internalized) { throw std::runtime_error ("Invalid at on externalized poly buffer"); }
+    if (!isInternalized()) { throw std::runtime_error ("Invalid at on externalized poly buffer"); }
     if ( i < size(unit_t{}) ) {
       auto p = const_cast<FlatPolyBuffer*>(this);
       return *reinterpret_cast<T*>(buffer_data(p->fixed()) + static_cast<size_t>(offset));
@@ -319,7 +329,7 @@ public:
 
   template<typename T, typename F, typename G>
   auto safe_at(int i, int offset, F f, G g) const {
-    if (!internalized) { throw std::runtime_error ("Invalid safe_at on externalized poly buffer"); }
+    if (!isInternalized()) { throw std::runtime_error ("Invalid safe_at on externalized poly buffer"); }
     if ( i >= size(unit_t{}) ) {
       return f(unit_t {});
     } else {
@@ -330,14 +340,14 @@ public:
 
   template<typename T, typename F>
   auto unsafe_at(int i, int offset, F f) const {
-    if (!internalized) { throw std::runtime_error ("Invalid unsafe_at on externalized poly buffer"); }
+    if (!isInternalized()) { throw std::runtime_error ("Invalid unsafe_at on externalized poly buffer"); }
     auto p = const_cast<FlatPolyBuffer*>(this);
     return f(*reinterpret_cast<T*>(buffer_data(p->fixed()) + static_cast<size_t>(offset)));
   }
 
   // Copy another polybuffer's elements into this collection.
   unit_t extend(const FlatPolyBuffer& other) {
-    if (internalized && !other.isInternalized()) {
+    if (isInternalized() && !other.isInternalized()) {
       throw std::runtime_error ("Invalid extend on internalized poly buffer");
     }
 
@@ -353,7 +363,7 @@ public:
 
   // Splits a polybuffer into a vector of polybuffers according to the given chunk size.
   Vector<R_elem<Derived>> splitMany(int splitSize) const {
-    if (!internalized) { throw std::runtime_error ("Invalid splitMany on externalized poly buffer"); }
+    if (!isInternalized()) { throw std::runtime_error ("Invalid splitMany on externalized poly buffer"); }
 
     auto p = const_cast<FlatPolyBuffer*>(this);
     size_t foffset = 0, sz = size(unit_t{});
@@ -375,7 +385,7 @@ public:
   // Apply a function on the tag and offset.
   template<typename Fun>
   unit_t iterate(Fun f) const {
-    if (!internalized) { throw std::runtime_error ("Invalid iterate on externalized poly buffer"); }
+    if (!isInternalized()) { throw std::runtime_error ("Invalid iterate on externalized poly buffer"); }
     size_t foffset = 0, sz = size(unit_t{});
     for (size_t i = 0; i < sz; ++i) {
       Tag tg = tag_at(static_cast<int>(i));
@@ -388,7 +398,7 @@ public:
   // Accumulate with the tag and offset.
   template <typename Fun, typename Acc>
   Acc foldl(Fun f, Acc acc) const {
-    if (!internalized) { throw std::runtime_error ("Invalid foldl on externalized poly buffer"); }
+    if (!isInternalized()) { throw std::runtime_error ("Invalid foldl on externalized poly buffer"); }
     size_t foffset = 0, sz = size(unit_t{});
     for (size_t i = 0; i < sz; ++i) {
       Tag tg = tag_at(static_cast<int>(i));
@@ -400,7 +410,7 @@ public:
 
   template<typename Fun>
   unit_t traverse(Fun f) const {
-    if (!internalized) { throw std::runtime_error ("Invalid traverse on externalized poly buffer"); }
+    if (!isInternalized()) { throw std::runtime_error ("Invalid traverse on externalized poly buffer"); }
     size_t foffset = 0, sz = size(unit_t{});
     size_t i = 0;
     // warning: could loop infinitely
@@ -415,7 +425,7 @@ public:
 
   template<typename Fun>
   auto traverse2(int idx, int offset, Fun f) const {
-    if (!internalized) { throw std::runtime_error ("Invalid traverse on externalized poly buffer"); }
+    if (!isInternalized()) { throw std::runtime_error ("Invalid traverse on externalized poly buffer"); }
     size_t sz = size(unit_t{});
     // warning: could loop infinitely
     while (static_cast<size_t>(idx) < sz) {
@@ -435,7 +445,7 @@ public:
 
   template<typename T, typename Fun>
   unit_t iterate_tag(Tag t, int i, int offset, Fun f) const {
-    if (!internalized) { throw std::runtime_error ("Invalid iterate_tag on externalized poly buffer"); }
+    if (!isInternalized()) { throw std::runtime_error ("Invalid iterate_tag on externalized poly buffer"); }
     auto p = buffer_data(const_cast<FlatPolyBuffer*>(this)->fixed());
     size_t foffset = static_cast<size_t>(offset);
     size_t sz = size(unit_t{});
@@ -448,7 +458,7 @@ public:
 
   template <typename T, typename Fun, typename Acc>
   Acc foldl_tag(Tag t, int i, int offset, Fun f, Acc acc) const {
-    if (!internalized) { throw std::runtime_error ("Invalid foldl_tag on externalized poly buffer"); }
+    if (!isInternalized()) { throw std::runtime_error ("Invalid foldl_tag on externalized poly buffer"); }
     auto p = buffer_data(const_cast<FlatPolyBuffer*>(this)->fixed());
     size_t foffset = static_cast<size_t>(offset);
     size_t sz = size(unit_t{});
@@ -476,7 +486,7 @@ public:
     if ( status == 0 ) {
       T* elem = reinterpret_cast<T*>(buffer_data(ncf)+offset);
       elem->externalize(etl);
-      if ( internalized ) { elem->internalize(itl); }
+      if ( isInternalized() ) { elem->internalize(itl); }
       vector_push_back(tags(), const_cast<Tag*>(&tg));
     } else {
       throw std::runtime_error("Append failed on a FPB");
@@ -510,7 +520,7 @@ public:
       fixed()->size = 0;
       variable()->size = 0;
       tags()->buffer.size = 0;
-      internalized = false;
+      container->internalized = false;
     }
     return unit_t{};
   }
@@ -526,7 +536,7 @@ public:
 
   // Externalizes an existing buffer, reusing the variable-length segment.
   unit_t repack(unit_t) {
-    if ( !internalized ) {
+    if ( !isInternalized() ) {
       throw std::runtime_error("FlatPolyBuffer: Attempt to repack failed: already externalized");
     }
 
@@ -541,13 +551,13 @@ public:
       Derived::externalize(etl, tg, buffer_data(ncf) + foffset);
       foffset += elemsize(tg);
     }
-    internalized = false;
+    container->internalized = false;
     return unit_t{};
   }
 
   // Internalizes an existing buffer if it is not already internalized.
   unit_t unpack(unit_t) {
-    if ( internalized ) {
+    if ( isInternalized() ) {
       throw std::runtime_error("FlatPolyBuffer: Attempt to unpack failed: already internalized");
     }
 
@@ -562,7 +572,7 @@ public:
       Derived::internalize(itl, tg, buffer_data(ncf) + foffset);
       foffset += elemsize(tg);
     }
-    internalized = true;
+    container->internalized = true;
     return unit_t{};
   }
 
@@ -573,9 +583,9 @@ public:
     TContainer* nct = tags();
 
     // Reset element pointers to slot ids as necessary.
-    bool internal = internalized;
+    bool internal = container->internalized;
     bool modified = false;
-    if ( internalized ) {
+    if ( isInternalized() ) {
       repack(unit_t{});
       modified = true;
     }
@@ -677,12 +687,12 @@ public:
     VContainer* ncv = variable();
     TContainer* nct = tags();
 
-    a.save_binary(&internalized, sizeof(internalized));
+    a.save_binary(&(container->internalized), sizeof(internalized));
 
     // Reset element pointers to slot ids as necessary.
     auto p = const_cast<FlatPolyBuffer*>(this);
     bool modified = false;
-    if ( p->internalized ) {
+    if ( p->isInternalized() ) {
       p->repack(unit_t{});
       modified = true;
     }
@@ -748,9 +758,9 @@ public:
     auto p = const_cast<FlatPolyBuffer*>(this);
     bool modified = false;
 
-    a.write(&internalized, sizeof(internalized));
+    a.write(&(container->internalized), sizeof(internalized));
 
-    if ( p->internalized ) {
+    if ( p->isInternalized() ) {
       p->repack(unit_t {});
       modified = true;
     }
@@ -819,21 +829,21 @@ public:
 
 protected:
   // FlatPolyBuffer is backed by either a base_string or a Container
-  Container* container;
-  FContainer* fixed()    const { assertContainer(); return const_cast<FContainer*>(&(container->cfixed)); }
-  VContainer* variable() const { assertContainer(); return const_cast<VContainer*>(&(container->cvariable)); }
-  TContainer* tags()     const { assertContainer(); return const_cast<TContainer*>(&(container->ctags)); }
+  unique_ptr<Container> container;
 
-  const FContainer* fixedc()    const { assertContainer(); return &(container->cfixed); }
-  const VContainer* variablec() const { assertContainer(); return &(container->cvariable); }
-  const TContainer* tagsc()     const { assertContainer(); return &(container->ctags); }
+  FContainer* fixed()    const { assertContainer(); return container->fixed()); }
+  VContainer* variable() const { assertContainer(); return container->variable()); }
+  TContainer* tags()     const { assertContainer(); return container->tags()); }
+
+  const FContainer* fixedc()    const { assertContainer(); return container->fixedc(); }
+  const VContainer* variablec() const { assertContainer(); return container->variablec(); }
+  const TContainer* tagsc()     const { assertContainer(); return container->tagsc(); }
 
   void assertContainer() {
-    if ( container == nullptr ) { throw std::runtime_error("Invalid FPB container pointer"); }
+    if ( !container ) { throw std::runtime_error("Invalid FPB container pointer"); }
   }
 
   base_string buffer;
-  bool internalized;
 };
 
 }; // end namespace Libdynamic
