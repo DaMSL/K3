@@ -164,7 +164,7 @@ public:
   using ExternalizerT = BufferExternalizer;
   using InternalizerT = BufferInternalizer;
 
-  FlatPolyBuffer() : container(), buffer(), internalized(false) {
+  FlatPolyBuffer() : container(new Container()), buffer(), internalized(false) {
     initContainer();
   }
 
@@ -207,6 +207,7 @@ public:
       buffer_clear(fixed());
       buffer_clear(variable());
       buffer_clear(&(tags()->buffer));
+      delete container;
     }
   }
 
@@ -239,21 +240,7 @@ public:
 
   void swapPolyBuffer(FlatPolyBuffer&& other) {
     if ( other.buffer.data() != nullptr ) { swap(buffer, other.buffer); }
-
-    container.cfixed.size     = other.container.cfixed.size;
-    container.cfixed.capacity = other.container.cfixed.capacity;
-    std::swap(container.cfixed.data, other.container.cfixed.data);
-
-    container.cvariable.size     = other.container.cvariable.size;
-    container.cvariable.capacity = other.container.cvariable.capacity;
-    std::swap(container.cvariable.data, other.container.cvariable.data);
-
-    container.ctags.buffer.size     = other.container.ctags.buffer.size;
-    container.ctags.buffer.capacity = other.container.ctags.buffer.capacity;
-    container.ctags.object_size     = other.container.ctags.object_size;
-    container.ctags.release         = other.container.ctags.release;
-    std::swap(container.ctags.buffer.data, other.container.ctags.buffer.data);
-
+    if ( other.container != nullptr ) { std::swap(container, other.container); }
     std::swap(internalized, other.internalized);
   }
 
@@ -523,7 +510,7 @@ public:
       fixed()->size = 0;
       variable()->size = 0;
       tags()->buffer.size = 0;
-      internalized=false;
+      internalized = false;
     }
     return unit_t{};
   }
@@ -681,8 +668,8 @@ public:
     return unit_t{};
   }
 
-  Container& getContainer() { return container; }
-  const Container& getConstContainer() const { return container; }
+  Container& getContainer() { assertContainer(); return *container; }
+  const Container& getConstContainer() const { assertContainer(); return *container; }
 
   template <class archive>
   void save(archive& a, const unsigned int) const {
@@ -832,14 +819,18 @@ public:
 
 protected:
   // FlatPolyBuffer is backed by either a base_string or a Container
-  Container container;
-  FContainer* fixed()    const { return const_cast<FContainer*>(&(container.cfixed)); }
-  VContainer* variable() const { return const_cast<VContainer*>(&(container.cvariable)); }
-  TContainer* tags()     const { return const_cast<TContainer*>(&(container.ctags)); }
+  Container* container;
+  FContainer* fixed()    const { assertContainer(); return const_cast<FContainer*>(&(container->cfixed)); }
+  VContainer* variable() const { assertContainer(); return const_cast<VContainer*>(&(container->cvariable)); }
+  TContainer* tags()     const { assertContainer(); return const_cast<TContainer*>(&(container->ctags)); }
 
-  const FContainer* fixedc()    const { return &(container.cfixed); }
-  const VContainer* variablec() const { return &(container.cvariable); }
-  const TContainer* tagsc()     const { return &(container.ctags); }
+  const FContainer* fixedc()    const { assertContainer(); return &(container->cfixed); }
+  const VContainer* variablec() const { assertContainer(); return &(container->cvariable); }
+  const TContainer* tagsc()     const { assertContainer(); return &(container->ctags); }
+
+  void assertContainer() {
+    if ( container == nullptr ) { throw std::runtime_error("Invalid FPB container pointer"); }
+  }
 
   base_string buffer;
   bool internalized;
