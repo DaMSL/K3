@@ -185,7 +185,7 @@ public:
     // Leave it to the child classes to internalize, if necessary
   }
 
-  FlatPolyBuffer(FlatPolyBuffer&& other) : FlatPolyBuffer() {
+  FlatPolyBuffer(FlatPolyBuffer&& other) {
     swapPolyBuffer(std::move(other));
   }
 
