@@ -7,7 +7,7 @@ fi
 LOGF=$1
 OUTF=$2
 
-for sn in 1 2 4 6 32 64;
+for sn in 1 2 4 8 32 64;
 do
   mkdir -p $OUTF/$sn
   ruby log_to_mux.rb $LOGF $sn $OUTF/$sn/

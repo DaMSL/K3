@@ -56,11 +56,16 @@ def main()
    end
   end
 
+
   # Display final counts per table
   for (i, mux) in partitions
     # Materialize a list of all the tags in this mux file
     l = []
     for (tbl, count) in mux
+        if not $tags.has_key?(tbl)
+          puts "INVALID TABLE: #{tbl}"
+	  exit 1
+	end
       for tag in (1..count).map {|x| $tags[tbl]}
         l << tag
       end
