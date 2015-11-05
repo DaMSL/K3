@@ -743,7 +743,7 @@ polybuffer name ans  = do
                         [(Just "e", R.Reference externalizer_t),
                          (Just "tag", tag_t),
                          (Just "data", char_ptr_t)]
-                        (Just $ R.Void)
+                        (Just $ R.Named $ R.Name "static void")
                         []
                         False
                         [branch_chain "tag" tags types elseStmt elemStmt]
@@ -759,7 +759,7 @@ polybuffer name ans  = do
                         [(Just "i", R.Reference internalizer_t),
                          (Just "tag", tag_t),
                          (Just "data", char_ptr_t)]
-                        (Just $ R.Void)
+                        (Just $ R.Named $ R.Name "static void")
                         []
                         False
                         [branch_chain "tag" tags types elseStmt elemStmt]

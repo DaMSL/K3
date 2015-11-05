@@ -67,15 +67,15 @@ struct UPBEqual : std::binary_function<UPBKey<Tag>, UPBKey<Tag>, bool>
     char* rp = right.second.asOffset? buffer_data(buffer) + right.second.offset : right.second.elem;
 
     if ( !container->isInternalized() ) {
-      if ( left.second.asOffset ) { container->internalize(const_cast<InternalizerT&>(itl), left.first, lp); }
-      if ( right.second.asOffset ) { container->internalize(const_cast<InternalizerT&>(itl), right.first, rp); }
+      if ( left.second.asOffset ) { T::internalize(const_cast<InternalizerT&>(itl), left.first, lp); }
+      if ( right.second.asOffset ) { T::internalize(const_cast<InternalizerT&>(itl), right.first, rp); }
     }
 
     bool r = T::equalelem(left.first, lp, right.first, rp);
 
     if ( !container->isInternalized() ) {
-      if ( left.second.asOffset ) { container->externalize(const_cast<ExternalizerT&>(etl), left.first, lp); }
-      if ( right.second.asOffset ) { container->externalize(const_cast<ExternalizerT&>(etl), right.first, rp); }
+      if ( left.second.asOffset ) { T::externalize(const_cast<ExternalizerT&>(etl), left.first, lp); }
+      if ( right.second.asOffset ) { T::externalize(const_cast<ExternalizerT&>(etl), right.first, rp); }
     }
     return r;
   }
@@ -104,13 +104,13 @@ struct UPBHash : std::unary_function<UPBKey<Tag>, std::size_t>
     auto buffer = container->fixed();
     char* p = k.second.asOffset? buffer_data(buffer) + k.second.offset : k.second.elem;
     if ( !container->isInternalized() && k.second.asOffset ) {
-      container->internalize(const_cast<InternalizerT&>(itl), k.first, p);
+      T::internalize(const_cast<InternalizerT&>(itl), k.first, p);
     }
 
     boost::hash_combine(h1, T::hashelem(k.first, p));
 
     if ( !container->isInternalized() && k.second.asOffset ) {
-      container->externalize(const_cast<ExternalizerT&>(etl), k.first, p);
+      T::externalize(const_cast<ExternalizerT&>(etl), k.first, p);
     }
     return h1;
   }
@@ -136,7 +136,7 @@ public:
   {}
 
   UniquePolyBuffer(const UniquePolyBuffer& other)
-    : Super(other), comparator(other.comparator), hasher(other.hasher), keys(other.keys)
+    : Super(other), comparator(this), hasher(this), keys(other.keys)
   {}
 
   UniquePolyBuffer(UniquePolyBuffer&& other)
@@ -146,8 +146,6 @@ public:
 
   UniquePolyBuffer& operator=(const UniquePolyBuffer& other) {
     Super::operator=(other);
-    comparator = other.comparator;
-    hasher = other.hasher;
     keys = other.keys;
     return *this;
   }

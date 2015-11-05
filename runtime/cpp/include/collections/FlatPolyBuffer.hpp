@@ -295,8 +295,6 @@ public:
   // Virtual methods to be implemented by instances.
   virtual size_t elemsize(Tag t) const = 0;
   virtual void elemappend(Tag t, char* data) = 0;
-  virtual void externalize(ExternalizerT& e, Tag t, char* data) = 0;
-  virtual void internalize(InternalizerT& i, Tag t, char* data) = 0;
 
   virtual YAML::Node yamlencode(Tag t, int idx, size_t offset) const = 0;
   virtual void yamldecode(YAML::Node& n) = 0;
@@ -553,7 +551,7 @@ public:
     size_t sz = size(unit_t{});
     for (size_t i = 0; i < sz; ++i) {
       Tag tg = tag_at(static_cast<int>(i));
-      externalize(etl, tg, buffer_data(ncf) + foffset);
+      Derived::externalize(etl, tg, buffer_data(ncf) + foffset);
       foffset += elemsize(tg);
     }
     internalized = false;
@@ -574,7 +572,7 @@ public:
     size_t sz = size(unit_t{});
     for (size_t i = 0; i < sz; ++i) {
       Tag tg = tag_at(static_cast<int>(i));
-      internalize(itl, tg, buffer_data(ncf) + foffset);
+      Derived::internalize(itl, tg, buffer_data(ncf) + foffset);
       foffset += elemsize(tg);
     }
     internalized = true;
