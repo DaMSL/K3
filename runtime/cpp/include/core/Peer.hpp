@@ -55,6 +55,20 @@ class Peer {
   void logMessage(const Dispatcher& d);
   void logGlobals(bool final);
 
+  // BSL Allocations
+#ifdef BSL_ALLOC
+  #ifdef BSEQ
+  BloombergLP::bdlma::SequentialAllocator mpool_;
+  #elif BPOOLSEQ
+  BloombergLP::bdlma::SequentialAllocator seqpool_;
+  BloombergLP::bdlma::MultipoolAllocator mpool_;
+  #elif BLOCAL
+  BloombergLP::bdlma::LocalSequentialAllocator<lsz> mpool_;
+  #else
+  BloombergLP::bdlma::MultipoolAllocator mpool_;
+  #endif
+#endif
+
   // Components
   shared_ptr<ProgramContext> context_;
   shared_ptr<spdlog::logger> logger_;
@@ -75,21 +89,6 @@ class Peer {
   // Statistics
   std::vector<TriggerStatistics> statistics_;
   int message_counter_;
-
-  // BSL Allocations
-#ifdef BSL_ALLOC
-  #ifdef BSEQ
-  BloombergLP::bdlma::SequentialAllocator mpool_;
-  #elif BPOOLSEQ
-  BloombergLP::bdlma::SequentialAllocator seqpool_;
-  BloombergLP::bdlma::MultipoolAllocator mpool_;
-  #elif BLOCAL
-  BloombergLP::bdlma::LocalSequentialAllocator<lsz> mpool_;
-  #else
-  BloombergLP::bdlma::MultipoolAllocator mpool_;
-  #endif
-#endif
-
 };
 
 }  // namespace K3
