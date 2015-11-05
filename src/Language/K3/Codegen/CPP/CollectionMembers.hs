@@ -435,7 +435,7 @@ polybuffer name ans  = do
           [R.Call (R.Variable super_type) [R.Variable $ R.Name "other"]]
           False
           [ R.IfThenElse
-              (R.Project (R.Variable $ R.Name "other") (R.Name "internalized"))
+              (R.Project (R.Dereference $ R.Project (R.Variable $ R.Name "other") $ R.Name "container") $ R.Name "internalized")
               [R.Ignore $ R.Call
                 (R.Variable $ R.Qualified (R.Name "Super") (R.Name "unpack"))
                 [R.Initialization R.Unit []]
@@ -743,7 +743,7 @@ polybuffer name ans  = do
                         [(Just "e", R.Reference externalizer_t),
                          (Just "tag", tag_t),
                          (Just "data", char_ptr_t)]
-                        (Just $ R.Void)
+                        (Just $ R.Named $ R.Name "static void")
                         []
                         False
                         [branch_chain "tag" tags types elseStmt elemStmt]
@@ -759,7 +759,7 @@ polybuffer name ans  = do
                         [(Just "i", R.Reference internalizer_t),
                          (Just "tag", tag_t),
                          (Just "data", char_ptr_t)]
-                        (Just $ R.Void)
+                        (Just $ R.Named $ R.Name "static void")
                         []
                         False
                         [branch_chain "tag" tags types elseStmt elemStmt]

@@ -386,12 +386,12 @@ trigger create_random_mux_order_file : () = \_ -> (
 )
 
 declare get_batch_count : int -> int = \i -> (
-        if i == 0 then numli
-   else if i == 1 then numcs
+        if i == 0 then numcs
+   else if i == 1 then numli
    else if i == 2 then numor
-   else if i == 3 then numsu
+   else if i == 3 then numpt
    else if i == 4 then numps
-   else if i == 5 then numpt
+   else if i == 5 then numsu
    else                0
 )
 

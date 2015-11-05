@@ -227,8 +227,11 @@ end
 
 ### Deployment stage ###
 
-def gen_yaml(role_file, script_path)
+def gen_yaml(role_path, script_path)
   # Generate yaml file"
+  num_nodes = 1
+  if $options[:num_nodes] then num_nodes = $options[:num_nodes] end
+
   cmd = ""
   cmd << "--switches " << $options[:num_switches].to_s << " " if $options[:num_switches]
   cmd << "--nodes " << $options[:num_nodes].to_s << " " if $options[:num_nodes]
@@ -240,19 +243,25 @@ def gen_yaml(role_file, script_path)
   else
     cmd << "--csv_path " << $options[:k3_csv_path] << " "
   end
-  cmd << "--multicore" if $options[:run_mode] == :multicore
-  cmd << "--dist" if $options[:run_mode] == :dist
+  cmd << "--multicore " if $options[:run_mode] == :multicore
+  cmd << "--dist " if $options[:run_mode] == :dist
 
   extra_args = []
   extra_args << "ms_gc_interval=" + $options[:gc_epoch] if $options[:gc_epoch]
   extra_args << "sw_driver_sleep=" + $options[:msg_delay] if $options[:msg_delay]
   extra_args << "corrective_mode=false" if $options[:no_corrective]
-  extra_args << "sw_poly_batch_size=" + $options[:batch_size] if $options[:batch_size]
+  if $options[:batch_size]
+    extra_args << "sw_poly_batch_size=" + $options[:batch_size]
+    extra_args << "rebatch=" + $options[:batch_size]
+  end
   extra_args << "do_poly_reserve=false" if $options[:no_poly_reserve]
+  extra_args << "do_profiling=true" if $options[:event_profile]
+  # if we have more than 16 nodes, we need more buckets
+  extra_args << "pmap_buckets=" + (num_nodes * 4).to_s if num_nodes > 16
   cmd << "--extra-args " << extra_args.join(',') << " " if extra_args.size > 0
 
   yaml = run("#{File.join(script_path, "gen_yaml.py")} #{cmd}")
-  File.write(role_file, yaml)
+  File.write(role_path, yaml)
 end
 
 def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
@@ -342,11 +351,11 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
 
 end
 
-def run_deploy_k3_remote(uid, server_url, bin_path, nice_name, script_path, full_ktrace, perf_profile)
-  role_path = File.join($workdir, nice_name + ".yaml")
+def run_deploy_k3_remote(uid, server_url, bin_path, nice_name, script_path, perf_profile)
+  role_path = if $options[:raw_yaml_file] then $options[:raw_yaml_file] else File.join($workdir, nice_name + ".yaml") end
 
   # we can either have a uid from a previous stage, or send a binary and get a uid now
-  if uid.nil?
+  if uid.nil? || $options[:compile_local]
     stage "[5] Sending binary to mesos"
     res = curl(server_url, '/apps', file:bin_path, post:true, json:true)
     uid = res['uid']
@@ -358,10 +367,16 @@ def run_deploy_k3_remote(uid, server_url, bin_path, nice_name, script_path, full
   uid_s = uid == "latest" ? "" : "/#{uid}"
 
   # Generate mesos yaml file"
-  gen_yaml(role_path, script_path)
+  gen_yaml(role_path, script_path) unless $options[:raw_yaml_file]
 
   stage "[5] Creating new mesos job"
-  curl_args = full_ktrace ? {'jsonlog' => 'yes'} : {'jsonfinal' => 'yes'}
+  curl_args = {}
+  case $options[:logging]
+    when :full
+      curl_args['jsonlog'] = 'yes'
+    when :final
+      curl_args['jsonfinal'] = 'yes'
+  end
   if perf_profile
     curl_args['perfprofile'] = 'yes'
   end
@@ -377,8 +392,8 @@ end
 
 # local deployment
 def run_deploy_k3_local(bin_path, nice_name, script_path)
-  role_file = File.join($workdir, nice_name + "_local.yaml")
-  gen_yaml(role_file, script_path)
+  role_path = if $options[:raw_yaml_file] then $options[:raw_yaml_file] else File.join($workdir, nice_name + "_local.yaml") end
+  gen_yaml(role_path, script_path) unless $options[:raw_yaml_file]
 
   json_dist_path = File.join($workdir, 'json')
 
@@ -388,7 +403,7 @@ def run_deploy_k3_local(bin_path, nice_name, script_path)
   args = ""
   args << "--json #{json_dist_path} " unless $options[:logging] == :none
   args << "--json_final_only " if $options[:logging] == :final
-  cmd_suffix = "#{bin_path} -p #{role_file} #{args}"
+  cmd_suffix = "#{bin_path} -p #{role_path} #{args}"
   perf_cmd = "perf record -F 10 -a --call-graph dwarf -- "
   run($options[:profile] == :perf ? perf_cmd + cmd_suffix : cmd_suffix)
 end
@@ -679,7 +694,7 @@ end
 def main()
   $options = {}
   $options[:run_mode] = :dist
-  $options[:logging] = :final
+  $options[:logging] = :none
   $options[:profile] = :none
 
   uid = nil
@@ -699,6 +714,7 @@ def main()
     opts.on("--json_debug", "Debug queries that won't die") { $options[:json_debug] = true }
     opts.on("--perhost [NUM]", Integer, "How many peers to run per host") {|i| $options[:perhost] = i}
     opts.on("--nmask [MASK]", String, "Mask for node deployment") {|s| $options[:nmask] = s}
+    opts.on("--smask [MASK]", String, "Mask for switch deployment") {|s| $options[:smask] = s}
     opts.on("--uid [UID]", String, "UID of file") {|s| $options[:uid] = s}
     opts.on("--jobid [JOBID]", String, "JOBID of job") {|s| $options[:jobid] = s}
     opts.on("--mosaic-path [PATH]", String, "Path for mosaic") {|s| $options[:mosaic_path] = s}
@@ -718,6 +734,7 @@ def main()
     opts.on("--extreme",  "Query is of extreme skew (and size)") { $options[:skew] = :extreme}
     opts.on("--dry-run",  "Dry run for Mosaic deployment (generates K3 YAML topology)") { $options[:dry_run] = true}
     opts.on("--full-ktrace", "Turn on JSON logging for ktrace") { $options[:logging] = :full }
+    opts.on("--final-ktrace", "Turn on final JSON logging for ktrace") { $options[:logging] = :final }
     opts.on("--no-ktrace", "Turn off JSON logging for ktrace") { $options[:logging] = :none }
     opts.on("--perf-profile", "Turn on perf profiling") { $options[:profile] = :perf }
     opts.on("--dots", "Get the awesome dots") { $options[:dots] = true }
@@ -726,6 +743,9 @@ def main()
     opts.on("--no-correctives", "Run in no-corrective mode") { $options[:no_corrective] = true }
     opts.on("--batch-size [SIZE]", "Set the batch size") {|s| $options[:batch_size] = s }
     opts.on("--no-reserve", "Prevent reserve on the poly buffers") { $options[:no_poly_reserve] = true }
+    opts.on("--event-profile", "Run with event profiling") { $options[:event_profile] = true }
+    opts.on("--raw-yaml [FILE]", "Supply a yaml file") { |s| $options[:raw_yaml_file] = s }
+
 
     # Compile args synonyms
     opts.on("--compileargs [STRING]", "Pass arguments to compiler (distributed only)") { |s| $options[:compileargs] = s }
@@ -908,14 +928,13 @@ def main()
 
   if $options[:deploy_k3]
     if $options[:dry_run]
-      role_file = File.join($workdir, nice_name + "_local.yaml")
-      gen_yaml(role_file, script_path)
+      role_path = if $options[:raw_yaml_file] then $options[:raw_yaml_file] else File.join($workdir, nice_name + "_local.yaml") end
+      gen_yaml(role_path, script_path) unless $options[:raw_yaml_file]
     elsif $options[:run_mode] == :local
       run_deploy_k3_local(bin_path, nice_name, script_path)
     else
-      log = $options[:logging] == :full
       prof = $options[:profile] == :perf
-      run_deploy_k3_remote(uid, server_url, bin_path, nice_name, script_path, log, prof)
+      run_deploy_k3_remote(uid, server_url, bin_path, nice_name, script_path, prof)
     end
   end
 

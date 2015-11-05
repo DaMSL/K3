@@ -42,10 +42,10 @@ class DataFile {
 
 // Mosaic sequence files
 struct SeqFile {
-  string var;
-  int switch_index;
   int num_switches;
-  std::list<string> paths;
+  string data_dir;
+  std::list<int> switch_indexes;
+  std::list<string> tables;;
 };
 
 
@@ -84,7 +84,6 @@ void packageSandbox(string host_name, string app_name, string job_id, string web
     cout << endl << endl << curl_output << endl;
     exec(curl_output.c_str());
 }
-
 
 
 
@@ -142,7 +141,8 @@ class KDExecutor : public Executor
 protected:
   std::thread *thread;
   vector<DataFile> dataFiles;
-  vector<SeqFile> seqFiles;
+  SeqFile seqFile;
+  bool seqFileEnabled = false;
 
 public:
   KDExecutor() : dataFiles() { thread=0; }
@@ -261,19 +261,20 @@ public:
         }
         else if (key == "seq_files") {
           std::cout << "Seq Files:\n" << YAML::Dump(param->second) << std::endl;
+	  seqFileEnabled = true;
           Node seqNode = param->second;
-          for(YAML::const_iterator it=seqNode.begin(); it!=seqNode.end(); ++it) {
-            SeqFile f;
-            auto d = *it;
-            f.var = d["var"].as<string>();
-            f.switch_index = d["switch_index"].as<int>();
-            f.num_switches = d["num_switches"].as<int>();
-            for (auto it2 : d["paths"]) {
-               f.paths.push_back(it2.as<string>());
-            }
-            seqFiles.push_back(f);
+          seqFile.num_switches = seqNode["num_switches"].as<int>();
+          seqFile.data_dir = seqNode["data_dir"].as<string>();
+          for (auto it2 : seqNode["switch_indexes"]) {
+            seqFile.switch_indexes.push_back(it2.as<int>());
           }
-          std::cout << "Built seq file list" << std::endl;
+          for (auto it2 : seqNode["tables"]) {
+            seqFile.tables.push_back(it2.as<string>());
+          }
+	  if (seqFile.switch_indexes.size() != peers.size()) {
+            throw std::runtime_error("Invalid deployment: number of switch indexes does not match number of peers");
+	  }
+          std::cout << "Built seq file" << std::endl;
         }
 
         else if (key == "totalPeers")  {
@@ -366,9 +367,32 @@ public:
     }
 
     // Mosaic seq files
-    for (auto& seqFile : seqFiles) {
-      YAML::Node seqs;
-      for (auto& path: seqFile.paths) {
+    vector<YAML::Node> seqFileYamlByPeer(peers.size());
+    vector<YAML::Node> inorderVarByPeer(peers.size());
+    if (seqFileEnabled) {
+      std::cout << "Assigning seqfile data files" << std::endl;
+      int idx = 0;
+      // Map from switch index to local peer index
+      std::map<int, int> switchToPeer;
+
+      std::cout << "Initializing..." << std::endl;
+      for (auto& it : seqFile.switch_indexes) {
+	seqFileYamlByPeer[idx] = YAML::Node();
+	seqFileYamlByPeer[idx]["seqfiles"] = YAML::Node();
+	string filename = seqFile.data_dir + "/mux/" + std::to_string(seqFile.num_switches) + "/mux_" + std::to_string(it) + "_" + std::to_string(seqFile.num_switches);
+	for (auto& tbl : seqFile.tables) {
+          filename += "_" + tbl;
+	}
+	filename += ".csv";
+
+	std::cout << "Switch " << it << " mux file: " << filename << std::endl;
+	inorderVarByPeer[idx] = filename;
+	switchToPeer[it] = idx;
+	idx++;
+      }
+      map<int, YAML::Node> currSeq;
+      for (auto& table: seqFile.tables) {
+	string path = seqFile.data_dir + "/" + table + "/";
         // Check that directory exists, or exit
         DIR *datadir = NULL;
         datadir = opendir(path.c_str());
@@ -386,35 +410,38 @@ public:
         struct dirent *srcfile = NULL;
         while (true) {
           srcfile = readdir(datadir);
-          if (srcfile == NULL) { break; }
-          if (strncmp (srcfile->d_name, ".", 1) != 0) {
-            filePaths.push_back(path + "/" + srcfile->d_name);
+            if (srcfile == NULL) { break; }
+            if (strncmp (srcfile->d_name, ".", 1) != 0) {
+              filePaths.push_back(path + "/" + srcfile->d_name);
+            }
           }
-        }
-        closedir(datadir);
+          closedir(datadir);
 
-        // Sort and assign based on switch_index
-        vector<string> myPaths;
-        sort (filePaths.begin(), filePaths.end());
-        for (size_t i = 0; i < filePaths.size(); i++) {
-          if ((i % seqFile.num_switches) == seqFile.switch_index) {
-            myPaths.push_back(filePaths[i]);
+          // Sort and assign based on switch_index
+          sort (filePaths.begin(), filePaths.end());
+          for (size_t i = 0; i < filePaths.size(); i++) {
+            for (int sw_index : seqFile.switch_indexes) {
+              if ((i % seqFile.num_switches) == sw_index) {
+		YAML::Node n;
+		n["path"] = filePaths[i];
+                currSeq[sw_index].push_back(n);
+		std::cout << "Switch " << sw_index << " => " << filePaths[i] << std::endl;
+              }
+            }
           }
-        }
-
-        // Build K3 YAML
-        YAML::Node seq_val;
-        for (auto& path : myPaths) {
-          YAML::Node p;
-          p["path"] = path;
-          seq_val.push_back(p);
-        }
-        YAML::Node s;
-        s["seq"] = seq_val;
-        seqs.push_back(s);
+	  for (auto& it : currSeq) {
+            YAML::Node n;
+	    n["seq"] = it.second;
+	    seqFileYamlByPeer[switchToPeer[it.first]].push_back(n);
+	  }
       }
-      peerParams[seqFile.var] = seqs;
-    }
+      std::cout << "Seq file yaml per peer: " << std::endl;
+      for (auto& it : switchToPeer) {
+        std::cout << "----------------" << std::endl;
+        std::cout << "Switch " << it.first << ": " << YAML::Dump(seqFileYamlByPeer[it.second]) << std::endl;
+      }
+      std::cout << "Seq File construction complete" << std::endl;
+   }
 
     // Build Parameters for All peers (on this host)
     int pph = 0;
@@ -451,6 +478,8 @@ public:
     for (std::size_t i=0; i<peers.size(); i++)  {
         oss << "---" << std::endl;
         YAML::Node thispeer = peerParams;
+	thispeer["seqfiles"] = seqFileYamlByPeer[i];
+	thispeer["inorder"] = inorderVarByPeer[i];
         YAML::Node globals = hostParams["globals"][i];
         for (const_iterator p=globals.begin(); p!=globals.end(); p++)  {
           thispeer[p->first.as<string>()] = p->second;
@@ -476,6 +505,8 @@ public:
                         thispeer[datavar].push_back(src);
                 }
         }
+
+
         // ADD DATA SOURCE DIR HERE
         YAML::Emitter emit;
         emit << YAML::Flow << thispeer;

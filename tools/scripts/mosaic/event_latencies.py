@@ -6,6 +6,7 @@ import argparse, csv, sys, yaml
 
 from intervaltree import Interval, IntervalTree
 from pyhistogram import Hist1D
+from ascii_graph import Pyasciigraph
 
 # Event classes.
 events = { 'switch_process' : 0
@@ -80,8 +81,8 @@ def process_events(switch_files, node_files):
           latencies[vid] = {v : -sys.maxint - 1 for v in events.values()}
           latencies[vid][events['switch_process']] = l
 
-          (rmin, rmax) = latencyspans[events[tg]]
-          latencyspans[events[tg]] = (min(rmin, l), max(rmax, l))
+          (rmin, rmax) = latencyspans[events['switch_process']]
+          latencyspans[events['switch_process']] = (min(rmin, l), max(rmax, l))
         else:
           print("Unknown switch tag: {tg}".format(**locals()))
 
@@ -129,8 +130,18 @@ def process_events(switch_files, node_files):
 
   for k, v in events.iteritems():
     with open('latency_{}.yml'.format(k), 'w') as outfile:
-      data = {b.x.center : b.value for b in lhists[v].bins()}
+      data = {b.x.center: b.value for b in lhists[v].bins()}
       yaml.dump(data, outfile, default_flow_style=True)
+
+      # Interactive plot
+      graph = Pyasciigraph()
+
+      # Simpler example
+      try:
+        for line in graph.graph('{} latency'.format(k), sorted(data.items())):
+          print(line)
+      except Exception:
+        print("Exception on {}".format(k))
 
   # Finally, save intermediate data for now.
   print(banner("Saving intermediate latency data"))
