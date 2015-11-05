@@ -237,6 +237,7 @@ def gen_yaml(role_path, script_path)
   cmd << "--nodes " << $options[:num_nodes].to_s << " " if $options[:num_nodes]
   cmd << "--nmask " << $options[:nmask] << " " if $options[:nmask]
   cmd << "--perhost " << $options[:perhost].to_s << " " if $options[:perhost]
+  cmd << "--tpch_query " << $options[:query] << " " 
   if $options[:tpch_data_path]
     cmd << "--tpch_data_path " << $options[:tpch_data_path] << " "
     cmd << "--tpch_inorder_path " << $options[:tpch_inorder_path] << " "
@@ -749,6 +750,7 @@ def main()
     opts.on("--raw-yaml [FILE]", "Supply a yaml file") { |s| $options[:raw_yaml_file] = s }
     opts.on("--map-area [FLOAT]", "Adjust % of cluster used per map") { |f| $options[:map_area] = f }
     opts.on("--map-shift [FLOAT]", "% of cluster to shift between maps") { |f| $options[:map_shift] = f }
+    opts.on("--query [NAME]", "Name of query to run") { |s| $options[:query] = s }
 
     # Compile args synonyms
     opts.on("--compileargs [STRING]", "Pass arguments to compiler (distributed only)") { |s| $options[:compileargs] = s }
