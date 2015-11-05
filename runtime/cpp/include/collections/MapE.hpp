@@ -148,7 +148,9 @@ class MapE {
     if (existing == std::end(container)) {
       return f(unit_t{});
     } else {
-      return g(std::move(existing->second));
+      auto t = g(std::move(existing->second));
+      container.erase(k.key);
+      return t;
     }
   }
 
