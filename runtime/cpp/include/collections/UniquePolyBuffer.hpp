@@ -22,6 +22,8 @@
 namespace K3 {
 namespace Libdynamic {
 
+template<typename Ignore, typename Derived>
+class UniquePolyBuffer;
 
 //////////////////////////////////////////
 //
@@ -44,7 +46,8 @@ using UPBKey = std::pair<Tag, UPBValueProxy>;
 template<class Ignore, class T, typename Tag>
 struct UPBEqual : std::binary_function<UPBKey<Tag>, UPBKey<Tag>, bool>
 {
-  using Container = FlatPolyBuffer<Ignore, T>::Container;
+  using Container = typename FlatPolyBuffer<Ignore, T>::Container;
+  using UPB = UniquePolyBuffer<Ignore, T>;
   using ExternalizerT = BufferExternalizer;
   using InternalizerT = BufferInternalizer;
 
@@ -53,7 +56,7 @@ struct UPBEqual : std::binary_function<UPBKey<Tag>, UPBKey<Tag>, bool>
   InternalizerT itl;
 
   UPBEqual(UPB* c)
-    : container(c->container),
+    : container(c->container.get()),
       etl(container->variable(), ExternalizerT::ExternalizeOp::Reuse),
       itl(container->variable())
   {}
@@ -81,16 +84,17 @@ struct UPBEqual : std::binary_function<UPBKey<Tag>, UPBKey<Tag>, bool>
 template<typename Ignore, typename T, typename Tag>
 struct UPBHash : std::unary_function<UPBKey<Tag>, std::size_t>
 {
-  using Container = FlatPolyBuffer<Ignore, T>::Container;
+  using Container = typename FlatPolyBuffer<Ignore, T>::Container;
+  using UPB = UniquePolyBuffer<Ignore, T>;
   using ExternalizerT = BufferExternalizer;
   using InternalizerT = BufferInternalizer;
 
-  UPB* container;
+  Container* container;
   ExternalizerT etl;
   InternalizerT itl;
 
   UPBHash(UPB* c)
-    : container(c->container),
+    : container(c->container.get()),
       etl(container->variable(), ExternalizerT::ExternalizeOp::Reuse),
       itl(container->variable())
   {}
@@ -169,8 +173,8 @@ public:
   ~UniquePolyBuffer() {}
 
   void debugUPBSetContainer() {
-    if ( keys.hash_function().container != container.get() ) {
-      std::cout << "Invalid UPB container " << keys.hash_function().container << " vs " << container.get() << std::endl;
+    if ( keys.hash_function().container != this->container.get() ) {
+      std::cout << "Invalid UPB container " << keys.hash_function().container << " vs " << this->container.get() << std::endl;
     }
   }
 

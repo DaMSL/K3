@@ -687,7 +687,7 @@ public:
     VContainer* ncv = variable();
     TContainer* nct = tags();
 
-    a.save_binary(&(container->internalized), sizeof(internalized));
+    a.save_binary(&(container->internalized), sizeof(container->internalized));
 
     // Reset element pointers to slot ids as necessary.
     auto p = const_cast<FlatPolyBuffer*>(this);
@@ -758,7 +758,7 @@ public:
     auto p = const_cast<FlatPolyBuffer*>(this);
     bool modified = false;
 
-    a.write(&(container->internalized), sizeof(internalized));
+    a.write(&(container->internalized), sizeof(container->internalized));
 
     if ( p->isInternalized() ) {
       p->repack(unit_t {});
@@ -831,15 +831,15 @@ protected:
   // FlatPolyBuffer is backed by either a base_string or a Container
   unique_ptr<Container> container;
 
-  FContainer* fixed()    const { assertContainer(); return container->fixed()); }
-  VContainer* variable() const { assertContainer(); return container->variable()); }
-  TContainer* tags()     const { assertContainer(); return container->tags()); }
+  FContainer* fixed()    const { assertContainer(); return container->fixed(); }
+  VContainer* variable() const { assertContainer(); return container->variable(); }
+  TContainer* tags()     const { assertContainer(); return container->tags(); }
 
   const FContainer* fixedc()    const { assertContainer(); return container->fixedc(); }
   const VContainer* variablec() const { assertContainer(); return container->variablec(); }
   const TContainer* tagsc()     const { assertContainer(); return container->tagsc(); }
 
-  void assertContainer() {
+  void assertContainer() const {
     if ( !container ) { throw std::runtime_error("Invalid FPB container pointer"); }
   }
 
