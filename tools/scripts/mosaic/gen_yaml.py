@@ -36,7 +36,35 @@ def parse_extra_args(args):
     return extra_args
 
 tpch_names = ['sentinel', 'customer', 'lineitem', 'orders', 'part', 'partsupp', 'supplier']
-
+query_tables = {
+        1: ['lineitem'],
+        2: ['part', 'supplier', 'partsupp'], # nation, region
+        3: ['customer', 'orders', 'lineitem'],
+        4: ['lineitem', 'orders'],
+        5: ['customer', 'orders', 'lineitem', 'supplier'], # nation, region
+        6: ['lineitem'],
+        7: ['supplier', 'lineitem', 'orders', 'customer'], # nation
+        8: ['part', 'supplier', 'lineitem', 'orders', 'cutomer'], # nation, region
+        9: ['part', 'supplier', 'lineitem', 'partsupp', 'orders'], # nation
+        10: ['customer', 'orders', 'lineitem', 'nation'],
+        11: ['partsupp', 'supplier', 'nation'],
+        110: ['partsupp', 'supplier'],
+        12: ['orders', 'lineitem'],
+        13: ['customer', 'orders'],
+        14: ['lineitem', 'part'],
+        15: ['supplier', 'lineitem'],
+        16: ['partsupp', 'part', 'supplier'],
+        17: ['lineitem', 'part'],
+        170: ['lineitem', 'part'],
+        18: ['customer', 'orders', 'lineitem'],
+        180: ['customer', 'orders', 'lineitem'],
+        19: ['lineitem', 'part'],
+        20: ['supplier', 'partsupp', 'part'], # nation
+        21: ['supplier', 'lineitem', 'orders'], # nation
+        22: ['customer', 'orders'],
+        220: ['customer']
+        }
+        
 def tpch_paths_local(path):
     tpch_files = {}
     for nm in tpch_names:
