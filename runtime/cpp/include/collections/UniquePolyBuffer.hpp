@@ -92,7 +92,7 @@ struct UPBHash : std::unary_function<UPBKey<Tag>, std::size_t>
   ExternalizerT etl;
   InternalizerT itl;
 
-  UPBHash(T* c)
+  UPBHash(UPB* c)
     : container(c),
       etl(container->variable(), ExternalizerT::ExternalizeOp::Reuse),
       itl(container->variable())
