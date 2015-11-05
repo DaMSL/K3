@@ -167,6 +167,9 @@ def taskInfo(k3job, tnum, webaddr, slaveId):
   if task_data['perfprofile'] == False:
     del task_data['perfprofile']
 
+  if task_data['seq_files'] == []:
+    del task_data['seq_files']
+
 
 
   executor = executorInfo(k3job, tnum, webaddr)

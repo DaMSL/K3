@@ -260,7 +260,7 @@ public:
             }
         }
         else if (key == "seq_files") {
-          std::cout << "Seq Files:\n" << YAML::Dump(param->second) << std::endl;
+          std::cout << "The Seq Files:\n" << YAML::Dump(param->second) << std::endl;
 	  seqFileEnabled = true;
           Node seqNode = param->second;
           seqFile.num_switches = seqNode["num_switches"].as<int>();
@@ -268,11 +268,17 @@ public:
           for (auto it2 : seqNode["switch_indexes"]) {
             seqFile.switch_indexes.push_back(it2.as<int>());
           }
+
           for (auto it2 : seqNode["tables"]) {
             seqFile.tables.push_back(it2.as<string>());
           }
 	  if (seqFile.switch_indexes.size() != peers.size()) {
-            throw std::runtime_error("Invalid deployment: number of switch indexes does not match number of peers");
+            cout << "Invalid deployment: number of switch indexes does not match number of peers" << endl;
+            cout << "Switch indexes size: " << seqFile.switch_indexes.size() << endl;
+            cout << "Peers size:" << peers.size() << endl;
+            status.set_state(TaskState::TASK_FAILED);
+            driver->sendStatusUpdate(status);
+            return;
 	  }
           std::cout << "Built seq file" << std::endl;
         }
@@ -378,7 +384,7 @@ public:
       std::cout << "Initializing..." << std::endl;
       for (auto& it : seqFile.switch_indexes) {
 	seqFileYamlByPeer[idx] = YAML::Node();
-	seqFileYamlByPeer[idx]["seqfiles"] = YAML::Node();
+	seqFileYamlByPeer[idx] = YAML::Node();
 	string filename = seqFile.data_dir + "/mux/" + std::to_string(seqFile.num_switches) + "/mux_" + std::to_string(it) + "_" + std::to_string(seqFile.num_switches);
 	for (auto& tbl : seqFile.tables) {
           filename += "_" + tbl;
@@ -390,8 +396,8 @@ public:
 	switchToPeer[it] = idx;
 	idx++;
       }
-      map<int, YAML::Node> currSeq;
       for (auto& table: seqFile.tables) {
+        map<int, YAML::Node> currSeq;
 	string path = seqFile.data_dir + "/" + table + "/";
         // Check that directory exists, or exit
         DIR *datadir = NULL;
