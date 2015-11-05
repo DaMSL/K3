@@ -28,7 +28,7 @@ namespace Libdynamic {
 
 struct UPBValueProxy {
   UPBValueProxy(size_t o) : asOffset(true), offset(o) {}
-  UPBValueProxy(const void* p) : asOffset(false), elem(p) {}
+  UPBValueProxy(void* p) : asOffset(false), elem(p) {}
 
   bool asOffset;
   union {
@@ -49,8 +49,8 @@ struct UPBEqual : std::binary_function<UPBKey<Tag>, UPBKey<Tag>, bool>
   UPBEqual(Buf* b) : buffer(b) {}
 
   bool operator()(const UPBKey<Tag>& left, const UPBKey<Tag>& right) const {
-    void* lp = left.asOffset? buffer_data(buf) + left.second.offset : left.second.elem;
-    void* rp = right.asOffset? buffer_data(buf) + right.second.offset : right.second.elem;
+    void* lp = left.asOffset? buffer_data(buffer) + left.second.offset : left.second.elem;
+    void* rp = right.asOffset? buffer_data(buffer) + right.second.offset : right.second.elem;
     return T::equalelem(left.first, left.second, right.first, right.second);
   }
 };
@@ -66,7 +66,7 @@ struct UPBHash : std::unary_function<UPBKey<Tag>, std::size_t>
   std::size_t operator()(const UPBKey<Tag>& k) const {
     std::hash<Tag> hash;
     size_t h1 = hash(k.first);
-    void* p = k.asOffset? buffer_data(buf) + k.second.offset : k.second.elem;
+    void* p = k.asOffset? buffer_data(buffer) + k.second.offset : k.second.elem;
     boost::hash_combine(h1, T::hashelem(k.first, p));
     return h1;
   }
@@ -89,17 +89,14 @@ public:
 
   UniquePolyBuffer() : Super(), comparator(fixed()), hasher(fixed()), keys(10, comparator, hasher)  {}
 
-  UniquePolyBuffer(const UniquePolyBuffer& other) : Super(other) {
-    comparator = other.comparator;
-    hasher = other.hasher;
-    keys = other.keys;
-  }
+  UniquePolyBuffer(const UniquePolyBuffer& other)
+    : Super(other), comparator(other.comparator), hasher(other.hasher), keys(other.keys)
+  {}
 
-  UniquePolyBuffer(UniquePolyBuffer&& other) : Super(std::move(other)) {
-    comparator = std::move(other.comparator);
-    hasher = std::move(other.hasher);
-    keys.swap(other.keys);
-  }
+  UniquePolyBuffer(UniquePolyBuffer&& other)
+    : Super(std::move(other)),
+      comparator(std::move(other.comparator)), hasher(std::move(other.hasher)), keys(std::move(other.keys))
+  {}
 
   UniquePolyBuffer& operator=(const UniquePolyBuffer& other) {
     Super::operator=(other);
@@ -139,7 +136,7 @@ public:
       FContainer* ncf = const_cast<FContainer*>(Super::fixedc());
       size_t offset = buffer_size(ncf);
       Super::append(tg, t);
-      keys.insert(std::make_pair(tg, std::move(UPBValueProxy proxy { offset })));
+      keys.insert(std::make_pair(tg, std::move(UPBValueProxy { offset })));
     }
     return unit_t{};
   }
