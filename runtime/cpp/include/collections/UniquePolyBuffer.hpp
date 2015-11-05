@@ -95,6 +95,7 @@ struct UPBHash : std::unary_function<UPBKey<Tag>, std::size_t>
   std::size_t operator()(const UPBKey<Tag>& k) const {
     std::hash<Tag> hash;
     size_t h1 = hash(k.first);
+    auto buffer = container->fixed();
     void* p = k.asOffset? buffer_data(buffer) + k.second.offset : k.second.elem;
     if ( !buffer->isInternalized() && k.asOffset ) {
       container->internalize(itl, k.first, p);
