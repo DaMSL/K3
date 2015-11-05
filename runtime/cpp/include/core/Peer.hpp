@@ -18,6 +18,15 @@
 #include "types/Dispatcher.hpp"
 #include "types/Queue.hpp"
 
+#ifdef BSL_ALLOC
+#include <bsl_memory.h>
+#include <bsls_blockgrowth.h>
+#include <bdlma_multipoolallocator.h>
+#include <bdlma_sequentialallocator.h>
+#include <bdlma_localsequentialallocator.h>
+#include "collections/AllCollections.hpp"
+#endif
+
 namespace K3 {
 
 class ProgramContext;
@@ -66,6 +75,21 @@ class Peer {
   // Statistics
   std::vector<TriggerStatistics> statistics_;
   int message_counter_;
+
+  // BSL Allocations
+#ifdef BSL_ALLOC
+  #ifdef BSEQ
+  BloombergLP::bdlma::SequentialAllocator mpool_;
+  #elif BPOOLSEQ
+  BloombergLP::bdlma::SequentialAllocator seqpool_;
+  BloombergLP::bdlma::MultipoolAllocator mpool_;
+  #elif BLOCAL
+  BloombergLP::bdlma::LocalSequentialAllocator<lsz> mpool_;
+  #else
+  BloombergLP::bdlma::MultipoolAllocator mpool_;
+  #endif
+#endif
+
 };
 
 }  // namespace K3

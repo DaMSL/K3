@@ -23,6 +23,11 @@
 #define _F(X) (std::forward<decltype((X))>(X))
 
 namespace K3 {
+  #ifdef BSL_ALLOC
+    #ifdef BLOCAL 
+    constexpr size_t lsz = 2<<14;
+    #endif
+  #endif
 
 using std::string;
 using std::shared_ptr;

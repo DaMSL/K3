@@ -547,15 +547,15 @@ public:
 // Allocators.
 #ifdef BSL_ALLOC
   #ifdef BSEQ
-  extern thread_local BloombergLP::bdlma::SequentialAllocator mpool;
+  extern thread_local BloombergLP::bdlma::SequentialAllocator* mpool;
   #elif BPOOLSEQ
-  extern thread_local BloombergLP::bdlma::SequentialAllocator seqpool;
-  extern thread_local BloombergLP::bdlma::MultipoolAllocator mpool;
+  extern thread_local BloombergLP::bdlma::SequentialAllocator* seqpool;
+  extern thread_local BloombergLP::bdlma::MultipoolAllocator* mpool;
   #elif BLOCAL
   constexpr size_t lsz = 2<<14;
-  extern thread_local BloombergLP::bdlma::LocalSequentialAllocator<lsz> mpool;
+  extern thread_local BloombergLP::bdlma::LocalSequentialAllocator<lsz>* mpool;
   #else
-  extern thread_local BloombergLP::bdlma::MultipoolAllocator mpool;
+  extern thread_local BloombergLP::bdlma::MultipoolAllocator* mpool;
   #endif
 #endif
 
@@ -604,8 +604,8 @@ class MultiIndexVMap
  public:
   MultiIndexVMap() :
     #ifdef BSL_ALLOC
-      ialloc(&mpool),
-      oalloc(&mpool),
+      ialloc(mpool),
+      oalloc(mpool),
     #endif
     scialloc(ialloc),
     scoalloc(oalloc, scialloc),

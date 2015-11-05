@@ -17,7 +17,20 @@
 namespace K3 {
 
 Peer::Peer(shared_ptr<ContextFactory> fac, const YAML::Node& config,
-           std::function<void()> callback, const JSONOptions& opts) {
+           std::function<void()> callback, const JSONOptions& opts) 
+#ifdef BSL_ALLOC
+  :
+  #ifdef BSEQ
+  mpool_()
+  #elif BPOOLSEQ
+  seqpool_(), mpool_(8, &seqpool_)
+  #elif BLOCAL
+  mpool_()
+  #else
+  mpool_(8)
+  #endif
+#endif
+  {
   // Initialization
   address_ = serialization::yaml::meFromYAML(config);
   start_processing_ = false;
@@ -41,6 +54,18 @@ Peer::Peer(shared_ptr<ContextFactory> fac, const YAML::Node& config,
 
   // Create work to run in new thread
   auto work = [this, fac, config, callback]() {
+  #ifdef BSL_ALLOC
+    #ifdef BSEQ
+    mpool = &mpool_;
+    #elif BPOOLSEQ
+    seqpool = &seqpool_;
+    mpool = &mpool_;
+    #elif BLOCAL
+    mpool = &mpool_;
+    #else
+    mpool = &mpool_;
+    #endif
+  #endif
     // Queue and batch are allocated on worker thread for locality
     queue_ = make_shared<Queue>();
     batch_.resize(1000);
