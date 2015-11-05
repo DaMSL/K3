@@ -209,6 +209,22 @@ class IntMap {
     return unit_t();
   }
 
+  template <typename F, typename G>
+  RT<G,R> erase_with(int k, F f, G g) {
+    mapi* m = get_mapi();
+    if (m->size > 0) {
+      auto existing = mapi_find(m, key);
+      if (existing != nullptr) {
+        auto t = g(std::move(*existing));
+	mapi_erase(m, key);
+	return t;
+      } else {
+        return f(unit_t{});
+      }
+    }
+    return unit_t();
+  }
+
   template <class F>
   unit_t insert_with(const R& rec, F f) {
     mapi* m = get_mapi();
@@ -448,6 +464,23 @@ class IntMap {
       }
     }
     return result;
+  }
+
+  // Mosaic-specific functionality.
+
+  template<class Other, class OtherKeyFun, class Folder, class Acc>
+  Acc equijoinkf_kv(const Collection<Other>& other, OtherKeyFun keyf, Folder f, Acc acc) const
+  {
+    mapi* m = get_mapi();
+    // Probe and accumulate.
+    for (const auto& otherelem : other.getConstContainer()) {
+      RT<OtherKeyFun, Other> key(keyf(otherelem));
+      auto e = mapi_find(n, key);
+      if (e != nullptr) {
+        acc = f(std::move(acc), *static_cast<R*>(e), otherelem);
+      }
+    }
+    return acc;
   }
 
   bool operator==(const IntMap& other) const {
