@@ -214,7 +214,7 @@ public:
   }
 
   void freeContainer() {
-    if (!buffer.data()) {
+    if (!buffer.data() && container) {
       // buffer clear just deallocates. vector clear zeroes out the vector, which we don't need
       buffer_clear(fixed());
       buffer_clear(variable());
