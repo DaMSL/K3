@@ -28,11 +28,11 @@ namespace Libdynamic {
 
 struct UPBValueProxy {
   UPBValueProxy(size_t o) : asOffset(true), offset(o) {}
-  UPBValueProxy(void* p) : asOffset(false), elem(p) {}
+  UPBValueProxy(char* p) : asOffset(false), elem(p) {}
 
   bool asOffset;
   union {
-    void* elem;
+    char* elem;
     size_t offset;
   };
 };
@@ -58,19 +58,19 @@ struct UPBEqual : std::binary_function<UPBKey<Tag>, UPBKey<Tag>, bool>
 
   bool operator()(const UPBKey<Tag>& left, const UPBKey<Tag>& right) const {
     auto buffer = container->fixed();
-    void* lp = left.asOffset? buffer_data(buffer) + left.second.offset : left.second.elem;
-    void* rp = right.asOffset? buffer_data(buffer) + right.second.offset : right.second.elem;
+    char* lp = left.second.asOffset? buffer_data(buffer) + left.second.offset : left.second.elem;
+    char* rp = right.second.asOffset? buffer_data(buffer) + right.second.offset : right.second.elem;
 
-    if ( !buffer->isInternalized() ) {
-      if ( left.asOffset ) { container->internalize(itl, left.first, lp); }
-      if ( right.asOffset ) { container->internalize(itl, right.first, rp); }
+    if ( !container->isInternalized() ) {
+      if ( left.second.asOffset ) { container->internalize(const_cast<InternalizerT&>(itl), left.first, lp); }
+      if ( right.second.asOffset ) { container->internalize(const_cast<InternalizerT&>(itl), right.first, rp); }
     }
 
-    bool r = T::equalelem(left.first, left.second, right.first, right.second);
+    bool r = T::equalelem(left.first, lp, right.first, rp);
 
-    if ( !buffer->isInternalized() ) {
-      if ( left.asOffset ) { container->externalize(etl, left.first, lp); }
-      if ( right.asOffset ) { container->externalize(etl, right.first, rp); }
+    if ( !container->isInternalized() ) {
+      if ( left.second.asOffset ) { container->externalize(const_cast<ExternalizerT&>(etl), left.first, lp); }
+      if ( right.second.asOffset ) { container->externalize(const_cast<ExternalizerT&>(etl), right.first, rp); }
     }
     return r;
   }
@@ -96,15 +96,15 @@ struct UPBHash : std::unary_function<UPBKey<Tag>, std::size_t>
     std::hash<Tag> hash;
     size_t h1 = hash(k.first);
     auto buffer = container->fixed();
-    void* p = k.asOffset? buffer_data(buffer) + k.second.offset : k.second.elem;
-    if ( !buffer->isInternalized() && k.asOffset ) {
-      container->internalize(itl, k.first, p);
+    char* p = k.second.asOffset? buffer_data(buffer) + k.second.offset : k.second.elem;
+    if ( !container->isInternalized() && k.second.asOffset ) {
+      container->internalize(const_cast<InternalizerT&>(itl), k.first, p);
     }
 
     boost::hash_combine(h1, T::hashelem(k.first, p));
 
-    if ( !buffer->isInternalized() && k.asOffset ) {
-      container->externalize(etl, k.first, p);
+    if ( !container->isInternalized() && k.second.asOffset ) {
+      container->externalize(const_cast<ExternalizerT&>(etl), k.first, p);
     }
     return h1;
   }
@@ -125,7 +125,12 @@ public:
   using VContainer = typename Super::VContainer;
   using TContainer = typename Super::TContainer;
 
-  UniquePolyBuffer() : Super(), comparator(this), hasher(this), keys(10, hasher, comparator)  {}
+  UniquePolyBuffer()
+    : Super(),
+      comparator(dynamic_cast<Derived*>(this)),
+      hasher(dynamic_cast<Derived*>(this)),
+      keys(10, hasher, comparator)
+  {}
 
   UniquePolyBuffer(const UniquePolyBuffer& other)
     : Super(other), comparator(other.comparator), hasher(other.hasher), keys(other.keys)
@@ -169,7 +174,7 @@ public:
 
   template<typename T>
   unit_t append(Tag tg, const T& t) {
-    UPBValueProxy probe { reinterpret_cast<void*>(const_cast<T*>(&t)) };
+    UPBValueProxy probe { reinterpret_cast<char*>(const_cast<T*>(&t)) };
     if ( keys.find(std::make_pair(tg, probe)) == keys.end() ) {
       FContainer* ncf = const_cast<FContainer*>(Super::fixedc());
       size_t offset = buffer_size(ncf);
@@ -221,6 +226,8 @@ public:
   BOOST_SERIALIZATION_SPLIT_MEMBER()
 
 private:
+  friend class UPBEqual<Derived, Tag>;
+  friend class UPBHash<Derived, Tag>;
   UPBEqual<Derived, Tag> comparator;
   UPBHash<Derived, Tag> hasher;
   std::unordered_set<UPBKey<Tag>, UPBHash<Derived, Tag>, UPBEqual<Derived, Tag>> keys;
