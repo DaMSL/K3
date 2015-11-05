@@ -124,15 +124,16 @@ def create_local_file(args):
     # dump out
     dump_yaml(peers2)
 
-def mk_k3_seq_files(num_switches, sw_index, path):
+def mk_k3_seq_files(total_switches, sw_indexes, path, tables):
     return [{
-        'switch_index': sw_index,
-        'num_switches': num_switches,
-        'paths': [ os.path.join(path, n) for n in tpch_names ],
-        'var': 'seqfiles'
+        'switch_indexes': sw_indexes,
+        'num_switches': total_switches,
+        'data_dir': path,
+        'tables': tables
             }]
 
 def create_dist_file(args):
+    query = args.tpch_query
     num_switches = args.num_switches
     num_nodes = args.num_nodes
 
@@ -157,9 +158,9 @@ def create_dist_file(args):
     node_role.update(extra_args)
 
     switch1_env = {'peer_globals': [master_role, timer_role, switch_role]}
-    if args.tpch_data_path:
-        switch1_env['k3_seq_files'] = \
-          mk_k3_seq_files(num_switches, 0, args.tpch_data_path)
+    #if args.tpch_data_path:
+    #     switch1_env['k3_seq_files'] = \
+    #     mk_k3_seq_files(num_switches, [0], args.tpch_data_path, )
 
     switch_env  = {'k3_globals': switch_role}
     node_env    = {'k3_globals': node_role}
@@ -175,7 +176,7 @@ def create_dist_file(args):
         switch_env2 = copy.deepcopy(switch_env)
         if args.tpch_data_path:
             switch_env2['k3_seq_files'] = \
-                mk_k3_seq_files(num_switches, i, args.tpch_data_path)
+                mk_k3_seq_files(num_switches, [i], args.tpch_data_path, query_tables[int(query)])
         k3_roles.append(('Switch' + str(i), switch_res.pop(0), 1, None, switch_env2))
 
     k3_roles.append(('Master', switch_res.pop(0), 1, None, master_env))
@@ -243,6 +244,7 @@ def main():
     parser.add_argument("--csv_path", type=str, help="path of csv data source", default=None)
     parser.add_argument("--tpch_data_path", type=str, help="path of tpch flatpolys", default=None)
     parser.add_argument("--tpch_inorder_path", type=str, help="path of tpch inorder file", default=None)
+    parser.add_argument("--tpch_query", type=str, help="query")
     parser.add_argument("--extra-args", type=str, help="extra arguments in x=y format")
     args = parser.parse_args()
     if args.run_mode == "dist":
