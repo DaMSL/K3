@@ -151,6 +151,7 @@ public:
 
   UniquePolyBuffer& operator=(const UniquePolyBuffer& other) {
     Super::operator=(other);
+    keys.clear();
     std::copy(other.keys.begin(), other.keys.end(), std::inserter(keys, keys.begin()));
     return *this;
   }
