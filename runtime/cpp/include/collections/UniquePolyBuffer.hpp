@@ -22,6 +22,10 @@
 namespace K3 {
 namespace Libdynamic {
 
+// Forward declaration.
+template<class Ignore, class Derived>
+class UniquePolyBuffer;
+
 //////////////////////////////////////////
 //
 // Buffer functors.
@@ -40,17 +44,18 @@ struct UPBValueProxy {
 template<typename Tag>
 using UPBKey = std::pair<Tag, UPBValueProxy>;
 
-template<class T, typename Tag>
+template<class Ignore, class T, typename Tag>
 struct UPBEqual : std::binary_function<UPBKey<Tag>, UPBKey<Tag>, bool>
 {
+  using UPB = UniquePolyBuffer<Ignore, T>;
   using ExternalizerT = BufferExternalizer;
   using InternalizerT = BufferInternalizer;
 
-  T* container;
+  UPB* container;
   ExternalizerT etl;
   InternalizerT itl;
 
-  UPBEqual(T* c)
+  UPBEqual(UPB* c)
     : container(c),
       etl(container->variable(), ExternalizerT::ExternalizeOp::Reuse),
       itl(container->variable())
@@ -76,13 +81,14 @@ struct UPBEqual : std::binary_function<UPBKey<Tag>, UPBKey<Tag>, bool>
   }
 };
 
-template<typename T, typename Tag>
+template<typename Ignore, typename T, typename Tag>
 struct UPBHash : std::unary_function<UPBKey<Tag>, std::size_t>
 {
+  using UPB = UniquePolyBuffer<Ignore, T>;
   using ExternalizerT = BufferExternalizer;
   using InternalizerT = BufferInternalizer;
 
-  T* container;
+  UPB* container;
   ExternalizerT etl;
   InternalizerT itl;
 
@@ -126,10 +132,7 @@ public:
   using TContainer = typename Super::TContainer;
 
   UniquePolyBuffer()
-    : Super(),
-      comparator(dynamic_cast<Derived*>(this)),
-      hasher(dynamic_cast<Derived*>(this)),
-      keys(10, hasher, comparator)
+    : Super(), comparator(this), hasher(this), keys(10, hasher, comparator)
   {}
 
   UniquePolyBuffer(const UniquePolyBuffer& other)
@@ -226,11 +229,11 @@ public:
   BOOST_SERIALIZATION_SPLIT_MEMBER()
 
 private:
-  friend class UPBEqual<Derived, Tag>;
-  friend class UPBHash<Derived, Tag>;
-  UPBEqual<Derived, Tag> comparator;
-  UPBHash<Derived, Tag> hasher;
-  std::unordered_set<UPBKey<Tag>, UPBHash<Derived, Tag>, UPBEqual<Derived, Tag>> keys;
+  friend class UPBEqual<Ignore, Derived, Tag>;
+  friend class UPBHash<Ignore, Derived, Tag>;
+  UPBEqual<Ignore, Derived, Tag> comparator;
+  UPBHash<Ignore, Derived, Tag> hasher;
+  std::unordered_set<UPBKey<Tag>, UPBHash<Ignore, Derived, Tag>, UPBEqual<Ignore, Derived, Tag>> keys;
 };
 
 }; // end namespace Libdynamic
