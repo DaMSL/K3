@@ -250,6 +250,8 @@ def gen_yaml(role_path, script_path)
   extra_args << "ms_gc_interval=" + $options[:gc_epoch] if $options[:gc_epoch]
   extra_args << "sw_driver_sleep=" + $options[:msg_delay] if $options[:msg_delay]
   extra_args << "corrective_mode=false" if $options[:no_corrective]
+  extra_args << "pmap_area_factor=" + $options[:map_area] if $options[:map_area]
+  extra_args << "pmap_shift_factor=" + $options[:map_shift] if $options[:map_shift]
   if $options[:batch_size]
     extra_args << "sw_poly_batch_size=" + $options[:batch_size]
     extra_args << "rebatch=" + $options[:batch_size]
@@ -745,7 +747,8 @@ def main()
     opts.on("--no-reserve", "Prevent reserve on the poly buffers") { $options[:no_poly_reserve] = true }
     opts.on("--event-profile", "Run with event profiling") { $options[:event_profile] = true }
     opts.on("--raw-yaml [FILE]", "Supply a yaml file") { |s| $options[:raw_yaml_file] = s }
-
+    opts.on("--map-area [FLOAT]", "Adjust % of cluster used per map") { |f| $options[:map_area] = f }
+    opts.on("--map-shift [FLOAT]", "% of cluster to shift between maps") { |f| $options[:map_shift] = f }
 
     # Compile args synonyms
     opts.on("--compileargs [STRING]", "Pass arguments to compiler (distributed only)") { |s| $options[:compileargs] = s }
@@ -827,6 +830,13 @@ def main()
   # skew is balanced if missing
   $options[:skew] = :balanced unless $options[:skew]
 
+  # check that we have a shift if we have an area and vice versa
+  if $options[:map_area] && !$options[:map_shift] ||
+     $options[:map_shift] && !$options[:map_area]
+    puts "Must have both map_area and map_shift"
+    exit(1)
+  end
+
   # check that we have a source
   unless ARGV.size == 1 || $options[:source]
     puts "Must have a source"
@@ -892,7 +902,7 @@ def main()
   end
 
   if $options[:dbtoaster]
-    run_dbtoaster($options[:dbt_exec_only], test_path, dbt_data_path, dbt_plat,
+    run_dbtoaster($options[:dbt_exec_only], test_path, $options[:dbt_data_path], dbt_plat,
                   dbt_lib_path, dbt_name, dbt_name_hpp, source_path, start_path)
   end
   # either nil or take from command line
