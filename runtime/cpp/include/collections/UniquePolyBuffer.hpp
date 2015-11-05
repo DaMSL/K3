@@ -92,7 +92,7 @@ struct UPBHash : std::unary_function<UPBKey<Tag>, std::size_t>
   ExternalizerT etl;
   InternalizerT itl;
 
-  UPBHash(T* c)
+  UPBHash(UPB* c)
     : container(c),
       etl(container->variable(), ExternalizerT::ExternalizeOp::Reuse),
       itl(container->variable())
@@ -136,27 +136,26 @@ public:
   {}
 
   UniquePolyBuffer(const UniquePolyBuffer& other)
-    : Super(other), comparator(other.comparator), hasher(other.hasher), keys(other.keys)
-  {}
+    : Super(other), comparator(this), hasher(this), keys(10, hasher, comparator)
+  {
+    std::copy(other.keys.begin(), other.keys.end(), std::inserter(keys, keys.begin()));
+  }
 
   UniquePolyBuffer(UniquePolyBuffer&& other)
-    : Super(std::move(other)),
-      comparator(std::move(other.comparator)), hasher(std::move(other.hasher)), keys(std::move(other.keys))
-  {}
+    : Super(std::move(other)), comparator(this), hasher(this), keys(10, hasher, comparator)
+  {
+    for (auto&& elem : other.keys) { keys.insert(std::move(elem)); }
+  }
 
   UniquePolyBuffer& operator=(const UniquePolyBuffer& other) {
     Super::operator=(other);
-    comparator = other.comparator;
-    hasher = other.hasher;
-    keys = other.keys;
+    std::copy(other.keys.begin(), other.keys.end(), std::inserter(keys, keys.begin()));
     return *this;
   }
 
   UniquePolyBuffer& operator=(UniquePolyBuffer&& other) {
-    keys = std::move(other.keys);
-    comparator = std::move(other.comparator);
-    hasher = std::move(other.hasher);
     Super::operator=(std::move(other));
+    for (auto&& elem : other.keys) { keys.insert(std::move(elem)); }
     return *this;
   }
 
