@@ -187,6 +187,18 @@ class IntMap {
     return unit_t();
   }
 
+  unit_t update_key(int key, R& rec2) {
+    mapi* m = get_mapi();
+    if (m->size > 0) {
+      auto existing = mapi_find(m, key);
+      if (existing != nullptr) {
+        mapi_erase(m, key);
+        mapi_insert(m, &rec2);
+      }
+    }
+    return unit_t();
+  }
+
   unit_t erase(const R& rec) {
     mapi* m = get_mapi();
     if (m->size > 0) {
@@ -210,12 +222,12 @@ class IntMap {
   }
 
   template <typename F, typename G>
-  RT<G,R> erase_with(int k, F f, G g) {
+  RT<G,R> erase_with(int key, F f, G g) {
     mapi* m = get_mapi();
     if (m->size > 0) {
       auto existing = mapi_find(m, key);
       if (existing != nullptr) {
-        auto t = g(std::move(*existing));
+        auto t = g(std::move(*static_cast<R*>(existing)));
 	mapi_erase(m, key);
 	return t;
       } else {
@@ -475,7 +487,7 @@ class IntMap {
     // Probe and accumulate.
     for (const auto& otherelem : other.getConstContainer()) {
       RT<OtherKeyFun, Other> key(keyf(otherelem));
-      auto e = mapi_find(n, key);
+      auto e = mapi_find(m, key);
       if (e != nullptr) {
         acc = f(std::move(acc), *static_cast<R*>(e), otherelem);
       }
