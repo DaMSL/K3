@@ -144,7 +144,7 @@ public:
   UniquePolyBuffer(UniquePolyBuffer&& other)
     : Super(std::move(other)), comparator(this), hasher(this), keys(10, hasher, comparator)
   {
-    rebuildKeys();
+    for (auto&& elem : other.keys) { keys.insert(std::move(elem)); }
   }
 
   UniquePolyBuffer& operator=(const UniquePolyBuffer& other) {
@@ -155,7 +155,8 @@ public:
 
   UniquePolyBuffer& operator=(UniquePolyBuffer&& other) {
     Super::operator=(std::move(other));
-    keys.clear(); rebuildKeys();
+    keys.clear();
+    for (auto&& elem : other.keys) { keys.insert(std::move(elem)); }
     return *this;
   }
 
