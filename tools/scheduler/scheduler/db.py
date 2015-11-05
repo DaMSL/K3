@@ -210,8 +210,8 @@ def getJobs(**kwargs):
             else (" WHERE appName='%s'" % appName if appName
                   else " WHERE jobId='%s'" % jobId))
 
+  # Filter to only the previous numdays
   if 'numdays' in kwargs:
-    print (" DAY FILTER IN PLACE FOR JOBS <<<<-------------------------------")
     numdays = int(kwargs.get('numdays'))
     cutoff = dt.datetime.now(timezone('UTC')) - dt.timedelta(days=numdays)
     filt  = ' WHERE' if filt == '' else filt + ' AND'

@@ -22,6 +22,7 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <stdio.h>
+#include <sstream>
 
 #include <mesos/executor.hpp>
 // #include <boost/thread.hpp>
@@ -198,7 +199,9 @@ public:
 
 
     // Build the K3 Command which will run inside this container
-    k3_cmd = "cd $MESOS_SANDBOX && ";
+    //k3_cmd = "cd $MESOS_SANDBOX && bash -c 'ulimit -c unlimited && ./" + hostParams["binary"].as<string>();
+    //
+    //k3_cmd = "cd $MESOS_SANDBOX && ";
     if (hostParams["perfprofile"]) {
             k3_cmd += "perf record -F 10 -a --call-graph dwarf -- ";
     }
@@ -500,7 +503,12 @@ public:
     // Redirect Program's output
     k3_cmd += " > stdout_" + host_name + " 2>&1";
 
-    cout << "FINAL COMMAND: " << k3_cmd << endl;
+    // Wrap the k3_cmd with a call to ulimit
+    std::ostringstream ul;
+    ul << "cd $MESOS_SANDBOX && bash -c 'ulimit -c unlimited && " << k3_cmd << "'";
+    std::string ulimit_cmd = ul.str(); 
+    
+    cout << "FINAL COMMAND: " << ulimit_cmd << endl;
 
     bool isMaster = false;
     cout << "Checking master" << endl;
@@ -509,7 +517,7 @@ public:
             cout << "I am master" << endl;
     }
     cout << "Launching K3: " << endl;
-    thread = new std::thread(runK3Job, task, k3_cmd, driver, isMaster, webaddr, app_name, job_id, host_name);
+    thread = new std::thread(runK3Job, task, ulimit_cmd, driver, isMaster, webaddr, app_name, job_id, host_name);
 
 
   }

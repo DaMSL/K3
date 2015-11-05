@@ -578,6 +578,8 @@ def listJobs():
   jobs = db.getJobs(numdays=2)
   for job in jobs:
     job['time'] = datetime.datetime.strptime(job['time'], db.TS_FMT).replace(tzinfo=db.timezone('UTC')).isoformat()
+    if job['complete']:
+      job['complete'] = datetime.datetime.strptime(job['complete'], db.TS_FMT).replace(tzinfo=db.timezone('UTC')).isoformat()
 
   #  Garbage Collect Orpahened jobs
   compiles = db.getCompiles()
