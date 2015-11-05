@@ -175,25 +175,25 @@ class IntMap {
     return unit_t();
   }
 
-  unit_t update(const R& rec1, R& rec2) {
+  unit_t update(const R& rec1, const R& rec2) {
     mapi* m = get_mapi();
     if (m->size > 0) {
       auto existing = mapi_find(m, rec1.key);
       if (existing != nullptr) {
         mapi_erase(m, rec1.key);
-        mapi_insert(m, &rec2);
+        mapi_insert(m, const_cast<void*>(static_cast<const void*>(&rec2)));
       }
     }
     return unit_t();
   }
 
-  unit_t update_key(int key, R& rec2) {
+  unit_t update_key(int key, const R& rec2) {
     mapi* m = get_mapi();
     if (m->size > 0) {
       auto existing = mapi_find(m, key);
       if (existing != nullptr) {
         mapi_erase(m, key);
-        mapi_insert(m, &rec2);
+        mapi_insert(m, const_cast<void*>(static_cast<const void*>(&rec2)));
       }
     }
     return unit_t();
