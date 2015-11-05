@@ -43,31 +43,68 @@ using UPBKey = std::pair<Tag, UPBValueProxy>;
 template<class T, typename Tag>
 struct UPBEqual : std::binary_function<UPBKey<Tag>, UPBKey<Tag>, bool>
 {
-  using Buf = LibdynamicVector::buffer;
-  Buf* buffer;
+  using ExternalizerT = BufferExternalizer;
+  using InternalizerT = BufferInternalizer;
 
-  UPBEqual(Buf* b) : buffer(b) {}
+  T* container;
+  ExternalizerT etl;
+  InternalizerT itl;
+
+  UPBEqual(T* c)
+    : container(c),
+      etl(container->variable(), ExternalizerT::ExternalizeOp::Reuse),
+      itl(container->variable())
+  {}
 
   bool operator()(const UPBKey<Tag>& left, const UPBKey<Tag>& right) const {
+    auto buffer = container->fixed();
     void* lp = left.asOffset? buffer_data(buffer) + left.second.offset : left.second.elem;
     void* rp = right.asOffset? buffer_data(buffer) + right.second.offset : right.second.elem;
-    return T::equalelem(left.first, left.second, right.first, right.second);
+
+    if ( !buffer->isInternalized() ) {
+      if ( left.asOffset ) { container->internalize(itl, left.first, lp); }
+      if ( right.asOffset ) { container->internalize(itl, right.first, rp); }
+    }
+
+    bool r = T::equalelem(left.first, left.second, right.first, right.second);
+
+    if ( !buffer->isInternalized() ) {
+      if ( left.asOffset ) { container->externalize(etl, left.first, lp); }
+      if ( right.asOffset ) { container->externalize(etl, right.first, rp); }
+    }
+    return r;
   }
 };
 
 template<typename T, typename Tag>
 struct UPBHash : std::unary_function<UPBKey<Tag>, std::size_t>
 {
-  using Buf = LibdynamicVector::buffer;
-  Buf* buffer;
+  using ExternalizerT = BufferExternalizer;
+  using InternalizerT = BufferInternalizer;
 
-  UPBHash(Buf* b) : buffer(b) {}
+  T* container;
+  ExternalizerT etl;
+  InternalizerT itl;
+
+  UPBHash(T* c)
+    : container(c),
+      etl(container->variable(), ExternalizerT::ExternalizeOp::Reuse),
+      itl(container->variable())
+  {}
 
   std::size_t operator()(const UPBKey<Tag>& k) const {
     std::hash<Tag> hash;
     size_t h1 = hash(k.first);
     void* p = k.asOffset? buffer_data(buffer) + k.second.offset : k.second.elem;
+    if ( !buffer->isInternalized() && k.asOffset ) {
+      container->internalize(itl, k.first, p);
+    }
+
     boost::hash_combine(h1, T::hashelem(k.first, p));
+
+    if ( !buffer->isInternalized() && k.asOffset ) {
+      container->externalize(etl, k.first, p);
+    }
     return h1;
   }
 };
@@ -87,7 +124,7 @@ public:
   using VContainer = typename Super::VContainer;
   using TContainer = typename Super::TContainer;
 
-  UniquePolyBuffer() : Super(), comparator(fixed()), hasher(fixed()), keys(10, comparator, hasher)  {}
+  UniquePolyBuffer() : Super(), comparator(this), hasher(this), keys(10, hasher, comparator)  {}
 
   UniquePolyBuffer(const UniquePolyBuffer& other)
     : Super(other), comparator(other.comparator), hasher(other.hasher), keys(other.keys)
