@@ -555,6 +555,8 @@ typ' (tag -> TBuiltIn TSelf)      = return $ keyword "self"
 typ' (tag -> TBuiltIn TContent)   = return $ keyword "content"
 typ' (tag -> TBuiltIn THorizon)   = return $ keyword "horizon"
 typ' (tag -> TBuiltIn TStructure) = return $ keyword "structure"
+typ' (tag -> TBuiltIn TGPUSelf)   = return $ keyword "gpuself"
+typ' (tag -> TBuiltIn TGPUContent)= return $ keyword "gpucontent"
 
 typ' (details -> (TForall tvd, [x], _)) = polymorphicType C.<$> mapM typeVarDecl tvd <*> typ x
 typ' (tag -> TForall _) = throwSP "Invalid forall type"

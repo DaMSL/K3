@@ -398,7 +398,8 @@ typ' (tag -> TBuiltIn TSelf)      = throwCG $ CodeGenerationError "Cannot genera
 typ' (tag -> TBuiltIn TContent)   = throwCG $ CodeGenerationError "Cannot generate Content type"
 typ' (tag -> TBuiltIn THorizon)   = throwCG $ CodeGenerationError "Cannot generate Horizon type"
 typ' (tag -> TBuiltIn TStructure) = throwCG $ CodeGenerationError "Cannot generate Structure type"
-
+typ' (tag -> TBuiltIn TGPUSelf) = throwCG $ CodeGenerationError "Cannot generate GPUSelf type"
+typ' (tag -> TBuiltIn TGPUContent) = throwCG $ CodeGenerationError "Cannot generate GPUContent type"
 typ' _ = throwCG $ CodeGenerationError "Cannot generate Haskell type"
 
 

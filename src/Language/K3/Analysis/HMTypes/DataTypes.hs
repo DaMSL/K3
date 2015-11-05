@@ -40,6 +40,8 @@ data QType
         | QTFinal
         | QTSelf      (Maybe QTVarId)
         | QTTop
+        | QTGPUSelf   (Maybe QTVarId)
+        | QTGPUContent
       deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Primitive types.
@@ -125,6 +127,12 @@ tfinal = tleaf QTFinal
 
 tself :: Maybe QTVarId -> K3 QType
 tself i = tleaf $ QTSelf i
+
+tgpucontent :: K3 QType
+tgpucontent = tleaf QTGPUContent
+
+tgpuself :: Maybe QTVarId -> K3 QType
+tgpuself i = tleaf $ QTGPUSelf i
 
 
 -- | Datatype constructors

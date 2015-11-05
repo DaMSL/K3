@@ -219,6 +219,8 @@ deriveTypeExpression aEnv tExpr = do
                       TStructure -> TEnvIdFinal
                       THorizon -> TEnvIdHorizon
                       TContent -> TEnvIdContent
+		      TGPUSelf -> TEnvIdGPUSelf
+		      TGPUContent -> TEnvIdGPUContent
           in
           environIdType ei
         TForall _ -> error "Forall type is invalid for deriveTypeExpression!"

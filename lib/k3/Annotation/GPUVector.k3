@@ -21,6 +21,16 @@ annotation GPUVector given type a, b, c, d
   provides lifted unsafe_at : int -> (content -> a) -> a 
     with effects \i -> \f -> [R[i]; R[self]; f content]
 
+  /////////////////////////////////////
+  // Testing Device and Compiler tool
+  // chain. Implement some simple
+  // device transformer
+  /////////////////////////////////////
+
+  // Transfer host vector to device
+  provides lifted to_device : self -> gpuself 
+    with effects \_ -> R[self]
+
 }
 
 

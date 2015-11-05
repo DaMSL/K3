@@ -425,7 +425,9 @@ tBuiltIn = typeExprError "builtin" $ choice $ map (\(kw,bi) -> keyword kw >> ret
               [ ("self",TSelf)
               , ("structure",TStructure)
               , ("horizon",THorizon)
-              , ("content",TContent) ]
+              , ("content",TContent)
+	      , ("gpuself",TGPUSelf)
+	      , ("gpucontent", TGPUContent)]
 
 tDeclared :: TypeParser
 tDeclared = typeExprError "declared" $ TUID # ( aliasOrDecl =<< identifier )

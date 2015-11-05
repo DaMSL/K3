@@ -141,7 +141,7 @@ k3Keywords = [
     "annotation", "lifted", "provides", "requires", "given", "type",
 
     {- Annotation keywords -}
-    "self", "structure", "horizon", "content", "forall",
+    "self", "structure", "horizon", "content", "forall", "gpuself", "gpucontent",
 
     {- Metaprogramming keywords -}
     "control", "label", "expr", "decl", "literal", "labeltype", "shared", "for",

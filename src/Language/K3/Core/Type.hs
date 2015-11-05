@@ -128,6 +128,8 @@ data TypeBuiltIn
     | TStructure
     | THorizon
     | TContent
+    | TGPUSelf
+    | TGPUContent
   deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Type variable declarations.  These consist of the identifier for the

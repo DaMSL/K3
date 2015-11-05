@@ -1643,7 +1643,9 @@ qType t = foldMapTree mkQType (ttup []) t >>= return . mutabilityT t
     mkQType _ (tag -> TBuiltIn TContent)   = return tcontent
     mkQType _ (tag -> TBuiltIn TStructure) = return tfinal
     mkQType _ (tag -> TBuiltIn TSelf)      = return $ tself Nothing
-
+    
+    mkQType _ (tag -> TBuiltIn TGPUContent)= return tgpucontent
+    mkQType _ (tag -> TBuiltIn TGPUSelf)   = return $ tgpuself Nothing
     mkQType _ (tag -> TDeclaredVar x) = get >>= \tienv -> liftExceptM (tilkupdv tienv x)
 
     mkQType _ (tag -> TForall _) = serrorM "Invalid forall type for QType"
@@ -1718,6 +1720,8 @@ translateQType toplevel_expr expr spanOpt qt = mapTree translateWithMutability q
           | QTContent    <- tag qt' = return $ TC.builtIn TContent
           | QTFinal      <- tag qt' = return $ TC.builtIn TStructure
           | QTSelf _     <- tag qt' = return $ TC.builtIn TSelf
+          | QTGPUSelf _  <- tag qt' = return $ TC.builtIn TGPUSelf
+          | QTGPUContent <- tag qt' = return $ TC.builtIn TGPUContent
           | QTVar v      <- tag qt' = return $ TC.declaredVar ("v" ++ show v)
           | QTOperator _ <- tag qt' =
               let msg = "Invalid qtype translation for qtype operator"
