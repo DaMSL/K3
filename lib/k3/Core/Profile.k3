@@ -174,3 +174,26 @@ control MosaicPostEvent[lbl:label, tl:expr, ve:expr, ce:expr]
     declare $[lbl]_event_sample_mod      : mut int = 5
   }
 }
+
+control MosaicCounts[lbl:label, tl:expr, ve:expr, ce1:expr, ce2:expr]
+{
+  ?e @:Flush => ($[lbl]_msgcount_buffer.iterate (\r -> (mosaic_msgcount_sink, me) <- r));
+                ($[lbl]_msgcount_buffer.clear());
+                $.[e]
+  +> {}
+
+  ?e => (if ($[lbl]_msgcount_sample_mod == 0 or $[ve] % $[lbl]_msgcount_sample_mod == 0)
+         then (
+          ($[lbl]_msgcount_buffer.insert {etag: $[tl], evid: $[ve], msgempty: $[ce1], msgfull: $[ce2]});
+          (if $[lbl]_msgcount_buffer.size() >= $[lbl]_msgcount_buffer_batch_sz
+            then ($[lbl]_msgcount_buffer.iterate (\r -> (mosaic_msgcount_sink, me) <- r));
+                  $[lbl]_msgcount_buffer.clear()
+            else ())
+        ) else ());
+        $.[e]
+  +> {
+    declare $[lbl]_msgcount_buffer : collection {etag:int, evid:int, msgempty:int, msgfull:int} @Vector
+    declare $[lbl]_msgcount_buffer_batch_sz : mut int = 1000
+    declare $[lbl]_msgcount_sample_mod      : mut int = 10
+  }
+}
