@@ -199,9 +199,7 @@ public:
 
 
     // Build the K3 Command which will run inside this container
-    //k3_cmd = "cd $MESOS_SANDBOX && bash -c 'ulimit -c unlimited && ./" + hostParams["binary"].as<string>();
-    //
-    //k3_cmd = "cd $MESOS_SANDBOX && ";
+    k3_cmd = "cd $MESOS_SANDBOX && ";
     if (hostParams["perfprofile"]) {
             k3_cmd += "perf record -F 10 -a --call-graph dwarf -- ";
     }
@@ -373,6 +371,14 @@ public:
     }
 
     // Mosaic seq files
+    list<string> all_tables;
+    all_tables.push_back("sentinel");
+    all_tables.push_back("customer");
+    all_tables.push_back("lineitem");
+    all_tables.push_back("orders");
+    all_tables.push_back("part");
+    all_tables.push_back("partsupp");
+    all_tables.push_back("supplier");
     vector<YAML::Node> seqFileYamlByPeer(peers.size());
     vector<YAML::Node> inorderVarByPeer(peers.size());
     if (seqFileEnabled) {
@@ -396,7 +402,7 @@ public:
 	switchToPeer[it] = idx;
 	idx++;
       }
-      for (auto& table: seqFile.tables) {
+      for (auto& table: all_tables) {
         map<int, YAML::Node> currSeq;
 	string path = seqFile.data_dir + "/" + table + "/";
         // Check that directory exists, or exit
@@ -427,7 +433,7 @@ public:
           sort (filePaths.begin(), filePaths.end());
           for (size_t i = 0; i < filePaths.size(); i++) {
             for (int sw_index : seqFile.switch_indexes) {
-              if ((i % seqFile.num_switches) == sw_index) {
+              if (table == "sentinel" || ((i % seqFile.num_switches) == sw_index)) {
 		YAML::Node n;
 		n["path"] = filePaths[i];
                 currSeq[sw_index].push_back(n);
@@ -541,11 +547,11 @@ public:
     k3_cmd += " > stdout_" + host_name + " 2>&1";
 
     // Wrap the k3_cmd with a call to ulimit
-    std::ostringstream ul;
-    ul << "cd $MESOS_SANDBOX && bash -c 'ulimit -c unlimited && " << k3_cmd << "'";
-    std::string ulimit_cmd = ul.str(); 
+    //std::ostringstream ul;
+    //ul << "cd $MESOS_SANDBOX && bash -c 'ulimit -c unlimited && " << k3_cmd << "'";
+    //std::string ulimit_cmd = ul.str(); 
     
-    cout << "FINAL COMMAND: " << ulimit_cmd << endl;
+    cout << "FINAL COMMAND: " << k3_cmd << endl;
 
     bool isMaster = false;
     cout << "Checking master" << endl;
@@ -554,7 +560,7 @@ public:
             cout << "I am master" << endl;
     }
     cout << "Launching K3: " << endl;
-    thread = new std::thread(runK3Job, task, ulimit_cmd, driver, isMaster, webaddr, app_name, job_id, host_name);
+    thread = new std::thread(runK3Job, task, k3_cmd, driver, isMaster, webaddr, app_name, job_id, host_name);
 
 
   }
