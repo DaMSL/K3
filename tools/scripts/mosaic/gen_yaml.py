@@ -38,37 +38,34 @@ def parse_extra_args(args):
 
 tpch_names = ['sentinel', 'customer', 'lineitem', 'orders', 'part', 'partsupp', 'supplier']
 query_tables = {
-        1: ['lineitem'],
-        2: ['part', 'supplier', 'partsupp'], # nation, region
-        3: ['customer', 'orders', 'lineitem'],
-        4: ['lineitem', 'orders'],
-        5: ['customer', 'orders', 'lineitem', 'supplier'], # nation, region
-        6: ['lineitem'],
-        7: ['supplier', 'lineitem', 'orders', 'customer'], # nation
-        8: ['part', 'supplier', 'lineitem', 'orders', 'cutomer'], # nation, region
-        9: ['part', 'supplier', 'lineitem', 'partsupp', 'orders'], # nation
-        10: ['customer', 'orders', 'lineitem', 'nation'],
-        11: ['partsupp', 'supplier', 'nation'],
-        110: ['partsupp', 'supplier'],
-        12: ['orders', 'lineitem'],
-        13: ['customer', 'orders'],
-        14: ['lineitem', 'part'],
-        15: ['supplier', 'lineitem'],
-        16: ['partsupp', 'part', 'supplier'],
-        17: ['lineitem', 'part'],
-        170: ['lineitem', 'part'],
-        18: ['customer', 'orders', 'lineitem'],
-        180: ['customer', 'orders', 'lineitem'],
-        19: ['lineitem', 'part'],
-        20: ['supplier', 'partsupp', 'part'], # nation
-        21: ['supplier', 'lineitem', 'orders'], # nation
-        22: ['customer', 'orders'],
-        220: ['customer']
+        '1': ['lineitem'],
+        '2': ['part', 'supplier', 'partsupp'], # nation, region
+        '3': ['customer', 'orders', 'lineitem'],
+        '4': ['lineitem', 'orders'],
+        '5': ['customer', 'orders', 'lineitem', 'supplier'], # nation, region
+        '6': ['lineitem'],
+        '7': ['supplier', 'lineitem', 'orders', 'customer'], # nation
+        '8': ['part', 'supplier', 'lineitem', 'orders', 'cutomer'], # nation, region
+        '9': ['part', 'supplier', 'lineitem', 'partsupp', 'orders'], # nation
+        '10': ['customer', 'orders', 'lineitem', 'nation'],
+        '11': ['partsupp', 'supplier', 'nation'],
+        '11a': ['partsupp', 'supplier'],
+        '12': ['orders', 'lineitem'],
+        '13': ['customer', 'orders'],
+        '14': ['lineitem', 'part'],
+        '15': ['supplier', 'lineitem'],
+        '16': ['partsupp', 'part', 'supplier'],
+        '17': ['lineitem', 'part'],
+        '17a': ['lineitem', 'part'],
+        '18': ['customer', 'orders', 'lineitem'],
+        '18a': ['customer', 'orders', 'lineitem'],
+        '19': ['lineitem', 'part'],
+        '20': ['supplier', 'partsupp', 'part'], # nation
+        '21': ['supplier', 'lineitem', 'orders'], # nation
+        '22': ['customer', 'orders'],
+        '22a': ['customer']
         }
         
-def get_tables(query):
-    return sorted(query_tables[int(query.replace("a", "0"))])
-
 def tpch_paths_local(path, switch_index, num_switches):
     tpch_files = {}
     for nm in tpch_names:
@@ -98,7 +95,7 @@ def tpch_paths_local(path, switch_index, num_switches):
     return out
 
 def tpch_mux_file_local(path, switch_index, num_switches, tpch_query):
-  tables = "_".join(get_tables(tpch_query))
+  tables = "_".join(sorted(query_tables[tpch_query]))
   rest = "mux/%d/mux_%d_%d_%s.csv" % (num_switches, switch_index, num_switches, tables)
   return os.path.join(path, rest)
 
@@ -203,7 +200,7 @@ def create_dist_file(args):
         switch_env2 = copy.deepcopy(switch_env)
         if args.tpch_data_path:
             switch_env2['k3_seq_files'] = \
-                mk_k3_seq_files(num_switches, [i], args.tpch_data_path, get_tables(query))
+                mk_k3_seq_files(num_switches, [i], args.tpch_data_path, sorted(query_tables[query]))
         k3_roles.append(('Switch' + str(i), switch_res.pop(0), 1, None, switch_env2))
 
     k3_roles.append(('Master', switch_res.pop(0), 1, None, master_env))
@@ -271,7 +268,7 @@ def main():
     parser.add_argument("--csv_path", type=str, help="path of csv data source", default=None)
     parser.add_argument("--tpch_data_path", type=str, help="path of tpch flatpolys", default=None)
     parser.add_argument("--tpch_inorder_path", type=str, help="path of tpch inorder file", default=None)
-    parser.add_argument("--tpch_infer_inorder_path", type=bool, help="automatic inorder file")
+    parser.add_argument("--tpch_infer_inorder_path", action='store_false', default=True, help="automatic inorder file")
     parser.add_argument("--tpch_query", type=str, help="query")
     parser.add_argument("--extra-args", help="extra arguments in x=y format")
     args = parser.parse_args()
