@@ -307,6 +307,10 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
     run("tar xvf #{f_path} -C #{node_sandbox_path}")
     `mv #{f_path} #{f_final_path}`
 
+    # Extract time, which is in the master's stdout. Currently checking all stdout.
+    time = `grep -r '.*Total time.*ms.*' #{node_sandbox_path}/stdout_*`
+    File.open(File.join(sandbox_path, "time.txt"), 'w') { |file| file.write(time) } if time != ""
+
     # Track node logs.
     json_path = File.join(node_sandbox_path, "json")
     if Dir.exists?(json_path)

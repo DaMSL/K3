@@ -132,6 +132,8 @@ def create_local_file(args):
             if args.csv_path:
                 peer['switch_path'] = args.csv_path
             if args.tpch_data_path:
+                if not args.tpch_query:
+                  raise ValueError("Need tpch_query to when using tpch_data_path")
                 peer['seqfiles'] = tpch_paths_local(args.tpch_data_path, switch_index, args.num_switches)
             if args.tpch_inorder_path:
                 peer['inorder'] = args.tpch_inorder_path
