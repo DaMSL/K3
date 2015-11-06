@@ -309,7 +309,7 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
 
     # Extract time, which is in the master's stdout. Currently checking all stdout.
     time = `grep -r '.*Total time.*ms.*' #{node_sandbox_path}/stdout_*`
-    puts time
+    puts time if time != ""
     File.open(File.join(sandbox_path, "time.txt"), 'w') { |file| file.write(time) } if time != ""
 
     # Track node logs.
