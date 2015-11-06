@@ -81,24 +81,25 @@ class Task:
 
 class Job:
   def __init__(self, **kwargs):
-    # self.archive    = kwargs.get("archive", None)
-    self.binary_url  = kwargs.get("binary", None)
-    self.appName     = kwargs.get("appName", 'None')
-    self.appUID      = kwargs.get("appUID", 'None')
-    self.jobId       = kwargs.get("jobId", '1000')
-    roleFile         = kwargs.get("rolefile", None)
-    self.logging     = kwargs.get("logging", False)
-    self.jsonlog     = kwargs.get("jsonlog", False)
-    self.jsonfinal   = kwargs.get("jsonfinal", False)
-    self.perfprofile = kwargs.get("perfprofile", False)
-    self.stdout      = kwargs.get("stdout", False)
-    self.roles       = {}
-    self.tasks       = []
-    self.status      = None
-    self.all_peers   = None
-    self.master      = None
-    self.start_ts    = None
-    self.time_limit  = kwargs.get("timelimit", 20 * 60)
+    # self.archive      = kwargs.get("archive", None)
+    self.binary_url     = kwargs.get("binary", None)
+    self.appName        = kwargs.get("appName", 'None')
+    self.appUID         = kwargs.get("appUID", 'None')
+    self.jobId          = kwargs.get("jobId", '1000')
+    roleFile            = kwargs.get("rolefile", None)
+    self.logging        = kwargs.get("logging", False)
+    self.jsonlog        = kwargs.get("jsonlog", False)
+    self.jsonfinal      = kwargs.get("jsonfinal", False)
+    self.perf_profile   = kwargs.get("perf_profile", False)
+    self.perf_frequency = kwargs.get("perf_frequency", '10')
+    self.stdout         = kwargs.get("stdout", False)
+    self.roles          = {}
+    self.tasks          = []
+    self.status         = None
+    self.all_peers      = None
+    self.master         = None
+    self.start_ts       = None
+    self.time_limit     = kwargs.get("timelimit", 20 * 60)
 
     if self.binary_url == None:
       logging.error("[FLASKWEB] Error. No binary provided to Job")
