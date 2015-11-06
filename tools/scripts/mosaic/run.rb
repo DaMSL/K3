@@ -237,7 +237,7 @@ def gen_yaml(role_path, script_path)
   cmd << "--nodes " << $options[:num_nodes].to_s << " " if $options[:num_nodes]
   cmd << "--nmask " << $options[:nmask] << " " if $options[:nmask]
   cmd << "--perhost " << $options[:perhost].to_s << " " if $options[:perhost]
-  cmd << "--tpch_query " << $options[:query] << " " 
+  cmd << "--tpch_query " << $options[:query] << " " if $options[:query]
   if $options[:tpch_data_path]
     cmd << "--tpch_data_path " << $options[:tpch_data_path] << " "
   else
@@ -261,8 +261,13 @@ def gen_yaml(role_path, script_path)
   end
   extra_args << "do_poly_reserve=false" if $options[:no_poly_reserve]
   extra_args << "do_profiling=true" if $options[:event_profile]
-  # if we have more than 16 nodes, we need more buckets
-  extra_args << "pmap_buckets=" + (num_nodes * 4).to_s if num_nodes > 16
+  if $options[:buckets]
+    extra_args << "pmap_buckets=" + $options[:buckets]
+  else
+    # if we have more than 16 nodes, we need more buckets
+    extra_args << "pmap_buckets=" + (num_nodes * 4).to_s if num_nodes > 16
+  end
+  extra_args << "replicas=" + $options[:replicas] if $options[:replicas]
   cmd << "--extra-args " << extra_args.join(',') << " " if extra_args.size > 0
 
   yaml = run("#{File.join(script_path, "gen_yaml.py")} #{cmd}")
@@ -752,7 +757,9 @@ def main()
     opts.on("--raw-yaml [FILE]", "Supply a yaml file") { |s| $options[:raw_yaml_file] = s }
     opts.on("--map-area [FLOAT]", "Adjust % of cluster used per map") { |f| $options[:map_area] = f }
     opts.on("--map-shift [FLOAT]", "% of cluster to shift between maps") { |f| $options[:map_shift] = f }
-    opts.on("--query [NAME]", "Name of query to run") { |s| $options[:query] = s }
+    opts.on("--buckets [INT]", "Number of buckets (partitioning)") { |s| $options[:buckets] = s }
+    opts.on("--replicas [INT]", "Number of replicas in clock (for partitioning)") { |s| $options[:replicas] = s }
+    opts.on("--query [NAME]", "Name of query to run (for distributed)") { |s| $options[:query] = s }
 
     # Compile args synonyms
     opts.on("--compileargs [STRING]", "Pass arguments to compiler (distributed only)") { |s| $options[:compileargs] = s }
