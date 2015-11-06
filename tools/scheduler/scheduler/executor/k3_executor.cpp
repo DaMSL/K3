@@ -483,6 +483,7 @@ public:
       peerParams["peer_masters"] = YAML::Load(YAML::Dump(peer_masters));
       peerParams["masters"] = YAML::Load(YAML::Dump(masters));
       std::cout << "Masters: " << YAML::Dump(masters) << endl;
+
     }
 
     // Create one YAML file for each peer on this host
@@ -491,8 +492,12 @@ public:
     for (std::size_t i=0; i<peers.size(); i++)  {
         oss << "---" << std::endl;
         YAML::Node thispeer = peerParams;
-	thispeer["seqfiles"] = seqFileYamlByPeer[i];
-	thispeer["inorder"] = inorderVarByPeer[i];
+        // Mosaic seqfile stuff
+        thispeer["seqfiles"] = seqFileYamlByPeer[i];
+        thispeer["inorder"] = inorderVarByPeer[i];
+        // Mosaic specific logging hack
+        peerParams["eventlog"] = "eventlog_" + std::to_string(i) + ".csv";
+        peerParams["msgcountlog"] = "msgcountlog_" + std::to_string(i) + ".csv";
         YAML::Node globals = hostParams["globals"][i];
         for (const_iterator p=globals.begin(); p!=globals.end(); p++)  {
           thispeer[p->first.as<string>()] = p->second;
