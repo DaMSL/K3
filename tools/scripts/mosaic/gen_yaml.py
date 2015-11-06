@@ -66,6 +66,9 @@ query_tables = {
         220: ['customer']
         }
         
+def get_tables(query):
+    return sorted(query_tables[int(query.replace("a", "0"))])
+
 def tpch_paths_local(path, switch_index, num_switches):
     tpch_files = {}
     for nm in tpch_names:
@@ -95,7 +98,7 @@ def tpch_paths_local(path, switch_index, num_switches):
     return out
 
 def tpch_mux_file_local(path, switch_index, num_switches, tpch_query):
-  tables = "_".join(query_tables[int(tpch_query)])
+  tables = "_".join(get_tables(tpch_query))
   rest = "mux/%d/mux_%d_%d_%s.csv" % (num_switches, switch_index, num_switches, tables)
   return os.path.join(path, rest)
 
@@ -200,7 +203,7 @@ def create_dist_file(args):
         switch_env2 = copy.deepcopy(switch_env)
         if args.tpch_data_path:
             switch_env2['k3_seq_files'] = \
-                mk_k3_seq_files(num_switches, [i], args.tpch_data_path, query_tables[int(query)])
+                mk_k3_seq_files(num_switches, [i], args.tpch_data_path, get_tables(query))
         k3_roles.append(('Switch' + str(i), switch_res.pop(0), 1, None, switch_env2))
 
     k3_roles.append(('Master', switch_res.pop(0), 1, None, master_env))
