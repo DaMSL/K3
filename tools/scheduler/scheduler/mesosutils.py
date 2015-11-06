@@ -150,8 +150,7 @@ def taskInfo(k3job, tnum, webaddr, slaveId):
       "logging"          : k3job.logging,
       "jsonlog"          : k3job.jsonlog,
       "jsonfinal"        : k3job.jsonfinal,
-      "perf_profile"     : k3job.perf_profile,
-      "perf_frequency"   : k3job.perf_frequency,
+      "perfprofile"      : k3job.perfprofile,
       "stdout"           : k3job.stdout }
 
   # TODO:  When logging is fully implemented, remove this & update executor to accept
@@ -165,11 +164,8 @@ def taskInfo(k3job, tnum, webaddr, slaveId):
   if task_data['jsonfinal'] == False:
     del task_data['jsonfinal']
 
-  if task_data['perf_profile'] == False:
-    del task_data['perf_profile']
-
-  if task_data['perf_frequency'] == '':
-    del task_data['perf_frequency']
+  if task_data['perfprofile'] == False:
+    del task_data['perfprofile']
 
   if task_data['seq_files'] == []:
     del task_data['seq_files']
