@@ -361,7 +361,7 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
 
 end
 
-def run_deploy_k3_remote(uid, server_url, bin_path, nice_name, script_path, perf_profile)
+def run_deploy_k3_remote(uid, server_url, bin_path, nice_name, script_path, perf_profile, perf_frequency)
   role_path = if $options[:raw_yaml_file] then $options[:raw_yaml_file] else File.join($workdir, nice_name + ".yaml") end
 
   # we can either have a uid from a previous stage, or send a binary and get a uid now
@@ -388,7 +388,10 @@ def run_deploy_k3_remote(uid, server_url, bin_path, nice_name, script_path, perf
       curl_args['jsonfinal'] = 'yes'
   end
   if perf_profile
-    curl_args['perfprofile'] = 'yes'
+    curl_args['perf_profile'] = 'yes'
+    if perf_frequency != ""
+      curl_args['perf_frequency'] = perf_frequency
+    end
   end
   res = curl(server_url, "/jobs/#{nice_name}#{uid_s}", json:true, post:true, file:role_path, args:curl_args)
   jobid = res['jobId']
@@ -414,7 +417,8 @@ def run_deploy_k3_local(bin_path, nice_name, script_path)
   args << "--json #{json_dist_path} " unless $options[:logging] == :none
   args << "--json_final_only " if $options[:logging] == :final
   cmd_suffix = "#{bin_path} -p #{role_path} #{args}"
-  perf_cmd = "perf record -F 10 -a --call-graph dwarf -- "
+  frequency = if $options.has_key(:perf_frequency) then $options[:perf_frequency] else "10" end
+  perf_cmd = "perf record -F #{frequency} -a --call-graph dwarf -- "
   run($options[:profile] == :perf ? perf_cmd + cmd_suffix : cmd_suffix)
 end
 
@@ -747,6 +751,7 @@ def main()
     opts.on("--final-ktrace", "Turn on final JSON logging for ktrace") { $options[:logging] = :final }
     opts.on("--no-ktrace", "Turn off JSON logging for ktrace") { $options[:logging] = :none }
     opts.on("--perf-profile", "Turn on perf profiling") { $options[:profile] = :perf }
+    opts.on("--perf-frequency [NUM]", String, "Set perf profiling frequency") { |s| $options[:perf_frequency] = s }
     opts.on("--dots", "Get the awesome dots") { $options[:dots] = true }
     opts.on("--gc-epoch [MS]", "Set gc epoch time (ms)") { |i| $options[:gc_epoch] = i }
     opts.on("--msg-delay [MS]", "Set switch message delay (ms)") { |i| $options[:msg_delay] = i }
@@ -948,7 +953,8 @@ def main()
       run_deploy_k3_local(bin_path, nice_name, script_path)
     else
       prof = $options[:profile] == :perf
-      run_deploy_k3_remote(uid, server_url, bin_path, nice_name, script_path, prof)
+      freq = if $options.has_key?(:perf_frequency) then $options[:perf_frequency] else '' end
+      run_deploy_k3_remote(uid, server_url, bin_path, nice_name, script_path, prof, freq)
     end
   end
 

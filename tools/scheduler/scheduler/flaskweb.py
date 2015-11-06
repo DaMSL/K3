@@ -623,7 +623,8 @@ def createJob(appName, appUID):
   #             -F logging=[True | False]
   #             -F jsonlog=[True | False]
   #             -F jsonfinal=[True | False]
-  #             -F perfprofile=[True | False]
+  #             -F perf_profile=[True | False]
+  #             -F perf_frequency=[n]
   #             -F http://<host>:<port>/jobs/<appName>/<appUID>
   #             NOTE: if appUID is omitted, job will be submitted to latest version of this app
   #
@@ -639,10 +640,11 @@ def createJob(appName, appUID):
         # TODO: Get user
         file = request.files['file']
         text = request.form['text'] if 'text' in request.form else None
-        k3logging = True if 'logging' in request.form else False
-        jsonlog = True if 'jsonlog' in request.form else False
-        jsonfinal = True if 'jsonfinal' in request.form else False
-        perfprofile = True if 'perfprofile' in request.form else False
+        k3logging      = True if 'logging' in request.form else False
+        jsonlog        = True if 'jsonlog' in request.form else False
+        jsonfinal      = True if 'jsonfinal' in request.form else False
+        perf_profile   = True if 'perf_profile' in request.form else False
+        perf_frequency = request.form['perf_frequency'] if 'perf_frequency' in request.form else ''
         stdout = request.form['stdout'] if 'stdout' in request.form else False
         user = request.form['user'] if 'user' in request.form else 'anonymous'
         tag = request.form['tag'] if 'tag' in request.form else ''
@@ -651,10 +653,10 @@ def createJob(appName, appUID):
         if jsonfinal and not jsonlog:
           jsonlog = True
 
-        logger.debug("K3 LOGGING is :  %s" %  ("ON" if k3logging else "OFF"))
-        logger.debug("JSON LOGGING is :  %s" %  ("ON" if jsonlog else "OFF"))
+        logger.debug("K3 LOGGING is :  %s"         %  ("ON" if k3logging else "OFF"))
+        logger.debug("JSON LOGGING is :  %s"       %  ("ON" if jsonlog else "OFF"))
         logger.debug("JSON FINAL LOGGING is :  %s" %  ("ON" if jsonfinal else "OFF"))
-        logger.debug("PERF PROFILING is :  %s" %  ("ON" if perfprofile else "OFF"))
+        logger.debug("PERF PROFILING is :  %s"     %  ("ON" if perf_profile else "OFF"))
         # trials = int(request.form['trials']) if 'trials' in request.form else 1
 
         # Check for valid submission
@@ -688,7 +690,8 @@ def createJob(appName, appUID):
 
         newJob = Job(binary=apploc, appName=appName, jobId=jobId,
                      rolefile=os.path.join(path, filename), logging=k3logging,
-                     jsonlog=jsonlog, jsonfinal=jsonfinal, perfprofile=perfprofile)
+                     jsonlog=jsonlog, jsonfinal=jsonfinal,
+                     perf_profile=perf_profile, perf_frequency=perf_frequency)
 
         # Submit to Mesos
         dispatcher.submit(newJob)

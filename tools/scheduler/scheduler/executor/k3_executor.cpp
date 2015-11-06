@@ -200,8 +200,9 @@ public:
 
     // Build the K3 Command which will run inside this container
     k3_cmd = "cd $MESOS_SANDBOX && ";
-    if (hostParams["perfprofile"]) {
-            k3_cmd += "perf record -F 10 -a --call-graph dwarf -- ";
+    if (hostParams["perf_profile"]) {
+      string frequency = hostParams["perf_frequency"] ? hostParams["perf_frequency"].as<string>() : "10";
+      k3_cmd += "perf record -F " + frequency + " -a --call-graph dwarf -- ";
     }
 
     k3_cmd += "./" + hostParams["binary"].as<string>();
