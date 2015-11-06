@@ -1,4 +1,4 @@
-include "compact/AmplabBDB.k3"
+include "amplab/AmplabBDB.k3"
 include "Annotation/Set.k3"
 include "Core/IO.k3"
 include "Distributed/Transformers.k3"
