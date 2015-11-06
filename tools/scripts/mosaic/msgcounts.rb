@@ -6,13 +6,20 @@ def main()
 
   global_sum = 0.0
   global_count = 0
+  empty_files = 0
+  total_files = ARGF.argv.length
   ARGF.argv.each do |path|
     stats = get_stats(path)
-    puts "#{path}: #{stats[:sum] / stats[:count]}"
+    if stats[:count] == 0
+      empty_files += 1
+    else
+      puts "#{path}: #{stats[:sum] / stats[:count]}"
+    end
     global_sum += stats[:sum]
     global_count += stats[:count]
   end
-  puts "Global Average: #{global_sum / global_count}"
+  puts "---------------"
+  puts "Global Average: #{global_sum / global_count}. Empty files: #{empty_files} / #{total_files}"
 end
 
 def get_stats(path)

@@ -197,3 +197,26 @@ control MosaicCounts[lbl:label, tl:expr, ve:expr, ce1:expr, ce2:expr]
     declare $[lbl]_msgcount_sample_mod      : mut int = 10
   }
 }
+
+control MosaicPushBarrier[lbl:label, tl:expr, ve:expr, ce1:expr, ce2:expr]
+{
+  ?e @:Flush => ($[lbl]_push_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
+                ($[lbl]_push_buffer.clear());
+                $.[e]
+  +> {}
+
+  ?e => ( $.[e] );
+        (if ($[lbl]_push_sample_mod == 0 or $[ve] % $[lbl]_push_sample_mod == 0)
+         then (
+          ($[lbl]_push_buffer.insert {etag: $[tl], evid: $[ve], pcomponent: $[ce1], t: $[ce2]});
+          (if $[lbl]_push_buffer.size() >= $[lbl]_push_buffer_batch_sz
+            then ($[lbl]_push_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
+                  $[lbl]_push_buffer.clear()
+            else ())
+        ) else ())
+  +> {
+    declare $[lbl]_push_buffer : collection {etag:int, evid:int, pcomponent:int, t:int} @Vector
+    declare $[lbl]_push_buffer_batch_sz : mut int = 1000
+    declare $[lbl]_push_sample_mod      : mut int = 10
+  }
+}
