@@ -6,6 +6,7 @@ import argparse
 import yaml
 import os
 import copy
+import re
 
 def address(port):
     return ['127.0.0.1', port]
@@ -65,22 +66,38 @@ query_tables = {
         220: ['customer']
         }
         
-def tpch_paths_local(path):
+def tpch_paths_local(path, switch_index, num_switches):
     tpch_files = {}
     for nm in tpch_names:
         tpch_files[nm] = []
     for nm in tpch_names:
         full_path = os.path.join(path, nm)
-        files = os.listdir(full_path)
+        files = sorted(os.listdir(full_path))
         for f in files:
             fname = os.path.join(full_path, f)
-            if os.path.isfile(fname):
-                tpch_files[nm].append({'path':fname})
+            if not os.path.isfile(fname):
+                continue
+            digit_match = re.search(r'\d+$', f)
+            sentinel_match = re.search(r'.*sentinel.*', f)
+            if sentinel_match:
+                  tpch_files[nm].append({'path':fname})
+            elif digit_match:
+              file_index = int(digit_match.group())
+              if file_index % num_switches == switch_index:
+                  tpch_files[nm].append({'path':fname})
+            else:
+                raise ValueError("File %s does not end with digits. And is not sentintel. Can't partition among switches" % f)
+
     out = []
     for nm in tpch_names:
         out.append({'seq':tpch_files[nm]})
 
     return out
+
+def tpch_mux_file_local(path, switch_index, num_switches, tpch_query):
+  tables = "_".join(query_tables[int(tpch_query)])
+  rest = "mux/%d/mux_%d_%d_%s.csv" % (num_switches, switch_index, num_switches, tables)
+  return os.path.join(path, rest)
 
 def tpch_paths_dist(p):
     files = []
@@ -107,7 +124,7 @@ def create_local_file(args):
 
     # convert to dictionaries
     peers2 = []
-    seqfiles = tpch_paths_local(args.tpch_data_path)
+    switch_index = 0
     for (role, port) in peers:
         peer = {'role': wrap_role(role), 'me':address(port), 'peers':create_peers(peers)}
 
@@ -115,9 +132,14 @@ def create_local_file(args):
             if args.csv_path:
                 peer['switch_path'] = args.csv_path
             if args.tpch_data_path:
-                peer['seqfiles'] = seqfiles
+                peer['seqfiles'] = tpch_paths_local(args.tpch_data_path, switch_index, args.num_switches)
             if args.tpch_inorder_path:
                 peer['inorder'] = args.tpch_inorder_path
+            elif args.tpch_infer_inorder_path:
+                if not args.tpch_query:
+                  raise ValueError("Cannot infer mux files without tpch_query number")
+                peer['inorder'] = tpch_mux_file_local(args.tpch_data_path, switch_index, args.num_switches, args.tpch_query)
+            switch_index = switch_index + 1
 
         peer.update(extra_args)
         peers2.append(peer)
@@ -244,8 +266,9 @@ def main():
     parser.add_argument("--csv_path", type=str, help="path of csv data source", default=None)
     parser.add_argument("--tpch_data_path", type=str, help="path of tpch flatpolys", default=None)
     parser.add_argument("--tpch_inorder_path", type=str, help="path of tpch inorder file", default=None)
+    parser.add_argument("--tpch_infer_inorder_path", type=bool, help="automatic inorder file")
     parser.add_argument("--tpch_query", type=str, help="query")
-    parser.add_argument("--extra-args", type=str, help="extra arguments in x=y format")
+    parser.add_argument("--extra-args", help="extra arguments in x=y format")
     args = parser.parse_args()
     if args.run_mode == "dist":
         create_dist_file(args)
