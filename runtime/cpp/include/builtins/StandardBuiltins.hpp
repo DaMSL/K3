@@ -15,17 +15,23 @@ class Engine;
 class StandardBuiltins {
  public:
   StandardBuiltins(Engine& engine);
+
   unit_t print(const string_impl& message);
   unit_t sleep(int n);
   unit_t haltEngine(unit_t);
+
   template <class T>
   T range(int i);
+
   template <class T>
   T error(unit_t);
+
   template <class T>
   unit_t ignore(const T& t);
+
   template <class T>
   int hash(const T& t);
+
   double randomFraction(unit_t);
   int randomBinomial(int trials, double p);
 
