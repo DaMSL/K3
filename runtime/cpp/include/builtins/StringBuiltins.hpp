@@ -47,7 +47,7 @@ class StringBuiltins {
 
 template<class S>
 string_impl StringBuiltins::toJson(const S& s) {
-  return K3::serialization::encode<S>(s);
+  return K3::serialization::json::encode<S>(s);
 }
 
 template <class S>
