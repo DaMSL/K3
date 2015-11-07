@@ -604,7 +604,6 @@ betaReductionDelta env expr = foldMapTree reduce ([], False) expr >>= return . f
       case (tag ie, ie @~ isEType, ie @~ isEQualified) of
         (_, Nothing, _)       -> Left "No type found on target during beta reduction"
         (_, _, Just EMutable) -> Right (False, False)
-        (EConstant _, _, _)   -> Right (True, True)
         (EVariable _, _, _)   -> Right (True, fullySubstitutable i ie e)
 
         -- Collections can be modified in place with insert/update/delete,
@@ -612,6 +611,9 @@ betaReductionDelta env expr = foldMapTree reduce ([], False) expr >>= return . f
         -- TODO: we can actually substitute provided the collection is not
         -- written in the body. Use effects to determine this.
         (_, Just (EType (tag -> TCollection)), _) -> Right (False, numOccurs <= 1 && fullySubstitutable i ie e)
+
+        {- EConstant case must be handled after collections to address empty collections. -}
+        (EConstant _, _, _)   -> Right (True, True)
 
         _ -> Right (False, numOccurs == 1 && fullySubstitutable i ie e)
 
