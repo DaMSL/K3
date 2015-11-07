@@ -242,9 +242,9 @@ mosaicRouteKey :: SpliceValue -> SpliceValue
 mosaicRouteKey (SExpr e) = SExpr $ evalAsString e
   where
     evalAsString n@(tag -> EVariable v) = case n @~ isEType of
-                                            (EType (tag -> TInt)) -> EC.applyMany (EC.variable "itos") [n]
-                                            (EType (tag -> TReal)) -> EC.applyMany (EC.variable "rtos") [n]
-                                            (EType (tag -> TString)) -> n
+                                            (Just (EType (tag -> TInt))) -> EC.applyMany (EC.variable "itos") [n]
+                                            (Just (EType (tag -> TReal))) -> EC.applyMany (EC.variable "rtos") [n]
+                                            (Just (EType (tag -> TString))) -> n
                                             _ -> str v
 
     evalAsString (tag -> EConstant c) = case c of
