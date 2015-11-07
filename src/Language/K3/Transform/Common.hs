@@ -37,7 +37,7 @@ noMovesTransConfig  = defaultTransConfig { optMoves = False }
 -- | Substitute all occurrences of a variable with an expression in the specified target expression.
 substituteImmutBinding :: Identifier -> K3 Expression -> K3 Expression -> K3 Expression
 substituteImmutBinding i iExpr expr =
-    runIdentity $ biFoldMapTree pruneSubs rebuild [(i, iExpr)] EC.unit expr
+    runIdentity $ biFoldMapTree pruneSubs rebuild [(i, (iExpr, freeVariables iExpr))] EC.unit expr
   where
     pruneSubs subs (tag -> ELambda j) = return $ pruneBinding subs [j] [True]
     pruneSubs subs (tag -> ELetIn  j) = return $ pruneBinding subs [j] [False, True]
@@ -46,10 +46,13 @@ substituteImmutBinding i iExpr expr =
     pruneSubs subs n = return $ (subs, replicate (length $ children n) subs)
 
     pruneBinding subs ids oldOrNew =
-      let newSubs = foldl removeAssoc subs ids
+      let newSubs = foldl cleanSubs subs ids
       in (subs, map (\useNew -> if useNew then newSubs else subs) oldOrNew)
 
-    rebuild subs _  n@(tag -> EVariable j) = return $ maybe n id $ lookup j subs
+    cleanSubs acc i = filter (\(_, (e, freevars)) -> i `notElem` freevars) nsubs
+      where nsubs = removeAssoc acc i
+
+    rebuild subs _  n@(tag -> EVariable j) = return $ maybe n fst $ lookup j subs
     rebuild _    _  n@(tag -> EConstant _) = return $ n
     rebuild _    ch n@(tag -> ETuple)      = return $ if null $ children n then n else replaceCh n ch
     rebuild _    ch   (Node t _)           = return $ Node t ch
