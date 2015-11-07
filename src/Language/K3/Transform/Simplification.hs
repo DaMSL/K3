@@ -593,27 +593,27 @@ betaReductionDelta env expr = foldMapTree reduce ([], False) expr >>= return . f
       ieRO <- readOnly False ie
       eRO  <- noWritesOn True env i u e
       let numOccurs = length $ filter (== i) $ freeVariables e
-      (simple, doReduce) <- reducibleTarget numOccurs ie
+      (simple, doReduce) <- reducibleTarget numOccurs i ie e
       if debugCondition ieRO eRO n $ (simple || (ieRO && eRO)) && doReduce
         then return ([substituteImmutBinding i (cleanExpr ie) e], True)
         else return ([n], False)
 
     reduceOnOccurrences _ _ _ _ _ = Left "Invalid UID for reduceOnOccurrences"
 
-    reducibleTarget numOccurs ie =
+    reducibleTarget numOccurs i ie e =
       case (tag ie, ie @~ isEType, ie @~ isEQualified) of
         (_, Nothing, _)       -> Left "No type found on target during beta reduction"
         (_, _, Just EMutable) -> Right (False, False)
-        (EVariable _, _, _)   -> Right (True, True)
+        (EConstant _, _, _)   -> Right (True, True)
+        (EVariable _, _, _)   -> Right (True, fullySubstitutable i ie e)
 
         -- Collections can be modified in place with insert/update/delete,
         -- thus we can only substitute single uses.
         -- TODO: we can actually substitute provided the collection is not
         -- written in the body. Use effects to determine this.
-        (_, Just (EType (tag -> TCollection)), _) -> Right (False, numOccurs <= 1)
+        (_, Just (EType (tag -> TCollection)), _) -> Right (False, numOccurs <= 1 && fullySubstitutable i ie e)
 
-        (EConstant _, _, _) -> Right (True, True)
-        _ -> Right $ (False, numOccurs == 1)
+        _ -> Right (False, numOccurs == 1 && fullySubstitutable i ie e)
 
     onSub ch = (concat *** any id) $ unzip ch
 
