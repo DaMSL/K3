@@ -220,3 +220,29 @@ control MosaicPushBarrier[lbl:label, tl:expr, ve:expr, ce1:expr, ce2:expr]
     declare $[lbl]_push_sample_mod      : mut int = 10
   }
 }
+
+control MosaicFetchRoute[lbl:label, tl:expr, ve:expr, ce1:expr, ce2:expr, ce3:expr, ce4:expr]
+{
+  ?e @:Flush => ($[lbl]_route_buffer.iterate (\r -> (mosaic_routelog_sink, me) <- r));
+                ($[lbl]_route_buffer.clear());
+                $.[e]
+  +> {}
+
+  ?e => ( $.[e] );
+        (if ($[lbl]_route_sample_mod == 0 or $[ve] % $[lbl]_route_sample_mod == 0)
+         then (
+          ($[lbl]_route_buffer.insert {etag: $[tl], evid: $[ve], pcomponent: $[ce1],
+                                       rkey: $[|mosaicRouteKey 'ce2|], rrbucket: $[ce3], rrnode: $[ce4]});
+          (if $[lbl]_route_buffer.size() >= $[lbl]_route_buffer_batch_sz
+            then ($[lbl]_route_buffer.iterate (\r -> (mosaic_routelog_sink, me) <- r));
+                  $[lbl]_route_buffer.clear()
+            else ())
+        ) else ())
+  +> {
+    declare $[lbl]_route_buffer : collection {etag: int, evid: int, pcomponent: int,
+                                              rkey: string, rrbucket: int, rrnode: int} @Vector
+
+    declare $[lbl]_route_buffer_batch_sz : mut int = 1000
+    declare $[lbl]_route_sample_mod      : mut int = 10
+  }
+}

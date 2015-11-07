@@ -236,3 +236,36 @@ extractPathBFC _ = error "Invalid expression in extractPathBFC"
 collectionContentType :: SpliceValue -> SpliceValue
 collectionContentType (SType (tag &&& children -> (TCollection , (t:_) ))) = SType t
 collectionContentType _ = error "Invalid type in collectionContentType"
+
+{- Mosaic logging helpers -}
+mosaicRouteKey :: SpliceValue -> SpliceValue
+mosaicRouteKey (SExpr e) = SExpr $ evalAsString e
+  where
+    evalAsString n@(tag -> EVariable v) = case n @~ isEType of
+                                            (EType (tag -> TInt)) -> EC.applyMany (EC.variable "itos") [n]
+                                            (EType (tag -> TReal)) -> EC.applyMany (EC.variable "rtos") [n]
+                                            (EType (tag -> TString)) -> n
+                                            _ -> str v
+
+    evalAsString (tag -> EConstant c) = case c of
+                                          CInt    i -> str $ show i
+                                          CString s -> str s
+                                          CReal   r -> str $ show r
+                                          CBool   b -> str $ show b
+                                          _ -> str "..."
+
+    evalAsString (tnc -> (ERecord ids, ch)) | not (null ch) =
+      wrap "{" "}" $ foldl recstr (str "") $ zip ids $ map evalAsString ch
+
+    evalAsString (tnc -> (ETuple, ch)) | not null ch =
+      wrap "(" ")" $ foldl tupstr (str "") $ map evalAsString ch
+
+    evalAsString _ = str "..."
+
+    recstr acc (i, e) = EC.binop OConcat acc $ EC.binop OConcat (str $ ";" ++ i ++ ":") e
+    tupstr acc e = EC.binop OConcat acc $ EC.binop OConcat (str ";") e
+
+    wrap l r s = EC.binop OConcat (str l) $ EC.binop OConcat s $ str r
+    str s = EC.constant $ CString s
+
+mosaicRouteKeyString _ = error "Invalid Mosaic routing key."
