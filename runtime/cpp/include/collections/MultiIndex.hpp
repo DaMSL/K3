@@ -747,9 +747,9 @@ class MultiIndexVMap
         auto& vmap = std::get<1>(elem);
         auto vexisting = vmap.find(v);
         if ( vexisting == vmap.end() ) {
-          vmap[v] = rec;
+	  vmap.insert(vexisting, std::make_pair(v, rec));
         } else {
-          vmap[v] = f(std::move(vexisting->second), rec);
+	  vexisting->second = f(std::move(vexisting->second), rec);
         }
       });
     }
@@ -769,9 +769,9 @@ class MultiIndexVMap
         auto& vmap = std::get<1>(elem);
         auto vexisting = vmap.find(v);
         if ( vexisting == vmap.end() ) {
-          vmap[v] = f(unit_t {});
+	  vmap.insert(vexisting, std::make_pair(v, f(unit_t{})));
         } else {
-          vmap[v] = g(std::move(vexisting->second));
+          vexisting->second = g(std::move(vexisting->second));
         }
       });
     }
@@ -833,9 +833,9 @@ class MultiIndexVMap
         auto& vmap = std::get<1>(elem);
         auto vit = vmap.upper_bound(v);
         if ( vit == vmap.end() ) {
-          vmap[v] = f(unit_t {});
+	  vmap.insert(vit, std::make_pair(v, f(unit_t{})));
         } else {
-          vmap[v] = g(std::move(vit->second));
+          vit->second = g(std::move(vit->second));
         }
       });
     }
@@ -888,7 +888,7 @@ class MultiIndexVMap
         auto vstart = vmap.begin();
         auto vlteq  = vmap.lower_bound(v);
         for (; vstart != vlteq; vstart++) {
-          vmap[vstart->first] = f(vstart->first, std::move(vstart->second));
+          vstart->second = f(vstart->first, std::move(vstart->second));
         }
       });
     }
