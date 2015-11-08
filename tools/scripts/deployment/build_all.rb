@@ -26,9 +26,6 @@ QUERIES = {
       "6" => "examples/sql/tpch/queries/k3/q6.k3",
       "18" => "examples/sql/tpch/queries/k3/barrier-queries/q18.k3",
       "22" => "examples/sql/tpch/queries/k3/barrier-queries/q22.k3",
-
-      "10" => "examples/sql/tpch/queries/k3/q10.k3",
-      "11" => "examples/sql/tpch/queries/k3/q11.k3",
     }
   },
 
