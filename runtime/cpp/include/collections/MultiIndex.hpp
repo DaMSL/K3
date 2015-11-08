@@ -747,7 +747,7 @@ class MultiIndexVMap
         auto& vmap = std::get<1>(elem);
         auto vexisting = vmap.find(v);
         if ( vexisting == vmap.end() ) {
-	  vmap.insert(vexisting, std::make_tuple(v, rec));
+	  vmap.insert(vexisting, std::make_pair(v, rec));
         } else {
 	  vexisting->second = f(std::move(vexisting->second), rec);
         }
@@ -769,7 +769,7 @@ class MultiIndexVMap
         auto& vmap = std::get<1>(elem);
         auto vexisting = vmap.find(v);
         if ( vexisting == vmap.end() ) {
-	  vmap.insert(vexisting, std::make_tuple(v, f(unit_t{})));
+	  vmap.insert(vexisting, std::make_pair(v, f(unit_t{})));
         } else {
           vexisting->second = g(std::move(vexisting->second));
         }
@@ -833,7 +833,7 @@ class MultiIndexVMap
         auto& vmap = std::get<1>(elem);
         auto vit = vmap.upper_bound(v);
         if ( vit == vmap.end() ) {
-	  vmap.insert(vit, std::make_tuple(v, f(unit_t{})));
+	  vmap.insert(vit, std::make_pair(v, f(unit_t{})));
         } else {
           vit->second = g(std::move(vit->second));
         }
