@@ -36,9 +36,9 @@ QUERIES = {
       "sf5_accum" => "amplab_sf5_accum.yml",
     },
     :queries => {
-      "1" => "examples/distributed/amplab/compact/q1.k3",
-      "2" => "examples/distributed/amplab/compact/q2.k3",
-      "3" => "examples/distributed/amplab/compact/q3.k3",
+      "1" => "examples/distributed/amplab/q1.k3",
+      "2" => "examples/distributed/amplab/q2.k3",
+      "3" => "examples/distributed/amplab/q3.k3",
     }
   },
 
