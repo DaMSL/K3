@@ -62,27 +62,6 @@ QUERIES = {
       "page_rank" => "examples/distributed/graph/page_rank.k3",
     }
   },
-
-  "conversion" => {
-    :roles => {
-      "10g" => "convert_10g.yml",
-      "100g" => "convert_100g.yml",
-    },
-
-    :queries => {
-      "convert" => "examples/sql/tpch/convert.k3"
-    }
-  },
-
-  "test" => {
-   :roles => {
-     "test" => "test.yml"
-   },
-
-   :queries => {
-     "test" => "test.k3"
-   }
-  }
 }
 
 def slugify(experiment, query)
