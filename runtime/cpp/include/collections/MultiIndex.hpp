@@ -835,7 +835,7 @@ class MultiIndexVMap
         if ( vit == vmap.end() ) {
           vmap[v] = f(unit_t {});
         } else {
-          vmap[v] = g(std::move(vit->second));
+          vit->second = g(std::move(vit->second));
         }
       });
     }
@@ -888,7 +888,7 @@ class MultiIndexVMap
         auto vstart = vmap.begin();
         auto vlteq  = vmap.lower_bound(v);
         for (; vstart != vlteq; vstart++) {
-          vmap[vstart->first] = f(vstart->first, std::move(vstart->second));
+          vstart->second = f(vstart->first, std::move(vstart->second));
         }
       });
     }
