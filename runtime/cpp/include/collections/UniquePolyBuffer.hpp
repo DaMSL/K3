@@ -281,6 +281,13 @@ struct convert<K3::UniquePolyBuffer<E, Derived>> {
   using Tag = typename K3::UniquePolyBuffer<E, Derived>::Tag;
   template <class Allocator>
   static Value encode(const K3::UniquePolyBuffer<E, Derived>& c, Allocator& al) {
+    bool modified = false;
+    K3::UniquePolyBuffer<E, Derived>& non_const = const_cast<K3::UniquePolyBuffer<E, Derived>&>(c);
+    if (!c.isInternalized()) {
+      non_const.unpack(K3::unit_t {});
+      modified = true;
+    }
+
     Value v;
     v.SetObject();
     v.AddMember("type", Value("UniquePolyBuffer"), al);
@@ -290,6 +297,10 @@ struct convert<K3::UniquePolyBuffer<E, Derived>> {
       inner.PushBack(c.jsonencode(tg, idx, offset, al), al);
     });
     v.AddMember("value", inner.Move(), al);
+
+    if (modified) {
+      non_const.repack(K3::unit_t {});
+    }
     return v;
   }
 };
