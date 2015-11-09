@@ -18,6 +18,12 @@ QUERIES = {
       "10g_accum" => "tpch_10g_accum.yml",
       "100g_inuse" => "tpch_100g_inuse.yml",
       "100g_accum" => "tpch_100g_accum.yml",
+
+      "scalability_16" => "scalability/16.yml",
+      "scalability_32" => "scalability/32.yml",
+      "scalability_64" => "scalability/64.yml",
+      "scalability_128" => "scalability/128.yml",
+      "scalability_256" => "scalability/256.yml",
     },
     :queries => {
       "1" => "examples/sql/tpch/queries/k3/q1.k3",
