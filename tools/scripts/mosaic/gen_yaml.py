@@ -203,7 +203,7 @@ def create_dist_file(args):
         vals = (num_switches, len(switch_machines), str(switch_machines))
         raise ValueError(msg % vals)
     used_machines = num_switches if num_switches <= len(switch_machines) else len(switch_machines)
-    switches_per_machine = num_switches / len(switch_machines)
+    switches_per_machine = max([1, num_switches / len(switch_machines)])
 
     for i in range(used_machines):
         switch_indexes = [(i * switches_per_machine) + j for j in range(switches_per_machine)]
