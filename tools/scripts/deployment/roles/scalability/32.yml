@@ -16,6 +16,5 @@ k3_data:
   - {var: ordersFiles, path: /data/scalability/32/orders, policy: global}  
   - {var: supplierFiles, path: /data/scalability/32/supplier, policy: global}  
   - {var: partsuppFiles, path: /data/scalability/32/partsupp, policy: global}  
-  - {var: partFiles, path: /data/scalability/32/part, policy: global}  
   - {var: regionFiles, path: /data/scalability/32/region, policy: replicate}
   - {var: nationFiles, path: /data/scalability/32/nation, policy: replicate}
