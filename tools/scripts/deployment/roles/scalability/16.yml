@@ -1,5 +1,5 @@
 name: role 1
-peers: 128
+peers: 16
 hostmask: ".*hm.*|.*hd(1|4|6|7|8|9|12|15)$"
 peers_per_host: 1
 privileged: False
@@ -8,6 +8,7 @@ k3_globals:
   master: auto
 volumes:
   - {host: /local, container: /local}
+  - {host: /data, container: /data}
 k3_data:
   - {var: dataFiles, path: /data/scalability/16/lineitem, policy: global}
   - {var: lineitemFiles, path: /data/scalability/16/lineitem, policy: global}

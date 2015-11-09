@@ -1,0 +1,21 @@
+name: role 1
+peers: 256
+hostmask: ".*hm.*|.*hd(1|4|6|7|8|9|12|15)$"
+peers_per_host: 16
+privileged: False
+k3_globals:
+  role: [{i: rows}]
+  master: auto
+volumes:
+  - {host: /local, container: /local}
+  - {host: /data, container: /data}
+k3_data:
+  - {var: dataFiles, path: /data/scalability/256/lineitem, policy: global}
+  - {var: lineitemFiles, path: /data/scalability/256/lineitem, policy: global}
+  - {var: customerFiles, path: /data/scalability/256/customer, policy: global}  
+  - {var: ordersFiles, path: /data/scalability/256/orders, policy: global}  
+  - {var: supplierFiles, path: /data/scalability/256/supplier, policy: global}  
+  - {var: partsuppFiles, path: /data/scalability/256/partsupp, policy: global}  
+  - {var: partFiles, path: /data/scalability/256/part, policy: global}  
+  - {var: regionFiles, path: /data/scalability/256/region, policy: replicate}
+  - {var: nationFiles, path: /data/scalability/256/nation, policy: replicate}
