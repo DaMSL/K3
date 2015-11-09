@@ -65,7 +65,7 @@ query_tables = {
         '22': ['customer', 'orders'],
         '22a': ['customer']
         }
-        
+
 def tpch_paths_local(path, switch_index, num_switches):
     tpch_files = {}
     for nm in tpch_names:
@@ -186,25 +186,35 @@ def create_dist_file(args):
     #     switch1_env['k3_seq_files'] = \
     #     mk_k3_seq_files(num_switches, [0], args.tpch_data_path, )
 
-    switch_env  = {'k3_globals': switch_role}
+    switch_env  = {'k3_globals': switch_role, 'mem': 'some'}
     node_env    = {'k3_globals': node_role}
-    master_env  = {'k3_globals': master_role}
-    timer_env   = {'k3_globals': timer_role}
+    master_env  = {'k3_globals': master_role, 'mem': 'some'}
+    timer_env   = {'k3_globals': timer_role, 'mem': 'some'}
 
-    # The amount of cores we have of qps. deduct timer and master on qp3
-    switch_res = (['qp3', 'qp4', 'qp5', 'qp6'] * 14) + (['qp4', 'qp5' ,'qp6'] * 2)
+    # The amount of cores we have of qps. # TODO pack multiple switches into a single role
+    switch_machines = ['qp3', 'qp4', 'qp5', 'qp6']
+    extra_res = ['qp-hd10', 'qp-hd12'] * 16
 
     k3_roles = []
 
-    for i in range(num_switches):
+    # Pack multiple switches into each role
+    if num_switches >= len(switch_machines) and num_switches % len(switch_machines) != 0:
+        msg = "Invalid number of switches: %d. Needs to be a multiple of the number of machines: %d (%s)"
+        vals = (num_switches, len(switch_machines), str(switch_machines))
+        raise ValueError(msg % vals)
+    used_machines = num_switches if num_switches <= len(switch_machines) else len(switch_machines)
+    switches_per_machine = num_switches / len(switch_machines)
+
+    for i in range(used_machines):
+        switch_indexes = [(i * switches_per_machine) + j for j in range(switches_per_machine)]
         switch_env2 = copy.deepcopy(switch_env)
         if args.tpch_data_path:
             switch_env2['k3_seq_files'] = \
-                mk_k3_seq_files(num_switches, [i], args.tpch_data_path, sorted(query_tables[query]))
-        k3_roles.append(('Switch' + str(i), switch_res.pop(0), 1, None, switch_env2))
+                mk_k3_seq_files(num_switches, switch_indexes, args.tpch_data_path, sorted(query_tables[query]))
+        k3_roles.append(('Switch' + str(i), switch_machines.pop(0), switches_per_machine, None, switch_env2))
 
-    k3_roles.append(('Master', switch_res.pop(0), 1, None, master_env))
-    k3_roles.append(('Timer',  switch_res.pop(0), 1, None, timer_env))
+    k3_roles.append(('Master', extra_res.pop(0), 1, None, master_env))
+    k3_roles.append(('Timer',  extra_res.pop(0), 1, None, timer_env))
 
     k3_roles.append(('Nodes', args.nmask, num_nodes, args.perhost, node_env))
 
