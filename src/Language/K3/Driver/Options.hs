@@ -16,6 +16,7 @@ import Data.Char
 import Data.Map ( Map )
 import qualified Data.Map as Map
 import Data.List.Split
+import qualified Data.List as L
 import Data.Maybe
 
 import GHC.Generics ( Generic )
@@ -23,7 +24,7 @@ import GHC.Generics ( Generic )
 import System.FilePath
 import System.Log
 
-import Language.K3.Stages ( CompilerSpec(..), StageSpec(..), cs0 )
+import Language.K3.Stages ( CompilerSpec(..), StageSpec(..), cs0, mz0)
 import Language.K3.Runtime.Common ( SystemEnvironment )
 import Language.K3.Runtime.Options
 import Language.K3.Utils.Logger.Config
@@ -36,6 +37,8 @@ import Language.K3.Utils.Pretty (
     Pretty(..), PrintConfig(..),
     indent, defaultPrintConfig, tersePrintConfig, simplePrintConfig
   )
+
+import Language.K3.Codegen.CPP.Materialization.Inference
 
 -- | Program Options.
 data Options = Options {
@@ -370,14 +373,14 @@ compileOpts ct = CompileOptions <$> outLanguageOpt
                                 <*> optimizationOpt
                                 <*> printModeOpt "noeffects=True:notypes=True:noproperties=True"
 
-defaultCompileStages :: CompilerType -> CompilerSpec -> CompileStages
-defaultCompileStages ct cSpec = case ct of
-    LocalCompiler       -> [SDeclPrepare, SDeclOpt cSpec, SCodegen]
+defaultCompileStages :: MZFlags -> CompilerType -> CompilerSpec -> CompileStages
+defaultCompileStages mzfs ct cSpec = case ct of
+    LocalCompiler       -> [SDeclPrepare, SDeclOpt cSpec, SCodegen mzfs]
     ServicePrepare      -> [SDeclPrepare]
     ServiceParallel1    -> [SDeclOpt cSpec]
     ServiceParallel2    -> [SMaterialization False]
     ServiceRound1       -> [SDeclPrepare, SCGPrepare]
-    ServiceFinal1       -> [SDeclPrepare, SCodegen]
+    ServiceFinal1       -> [SDeclPrepare, SCodegen mzfs]
     ServiceFinal2       -> []
     ServiceClient       -> []
     ServiceClientRemote -> [SDeclOpt cSpec]
@@ -401,39 +404,45 @@ compileStagesOpt ct = extractStageAndSpec . keyValList "" <$> strOption (
                   ServiceClient       -> "scstage"
                   ServiceClientRemote -> "srstage"
 
-    extractStageAndSpec kvl = case kvl of
-      []  -> defaultCompileStages ct cs0
-      [x] -> stageOf cs0 x
-      h:t -> stageOf (specOf t) h
+    extractStageAndSpec kvl = let (mzfs, kvl') = extractMZFlags kvl in case kvl' of
+      []  -> defaultCompileStages mzfs ct cs0
+      [x] -> stageOf mzfs cs0 x
+      h:t -> stageOf mzfs (specOf t) h
+     where
+      extractMZFlags :: [(String, String)] -> (MZFlags, [(String, String)])
+      extractMZFlags kvs = let (mzfs, rest) = L.partition (\(key, val) -> key `elem` ["isolateArgs"]) kvs in
+        case mzfs of
+          [(_, read -> True)] -> (MZFlags { isolateArgs = True }, rest)
+          _ -> (mz0, rest)
 
     -- | Local compilation stages definitions.
-    stageOf _     ("none",      read -> True) = []
-    stageOf cSpec ("declopt",   read -> True) = [SDeclPrepare, SDeclOpt cSpec]
-    stageOf cSpec ("cg",        read -> True) = [SDeclPrepare, SDeclOpt cSpec, SCodegen]
+    stageOf _ _     ("none",      read -> True) = []
+    stageOf _ cSpec ("declopt",   read -> True) = [SDeclPrepare, SDeclOpt cSpec]
+    stageOf mzfs cSpec ("cg",        read -> True) = [SDeclPrepare, SDeclOpt cSpec, SCodegen mzfs]
 
     -- | Compiler service stages definitions.
-    stageOf _     ("sprepare",         read -> True) = [SDeclPrepare]
-    stageOf cSpec ("sparallel1",       read -> True) = [SDeclOpt cSpec]
-    stageOf _     ("sparallel2",       read -> True) = [SMaterialization False]
-    stageOf _     ("sparallel2-debug", read -> True) = [SMaterialization True]
-    stageOf _     ("sround1",          read -> True) = [SDeclPrepare, SCGPrepare]
-    stageOf _     ("sfinal1",          read -> True) = [SDeclPrepare, SCodegen]
-    stageOf _     ("sfinal2",          read -> True) = []
+    stageOf _ _     ("sprepare",         read -> True) = [SDeclPrepare]
+    stageOf _ cSpec ("sparallel1",       read -> True) = [SDeclOpt cSpec]
+    stageOf _ _     ("sparallel2",       read -> True) = [SMaterialization False]
+    stageOf _ _    ("sparallel2-debug", read -> True) = [SMaterialization True]
+    stageOf _ _     ("sround1",          read -> True) = [SDeclPrepare, SCGPrepare]
+    stageOf mzfs _  ("sfinal1",          read -> True) = [SDeclPrepare, SCodegen mzfs]
+    stageOf _   _   ("sfinal2",          read -> True) = []
 
     -- | Optimizer stage specification.
-    stageOf cSpec ("oinclude", (splitOn "," ->  psl)) = [SDeclPrepare] ++ include cSpec psl
-    stageOf cSpec ("oexclude", (splitOn "," -> npsl)) = [SDeclPrepare] ++ exclude cSpec npsl
+    stageOf _ cSpec ("oinclude", (splitOn "," ->  psl)) = [SDeclPrepare] ++ include cSpec psl
+    stageOf _ cSpec ("oexclude", (splitOn "," -> npsl)) = [SDeclPrepare] ++ exclude cSpec npsl
 
     -- | Optimizer stage specification with final compilation.
-    stageOf cSpec ("cinclude", (splitOn "," ->  psl)) = [SDeclPrepare] ++ include cSpec psl  ++ [SCodegen]
-    stageOf cSpec ("cexclude", (splitOn "," -> npsl)) = [SDeclPrepare] ++ exclude cSpec npsl ++ [SCodegen]
+    stageOf mzfs cSpec ("cinclude", (splitOn "," ->  psl)) = [SDeclPrepare] ++ include cSpec psl  ++ [SCodegen mzfs]
+    stageOf mzfs cSpec ("cexclude", (splitOn "," -> npsl)) = [SDeclPrepare] ++ exclude cSpec npsl ++ [SCodegen mzfs]
 
     -- | Service worker optimization stage specification.
-    stageOf cSpec ("sinclude", (splitOn "," ->  psl)) = include cSpec psl
-    stageOf cSpec ("sexclude", (splitOn "," -> npsl)) = exclude cSpec npsl
+    stageOf _ cSpec ("sinclude", (splitOn "," ->  psl)) = include cSpec psl
+    stageOf _ cSpec ("sexclude", (splitOn "," -> npsl)) = exclude cSpec npsl
 
     -- | Default handler.
-    stageOf cSpec _ = defaultCompileStages ct cSpec
+    stageOf mzfs cSpec _ = defaultCompileStages mzfs ct cSpec
 
     include cSpec psl =
       let ss = stageSpec cSpec

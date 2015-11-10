@@ -72,10 +72,10 @@ import Language.K3.Utils.Pretty
 
 -- * Entry-Point
 
-data MZFlags = MZFlags { reverseCycleResolution :: Bool } deriving (Eq, Generic, Ord, Read, Show)
+data MZFlags = MZFlags { isolateArgs :: Bool } deriving (Eq, Generic, Ord, Read, Show)
 
 defaultMZFlags :: MZFlags
-defaultMZFlags = MZFlags { reverseCycleResolution = False }
+defaultMZFlags = MZFlags { isolateArgs = False }
 
 instance Binary MZFlags
 instance Serialize MZFlags
@@ -113,8 +113,8 @@ prepareInitialIState dbg dr = IState (M.fromList $ mapMaybe genHack (children dr
     DGlobal i _ _ -> (i,) <$> hasPhaseBoundary x
     _ -> Nothing
 
-optimizeMaterialization :: Bool -> IState -> (PIEnv, FIEnv) -> K3 Declaration -> IO (Either String (K3 Declaration))
-optimizeMaterialization dbg is (p, f) d = runExceptT $ inferMaterialization >>= solveMaterialization >>= attachMaterialization d
+optimizeMaterialization :: Bool -> MZFlags -> IState -> (PIEnv, FIEnv) -> K3 Declaration -> IO (Either String (K3 Declaration))
+optimizeMaterialization dbg _ is (p, f) d = runExceptT $ inferMaterialization >>= solveMaterialization >>= attachMaterialization d
  where
   inferMaterialization = case runInferM (materializeD d) defaultIState defaultIScope of
     Left (IError msg) -> throwError msg

@@ -16,6 +16,8 @@ import Language.K3.Stages ( CompilerSpec(..) )
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
 
+import Language.K3.Codegen.CPP.Materialization.Inference (MZFlags(..))
+
 {- Common data types used throughout the driver. -}
 
 -- | Variant type used to define compilation stages.
@@ -35,7 +37,7 @@ data CompileStage = SDeclPrepare
                   | SDeclOpt CompilerSpec
                   | SCGPrepare
                   | SMaterialization Bool
-                  | SCodegen
+                  | SCodegen MZFlags
                   deriving (Eq, Ord, Read, Show, Generic)
 
 type CompileStages = [CompileStage]

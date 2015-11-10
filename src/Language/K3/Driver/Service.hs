@@ -1348,7 +1348,7 @@ processWorkerConn (serviceId -> wid) sv wtid wworker = do
       let mst = MatI.prepareInitialIState dbg prog
       (nblock, nst) <- debugCompileBlock pid bid block dbg
                         $ liftIE $ ST.runTransformM st
-                        $ mapM (ST.materializationPass dbg mst) block
+                        $ mapM (ST.materializationPass dbg ST.mz0 mst) block
       return (blacc ++ [(bid, zip ids nblock)], ST.mergeTransformStReport st nst)
 
     extractBlocksByUID prog ublocksByBID = do
