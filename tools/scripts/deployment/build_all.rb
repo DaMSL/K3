@@ -133,7 +133,7 @@ def submit(name)
       saved[hash["name"]] = hash["uid"]
     end
   end
-  File.open("#{workdir}/apps.json", "w") do |f|
+  File.open("#{name}/apps.json", "w") do |f|
     f.write(saved.to_json)
   end
 end
