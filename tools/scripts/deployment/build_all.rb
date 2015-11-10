@@ -220,7 +220,7 @@ def harvest(statuses, out_folder)
   results = {}
   for job_id, info in statuses
     if info['status'] == "FINISHED"
-      run_folder = "#{out_folder}/#{info["role"]}_#{info["name"]}"
+      run_folder = "#{out_folder}/#{$options[:job_set]}/#{info["role"]}_#{info["name"]}"
       `mkdir -p #{run_folder}`
 
       # GET tar from each node
