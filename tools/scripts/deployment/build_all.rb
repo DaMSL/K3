@@ -326,7 +326,7 @@ def main()
     opts.on("-i", "--include pat1,pat2,pat3", Array, "Patterns to Include") { |is| $options[:includes] = is }
     opts.on("-e", "--exclude pat1,pat2,pat3", Array, "Patterns to Exclude") { |es| $options[:excludes] = es }
 
-    opts.on("-j", "--job-set", String, "Name of Current Job Set") { |j| $options[:job_set] = j }
+    opts.on("-j", "--job-set [JOBSET]", String, "Name of Current Job Set") { |j| $options[:job_set] = j }
   end
   parser.parse!
 
