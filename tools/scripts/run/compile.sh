@@ -19,4 +19,4 @@ dist/build/k3/k3 \
   compile \
     $CXX -l cpp \
     --cpp-flags="-DK3DEBUG -DBOOST_LOG_DYN_LINK -DYAS_SERIALIZE_BOOST_TYPES=1 -Iruntime/cpp/include/ -Iruntime/cpp/include/external ${BSLINCLUDE} ${K3_CXXFLAGS} -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp -ldynamic -lbsl -lbdl -ftemplate-depth-1024 -O4" \
-    -r runtime $@
+    -r runtime -j 16 $@
