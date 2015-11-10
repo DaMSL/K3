@@ -116,7 +116,7 @@ def build(name)
 end
 
 def submit(name)
-  saved = []
+  saved = {}
   for experiment, description in QUERIES do
     for query, _ in description[:queries] do
       if !select?(experiment, query)
@@ -130,7 +130,7 @@ def submit(name)
       )
       hash = JSON.parse response
       puts(hash)
-      saved << hash
+      saved[hash["name"]] = hash["uid"]
     end
   end
   File.open("#{workdir}/apps.json", "w") do |f|
@@ -141,6 +141,7 @@ end
 def run(name)
   puts "Submitting Run Jobs"
   jobs = {}
+  apps = JSON.parse(File.read("#{workdir}/apps.json"))
   for experiment, description in QUERIES do
     for query, _ in description[:queries] do
       for role, yml in description[:roles] do
@@ -150,7 +151,7 @@ def run(name)
         for i in 1..($options[:trials]) do
           puts "\tSubmitting #{role} for #{experiment}/#{query} trial #{i}"
           response = RC.post(
-            "http://qp2:5000/jobs/#{slugify(experiment, query)}",
+            "http://qp2:5000/jobs/#{slugify(experiment, query)}/#{apps[slugify(experiment, query)]}",
             {:file => File.new("#{name}/roles/#{yml}")},
             :accept => :json
           )
