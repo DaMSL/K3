@@ -342,7 +342,7 @@ def main()
   if $options[:job_set]
     job_file = "#{workdir}/jobs_#{$options[:job_set]}.json"
   else
-    job_file = "#{workdir/jobs.json}"
+    job_file = "#{workdir}/jobs.json"
   end
 
   if $options[:run]
