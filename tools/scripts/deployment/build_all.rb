@@ -325,6 +325,8 @@ def main()
 
     opts.on("-i", "--include pat1,pat2,pat3", Array, "Patterns to Include") { |is| $options[:includes] = is }
     opts.on("-e", "--exclude pat1,pat2,pat3", Array, "Patterns to Exclude") { |es| $options[:excludes] = es }
+
+    opts.on("-j", "--job-set", String, "Name of Current Job Set") { |j| $options[:job_set] = j }
   end
   parser.parse!
 
@@ -337,13 +339,19 @@ def main()
     submit(workdir)
   end
 
+  if $options[:job_set]
+    job_file = "#{workdir}/jobs_#{$options[:job_set]}.json"
+  else
+    job_file = "#{workdir/jobs.json}"
+  end
+
   if $options[:run]
     jobs = run(workdir)
-    File.open("#{workdir}/jobs.json", "w") do |f|
+    File.open(job_file, "w") do |f|
       f.write(jobs.to_json)
     end
-  elsif File.exists?("#{workdir}/jobs.json")
-    jobs = JSON.parse(File.read("#{workdir}/jobs.json"))
+  elsif File.exists?(job_file)
+    jobs = JSON.parse(File.read(job_file))
   end
 
   if $options[:gather]
