@@ -114,7 +114,7 @@ prepareInitialIState dbg dr = IState (M.fromList $ mapMaybe genHack (children dr
     _ -> Nothing
 
 optimizeMaterialization :: Bool -> MZFlags -> IState -> (PIEnv, FIEnv) -> K3 Declaration -> IO (Either String (K3 Declaration))
-optimizeMaterialization dbg _ is (p, f) d = runExceptT $ inferMaterialization >>= solveMaterialization >>= attachMaterialization d
+optimizeMaterialization dbg mzfs is (p, f) d = runExceptT $ inferMaterialization >>= solveMaterialization >>= attachMaterialization d
  where
   inferMaterialization = case runInferM (materializeD d) defaultIState defaultIScope of
     Left (IError msg) -> throwError msg
@@ -126,6 +126,7 @@ optimizeMaterialization dbg _ is (p, f) d = runExceptT $ inferMaterialization >>
                                 , fEnv = f
                                 , topLevel = False
                                 , currentTrigger = Nothing
+                                , flags = mzfs
                                 }
          debugInfer ct r = if False
                             then flip trace r $ boxToString $ M.foldlWithKey' debugCTEntry ["Mat CT"] ct
@@ -191,6 +192,7 @@ data IScope = IScope { downstreams :: [Downstream]
                      , fEnv :: FIEnv
                      , topLevel :: Bool
                      , currentTrigger :: Maybe Identifier
+                     , flags :: MZFlags
                      }
 
 data Contextual a = Contextual a (Maybe UID) deriving (Eq, Ord, Read, Show)
@@ -319,12 +321,13 @@ materializeE e@(Node (t :@: _) cs) = case t of
     (ehw, _) <- hasWriteIn ci cb
 
     topL <- asks topLevel
+    fnCopyOverride <- mBool <$> asks (isolateArgs . flags)
 
     let argShouldBeMoved = case (e @~ \case { EType _ -> True; _ -> False }) of
           Just (EType (tag &&& children -> (TFunction, [t, _]))) -> isNonScalarType t
           _ -> False
 
-    constrain u i In $ mITE (ehw -||- mBool (topL && argShouldBeMoved)) (mAtom Copied) (mAtom Forwarded)
+    constrain u i In $ mITE (ehw -||- mBool (topL && argShouldBeMoved) -||- fnCopyOverride) (mAtom Copied) (mAtom Forwarded)
 
     cls <- ePrv e >>= \case
       (tag -> PLambda _ cls) -> return cls
@@ -341,7 +344,8 @@ materializeE e@(Node (t :@: _) cs) = case t of
       outerP <- chasePPtr ptr
       moveable <- contextualizeNow outerP >>= isMoveableNow
 
-      constrain u name In $ mITE needsOwn (mITE moveable (mAtom Moved) (mAtom Copied)) (mAtom ConstReferenced)
+      constrain u name In $ mITE fnCopyOverride (mAtom Copied)
+                              (mITE needsOwn (mITE moveable (mAtom Moved) (mAtom Copied)) (mAtom ConstReferenced))
 
     clps <- sequence [withNearestBind u (contextualizeNow $ pbvar m) | m <- cls]
     nrvo <- mOr <$> traverse (`occursIn` fProv) (ci:clps)
