@@ -60,6 +60,7 @@ import qualified Language.K3.Analysis.SEffects.Inference   as SEffects
 import qualified Language.K3.Analysis.SendGraph as SG
 
 import qualified Language.K3.Codegen.CPP.Materialization.Inference as Mat
+import qualified Language.K3.Codegen.CPP.Materialization.Inference as Mat
 
 import Language.K3.Transform.Simplification
 import Language.K3.Transform.TriggerSymbols (triggerSymbols)
@@ -137,7 +138,7 @@ rp0 :: TransformReport
 rp0 = TransformReport Map.empty Map.empty
 
 mz0 :: MZFlags
-mz0 = MZFlags
+mz0 = Mat.defaultMZFlags
 
 st0 :: Maybe ParGenSymS -> K3 Declaration -> IO (Either String TransformSt)
 st0 symSOpt prog =
