@@ -116,6 +116,7 @@ def build(name)
 end
 
 def submit(name)
+  saved = []
   for experiment, description in QUERIES do
     for query, _ in description[:queries] do
       if !select?(experiment, query)
@@ -127,8 +128,13 @@ def submit(name)
         {:file => File.new("#{name}/#{slugify(experiment, query)}", 'rb')},
         :accept => :json
       )
-      puts(JSON.parse response)
+      hash = JSON.parse response
+      puts(hash)
+      saved << hash
     end
+  end
+  File.open("#{workdir}/apps.json", "w") do |f|
+    f.write(saved.to_json)
   end
 end
 

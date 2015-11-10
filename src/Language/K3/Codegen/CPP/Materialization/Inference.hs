@@ -13,7 +13,8 @@ module Language.K3.Codegen.CPP.Materialization.Inference (
   MZFlags(..),
   IState(..),
   DKey,
-  defaultIState
+  defaultIState,
+  defaultMZFlags
 ) where
 
 import GHC.Generics (Generic)
@@ -71,7 +72,10 @@ import Language.K3.Utils.Pretty
 
 -- * Entry-Point
 
-data MZFlags = MZFlags deriving (Eq, Generic, Ord, Read, Show)
+data MZFlags = MZFlags { reverseCycleResolution :: Bool } deriving (Eq, Generic, Ord, Read, Show)
+
+defaultMZFlags :: MZFlags
+defaultMZFlags = MZFlags { reverseCycleResolution = False }
 
 instance Binary MZFlags
 instance Serialize MZFlags
