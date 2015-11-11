@@ -83,30 +83,37 @@ stmts_by_query = {
       },
 
   10 : {'stmts': {
-          16: [("REVENUE",            ["C_CUSTKEY", "C_NAME", "C_ACCTBAL", "N_NAME", "C_ADDRESS", "C_PHONE", "C_COMMENT"]),
-               ("REVENUE_mLINEITEM2", ["C_CUSTKEY", "C_NAME", "C_ACCTBAL", "N_NAME", "C_ADDRESS", "C_PHONE", "C_COMMENT", "LINEITEM_ORDERKEY"])],
+          16: {'map_vars':
+                [("REVENUE",            ["C_CUSTKEY", "C_NAME", "C_ACCTBAL", "N_NAME", "C_ADDRESS", "C_PHONE", "C_COMMENT"]),
+                 ("REVENUE_mLINEITEM2", ["C_CUSTKEY", "C_NAME", "C_ACCTBAL", "N_NAME", "C_ADDRESS", "C_PHONE", "C_COMMENT", "LINEITEM_ORDERKEY"])]},
 
-          19: [("REVENUE_mCUSTOMER1",            ["REVENUE_mCUSTOMERCUSTOMER_CUSTKEY"]),
-               ("REVENUE_mLINEITEM2_mCUSTOMER1", ["REVENUE_mCUSTOMERCUSTOMER_CUSTKEY", "LINEITEM_ORDERKEY"])],
+          19: {'map_vars':
+                [("REVENUE_mCUSTOMER1",            ["REVENUE_mCUSTOMERCUSTOMER_CUSTKEY"]),
+                 ("REVENUE_mLINEITEM2_mCUSTOMER1", ["REVENUE_mCUSTOMERCUSTOMER_CUSTKEY", "LINEITEM_ORDERKEY"])]},
 
-          20: [("REVENUE_mCUSTOMER3",            ["REVENUE_mCUSTOMERCUSTOMER_CUSTKEY"]),
-               ("REVENUE_mLINEITEM2_mCUSTOMER1", ["REVENUE_mCUSTOMERCUSTOMER_CUSTKEY", "LINEITEM_ORDERKEY"])],
+          20: {'map_vars':
+                [("REVENUE_mCUSTOMER3",            ["REVENUE_mCUSTOMERCUSTOMER_CUSTKEY"]),
+                 ("REVENUE_mLINEITEM2_mCUSTOMER1", ["REVENUE_mCUSTOMERCUSTOMER_CUSTKEY", "LINEITEM_ORDERKEY"])]},
 
-          6: [("REVENUE",          ["ORDERS_CUSTKEY", "C_NAME", "C_ACCTBAL", "N_NAME", "C_ADDRESS", "C_PHONE", "C_COMMENT"]),
-              ("REVENUE_mORDERS4", ["ORDERS_CUSTKEY", "C_NAME", "C_ACCTBAL", "N_NAME", "C_ADDRESS", "C_PHONE", "C_COMMENT"]),
-              ("REVENUE_mORDERS1", ["ORDERS_ORDERKEY"]),
-              ("REVENUE_mORDERS5", ["ORDERS_ORDERKEY"])],
+          6: {'map_vars':
+                [("REVENUE",          ["ORDERS_CUSTKEY", "C_NAME", "C_ACCTBAL", "N_NAME", "C_ADDRESS", "C_PHONE", "C_COMMENT"]),
+                ("REVENUE_mORDERS4", ["ORDERS_CUSTKEY", "C_NAME", "C_ACCTBAL", "N_NAME", "C_ADDRESS", "C_PHONE", "C_COMMENT"]),
+                ("REVENUE_mORDERS1", ["ORDERS_ORDERKEY"]),
+                ("REVENUE_mORDERS5", ["ORDERS_ORDERKEY"])]},
 
-          7: [("REVENUE_mLINEITEM2", ["ORDERS_CUSTKEY", "C_NAME", "C_ACCTBAL", "N_NAME", "C_ADDRESS", "C_PHONE", "C_COMMENT", "ORDERS_ORDERKEY"]),
-              ("REVENUE_mORDERS4",   ["ORDERS_CUSTKEY", "C_NAME", "C_ACCTBAL", "N_NAME", "C_ADDRESS", "C_PHONE", "C_COMMENT"])],
+          7: {'map_vars':
+                [("REVENUE_mLINEITEM2", ["ORDERS_CUSTKEY", "C_NAME", "C_ACCTBAL", "N_NAME", "C_ADDRESS", "C_PHONE", "C_COMMENT", "ORDERS_ORDERKEY"]),
+                ("REVENUE_mORDERS4",   ["ORDERS_CUSTKEY", "C_NAME", "C_ACCTBAL", "N_NAME", "C_ADDRESS", "C_PHONE", "C_COMMENT"])]},
 
-          0: [("REVENUE",            ["CUSTOMER_CUSTKEY", "CUSTOMER_NAME", "CUSTOMER_ACCTBAL", "N_NAME", "CUSTOMER_ADDRESS", "CUSTOMER_PHONE", "CUSTOMER_COMMENT"]),
-              ("REVENUE_mCUSTOMER2", ["N_NAME", "CUSTOMER_NATIONKEY"]),
-              ("REVENUE_mCUSTOMER1", ["CUSTOMER_CUSTKEY"]),
-              ("REVENUE_mCUSTOMER3", ["CUSTOMER_CUSTKEY"])],
+          0: {'map_vars':
+                [("REVENUE",            ["CUSTOMER_CUSTKEY", "CUSTOMER_NAME", "CUSTOMER_ACCTBAL", "N_NAME", "CUSTOMER_ADDRESS", "CUSTOMER_PHONE", "CUSTOMER_COMMENT"]),
+                 ("REVENUE_mCUSTOMER2", ["N_NAME", "CUSTOMER_NATIONKEY"]),
+                 ("REVENUE_mCUSTOMER1", ["CUSTOMER_CUSTKEY"]),
+                 ("REVENUE_mCUSTOMER3", ["CUSTOMER_CUSTKEY"])]},
 
-          2: [("REVENUE_mORDERS4",   ["CUSTOMER_CUSTKEY", "CUSTOMER_NAME", "CUSTOMER_ACCTBAL", "N_NAME", "CUSTOMER_ADDRESS", "CUSTOMER_PHONE", "CUSTOMER_COMMENT"]),
-              ("REVENUE_mCUSTOMER2", ["N_NAME", "CUSTOMER_NATIONKEY"])]
+          2: {'map_vars':
+                [("REVENUE_mORDERS4",   ["CUSTOMER_CUSTKEY", "CUSTOMER_NAME", "CUSTOMER_ACCTBAL", "N_NAME", "CUSTOMER_ADDRESS", "CUSTOMER_PHONE", "CUSTOMER_COMMENT"]),
+                 ("REVENUE_mCUSTOMER2", ["N_NAME", "CUSTOMER_NATIONKEY"])]}
         },
 
         'bindings': {'LINEITEM': {"LINEITEM_ORDERKEY", "LINEITEM_PARTKEY", "LINEITEM_SUPPKEY", "LINEITEM_LINENUMBER",
@@ -123,7 +130,7 @@ stmts_by_query = {
 
         'binding_patterns': {
           16: 'LINEITEM', 19: 'LINEITEM', 20: 'LINEITEM',
-          6: 'ORDERS', 7: 'ORDERS'
+          6: 'ORDERS', 7: 'ORDERS',
           0: 'CUSTOMER', 2: 'CUSTOMER'
         }}
 }
