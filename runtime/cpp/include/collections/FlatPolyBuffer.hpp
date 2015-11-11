@@ -887,27 +887,31 @@ struct convert<K3::FlatPolyBuffer<E, Derived>> {
   using Tag = typename K3::FlatPolyBuffer<E, Derived>::Tag;
   template <class Allocator>
   static Value encode(const K3::FlatPolyBuffer<E, Derived>& c, Allocator& al) {
-    bool modified = false;
-    K3::FlatPolyBuffer<E, Derived>& non_const = const_cast<K3::FlatPolyBuffer<E, Derived>&>(c);
-    if (!c.isInternalized()) {
-      non_const.unpack(K3::unit_t {});
-      modified = true;
-    }
-
     Value v;
     v.SetObject();
     v.AddMember("type", Value("FlatPolyBuffer"), al);
-    Value inner;
-    inner.SetArray();
-    c.iterate([&c, &inner, &al](Tag tg, size_t idx, size_t offset){
-      inner.PushBack(c.jsonencode(tg, idx, offset, al), al);
-    });
-    v.AddMember("value", inner.Move(), al);
-
-    if (modified) {
-      non_const.repack(K3::unit_t {});
-    }
     return v;
+    //bool modified = false;
+    //K3::FlatPolyBuffer<E, Derived>& non_const = const_cast<K3::FlatPolyBuffer<E, Derived>&>(c);
+    //if (!c.isInternalized()) {
+    //  non_const.unpack(K3::unit_t {});
+    //  modified = true;
+    //}
+
+    //Value v;
+    //v.SetObject();
+    //v.AddMember("type", Value("FlatPolyBuffer"), al);
+    //Value inner;
+    //inner.SetArray();
+    //c.iterate([&c, &inner, &al](Tag tg, size_t idx, size_t offset){
+    //  inner.PushBack(c.jsonencode(tg, idx, offset, al), al);
+    //});
+    //v.AddMember("value", inner.Move(), al);
+
+    //if (modified) {
+    //  non_const.repack(K3::unit_t {});
+    //}
+    //return v;
   }
 };
 }  // namespace JSON
