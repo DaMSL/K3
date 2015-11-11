@@ -13,14 +13,21 @@ stmts_by_query = {
         {0: {'map_vars': [("ORDER_COUNT",               ["O_ORDERPRIORITY"]),
                           ("ORDER_COUNT_mLINEITEM1",    ["O_ORDERPRIORITY", "LINEITEM_ORDERKEY"]),
                           ("ORDER_COUNT_mORDERS3_E1_1", ["LINEITEM_ORDERKEY"])]},
+
+         2: {'map_vars': [("ORDER_COUNT",               ["ORDERS_ORDERPRIORITY"]),
+                          ("ORDER_COUNT_mORDERS3_E1_1", ["ORDERS_ORDERKEY"])]}
          },
 
        'bindings' : {'LINEITEM': {"LINEITEM_ORDERKEY", "LINEITEM_PARTKEY", "LINEITEM_SUPPKEY", "LINEITEM_LINENUMBER",
                                   "LINEITEM_QUANTITY", "LINEITEM_EXTENDEDPRICE", "LINEITEM_DISCOUNT", "LINEITEM_TAX",
                                   "LINEITEM_RETURNFLAG", "LINEITEM_LINESTATUS", "LINEITEM_SHIPDATE", "LINEITEM_COMMITDATE",
-                                  "LINEITEM_RECEIPTDATE", "LINEITEM_SHIPINSTRUCT", "LINEITEM_SHIPMODE", "LINEITEM_COMMENT"}},
+                                  "LINEITEM_RECEIPTDATE", "LINEITEM_SHIPINSTRUCT", "LINEITEM_SHIPMODE", "LINEITEM_COMMENT"}
 
-       'binding_patterns': {0: 'LINEITEM'}}
+                     'ORDERS'  : {"ORDERS_ORDERKEY", "ORDERS_CUSTKEY", "ORDERS_ORDERSTATUS", "ORDERS_TOTALPRICE",
+                                  "ORDERS_ORDERDATE", "ORDERS_ORDERPRIORITY", "ORDERS_CLERK", "ORDERS_SHIPPRIORITY", "ORDERS_COMMENT"}
+                    },
+
+       'binding_patterns': {0: 'LINEITEM', 2: 'ORDERS'}}
 }
 
 # Per-invocation globals.
@@ -80,7 +87,6 @@ def linearize(sizes, positions):
 def k3tuple(t):
   chars = string.ascii_lowercase
   l = int(math.ceil(float(len(t)) / len(chars)))
-  print(l)
   k3t = {}
   charseqs = [''.join(comb) for n in range(1, l + 1) for comb in itertools.product(chars, repeat=n)]
   for (v,i) in zip(t, charseqs):
