@@ -3,9 +3,9 @@
 import argparse, itertools, math, string, sys, yaml
 
 map_buckets_by_query = {
-  4: {'maps': { 'ORDER_COUNT'               : (1, [8]),
-                'ORDER_COUNT_mLINEITEM1'    : (2, [8,8]),
-                'ORDER_COUNT_mORDERS3_E1_1' : (3, [8]) }},
+  4: {'maps': { 'ORDER_COUNT'               : (1, [64]),
+                'ORDER_COUNT_mLINEITEM1'    : (2, [8,64]),
+                'ORDER_COUNT_mORDERS3_E1_1' : (3, [64]) }},
 
   3: {'maps': { "QUERY3"                        : (1, [8, 8, 8]),
                 "QUERY3_mLINEITEM1"             : (2, [8, 8, 8]),
@@ -199,7 +199,7 @@ def k3tuple(t):
 
   return k3t
 
-def generate_pattern(varname, filename, stmt_id):
+def generate_pattern(varname, fileobj, stmt_id, with_pmap):
   global pattern_map
 
   bindings = stmts['bindings'][stmts['binding_patterns'][stmt_id]]
@@ -270,6 +270,7 @@ def generate_pattern(varname, filename, stmt_id):
       pattern_map[rhs_bucket].append(tuple)
       # print("{} {}".format(rhs_bucket, tuple))
 
+  # Generate pattern yaml.
   k3ds = []
   for (k,v) in sorted(pattern_map.items()):
     k3ds.append({'key' : k3tuple(k), 'value' : [k3tuple(x) for x in v]})
@@ -277,20 +278,35 @@ def generate_pattern(varname, filename, stmt_id):
   k3n = varname + str(stmt_id)
   k3nds = {k3n: k3ds}
 
+  # Generate pmap_input yaml.
+  if with_pmap:
+    k3pmap = []
+    for (n, spec) in buckets['maps'].items():
+      dims = [{'key': i, 'value': sz} for (i,sz) in enumerate(spec[1])]
+      k3pmap.append({'key': n, 'value': dims})
+
+    k3npmap = {'pmap_input': k3pmap}
+
   # print(yaml.dump(k3nds))
-  with open(filename, 'w') as f:
-    f.write(yaml.dump(k3nds))
+  # if with_pmap:
+  #   print(yaml.dump(k3npmap))
+  fileobj.write(yaml.dump(k3nds))
+  if with_pmap:
+    fileobj.write(yaml.dump(k3npmap))
+
 
 def main():
   parser = argparse.ArgumentParser()
   parser.add_argument('--varname', metavar='VAR', default='route_opt_init_s', dest='varname', help='K3 variable name')
   parser.add_argument('--query', metavar='QUERY', type=int, required=True, dest='query', help='TPCH query number')
-  parser.add_argument('--stmt', metavar='STMT', type=int, required=True, dest='stmt', help='Statement id')
+  parser.add_argument('--stmt', metavar='STMT', type=int, nargs='+', required=True, dest='stmt', help='Statement id')
   parser.add_argument('--output', metavar='OUTPUT_FILE', required=True, dest='filename', help='Output file')
   args = parser.parse_args()
   if args:
     init_pattern(args.query)
-    generate_pattern(args.varname, args.filename, args.stmt)
+    with open(args.filename, 'w') as f:
+      for (i,s) in enumerate(args.stmt):
+        generate_pattern(args.varname, f, s, i == len(args.stmt)-1)
   else:
     parser.print_help()
 
