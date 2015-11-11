@@ -299,14 +299,19 @@ def main():
   parser = argparse.ArgumentParser()
   parser.add_argument('--varname', metavar='VAR', default='route_opt_init_s', dest='varname', help='K3 variable name')
   parser.add_argument('--query', metavar='QUERY', type=int, required=True, dest='query', help='TPCH query number')
-  parser.add_argument('--stmt', metavar='STMT', type=int, nargs='+', required=True, dest='stmt', help='Statement id')
+  parser.add_argument('--stmt', metavar='STMT', type=int, nargs='+', dest='stmt', help='Statement id')
   parser.add_argument('--output', metavar='OUTPUT_FILE', required=True, dest='filename', help='Output file')
   args = parser.parse_args()
   if args:
     init_pattern(args.query)
     with open(args.filename, 'w') as f:
-      for (i,s) in enumerate(args.stmt):
-        generate_pattern(args.varname, f, s, i == len(args.stmt)-1)
+      if not args.stmt:
+        stmt_ids = stmts['stmts'].keys()
+        for (i,s) in enumerate(stmt_ids):
+          generate_pattern(args.varname, f, s, i == len(stmt_ids)-1)
+      else:
+        for (i,s) in enumerate(args.stmt):
+          generate_pattern(args.varname, f, s, i == len(args.stmt)-1)
   else:
     parser.print_help()
 
