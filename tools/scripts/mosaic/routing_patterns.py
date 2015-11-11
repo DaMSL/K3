@@ -5,7 +5,38 @@ import argparse, itertools, math, string, sys, yaml
 map_buckets_by_query = {
   4: {'maps': { 'ORDER_COUNT'               : (1, [8]),
                 'ORDER_COUNT_mLINEITEM1'    : (2, [8,8]),
-                'ORDER_COUNT_mORDERS3_E1_1' : (3, [8]) } }
+                'ORDER_COUNT_mORDERS3_E1_1' : (3, [8]) }},
+
+  3: {'maps': { "QUERY3"                        : (1, [8, 8, 8]),
+                "QUERY3_mLINEITEM1"             : (2, [8, 8, 8]),
+                "QUERY3_mORDERS1"               : (3, [8]),
+                "QUERY3_mORDERS3"               : (4, [8]),
+                "QUERY3_mORDERS6"               : (5, [8]),
+                "QUERY3_mCUSTOMER2"             : (6, [8, 8, 8, 8]),
+                "QUERY3_mCUSTOMER4"             : (7, [8, 8, 8, 8]),
+                "QUERY3_mLINEITEM1_mCUSTOMER2"  : (8, [8, 8, 8, 8])
+              }},
+
+  10: {'maps': { "REVENUE"                       : (1, [8, 8, 8, 8, 8, 8, 8]),
+                 "REVENUE_mLINEITEM2"            : (2, [8, 8, 8, 8, 8, 8, 8, 8]),
+                 "REVENUE_mORDERS1"              : (3, [8]),
+                 "REVENUE_mORDERS4"              : (4, [8, 8, 8, 8, 8, 8, 8]),
+                 "REVENUE_mORDERS5"              : (5, [8]),
+                 "REVENUE_mCUSTOMER1"            : (6, [8]),
+                 "REVENUE_mCUSTOMER2"            : (7, [8, 8]),
+                 "REVENUE_mCUSTOMER3"            : (8, [8]),
+                 "REVENUE_mLINEITEM2_mCUSTOMER1" : (9, [8, 8])
+      }},
+
+  1: {'maps': { "AVG_DISC"                       : (1, [8, 8]),
+                "AVG_PRICE"                      : (2, [8, 8]),
+                "AVG_QTY"                        : (3, [8, 8]),
+                "AVG_DISC_mLINEITEM5"            : (4, [8, 8]),
+                "AVG_PRICE_mLINEITEM5"           : (5, [8, 8]),
+                "AVG_QTY_mLINEITEM5"             : (6, [8, 8]),
+                "AVG_QTY_mLINEITEM1_L3_1"        : (7, [8, 8])
+     }},
+
 }
 
 stmts_by_query = {
@@ -28,6 +59,7 @@ stmts_by_query = {
                     },
 
        'binding_patterns': {0: 'LINEITEM', 2: 'ORDERS'}},
+
 
   3 : {'stmts':
         {0: {'map_vars': [("QUERY3",            ["LINEITEM_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY"]),
@@ -133,7 +165,6 @@ stmts_by_query = {
           7: 'CUSTOMER', 8: 'CUSTOMER', 9: 'CUSTOMER'
         }},
 
-
   1: {
     'stmts': {
       0: [("AVG_QTY",                 ["LINEITEM_RETURNFLAG", "LINEITEM_LINESTATUS"]),
@@ -158,12 +189,11 @@ stmts_by_query = {
     'bindings': {'LINEITEM': {"LINEITEM_ORDERKEY", "LINEITEM_PARTKEY", "LINEITEM_SUPPKEY", "LINEITEM_LINENUMBER",
                               "LINEITEM_QUANTITY", "LINEITEM_EXTENDEDPRICE", "LINEITEM_DISCOUNT", "LINEITEM_TAX",
                               "LINEITEM_RETURNFLAG", "LINEITEM_LINESTATUS", "LINEITEM_SHIPDATE", "LINEITEM_COMMITDATE",
-                              "LINEITEM_RECEIPTDATE", "LINEITEM_SHIPINSTRUCT", "LINEITEM_SHIPMODE", "LINEITEM_COMMENT"},
-
+                              "LINEITEM_RECEIPTDATE", "LINEITEM_SHIPINSTRUCT", "LINEITEM_SHIPMODE", "LINEITEM_COMMENT"}
                 },
 
     'binding_patterns': {
-      0: 'LINEITEM', 1: 'LINEITEM', 2: 'LINEITEM',
+      0: 'LINEITEM', 1: 'LINEITEM', 2: 'LINEITEM'
     }
   }
 }
