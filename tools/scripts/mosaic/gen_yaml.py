@@ -8,7 +8,7 @@ import os
 import copy
 import re
 
-from routing_patterns import get_node_data
+import routing_patterns
 
 def address(port):
     return ['127.0.0.1', port]

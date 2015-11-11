@@ -3,11 +3,11 @@
 import argparse, itertools, math, string, sys, yaml
 
 map_buckets_by_query = {
-  4: {'maps': { 'ORDER_COUNT'               : (1, [64]),
+  '4': {'maps': { 'ORDER_COUNT'               : (1, [64]),
                 'ORDER_COUNT_mLINEITEM1'    : (2, [8,64]),
                 'ORDER_COUNT_mORDERS3_E1_1' : (3, [64]) }},
 
-  3: {'maps': { "QUERY3"                        : (1, [8, 8, 8]),
+  '3': {'maps': { "QUERY3"                        : (1, [8, 8, 8]),
                 "QUERY3_mLINEITEM1"             : (2, [8, 8, 8]),
                 "QUERY3_mLINEITEM1_mCUSTOMER2"  : (3, [8, 8, 8, 8]),
                 "QUERY3_mORDERS1"               : (4, [8]),
@@ -17,7 +17,7 @@ map_buckets_by_query = {
                 "QUERY3_mCUSTOMER4"             : (8, [8, 8, 8, 8]),
               }},
 
-  10: {'maps': { "REVENUE"                       : (2, [8, 8, 8, 8, 8, 8, 8]),
+  '10': {'maps': { "REVENUE"                     : (2, [8, 8, 8, 8, 8, 8, 8]),
                  "REVENUE_mLINEITEM2"            : (3, [8, 8, 8, 8, 8, 8, 8, 8]),
                  "REVENUE_mLINEITEM2_mCUSTOMER1" : (4, [8, 8]),
                  "REVENUE_mORDERS1"              : (5, [8]),
@@ -30,25 +30,25 @@ map_buckets_by_query = {
 }
 
 stmts_by_query = {
-	4 : {'stmts':
-        {4: {'map_vars': [("ORDER_COUNT",               ["O_ORDERPRIORITY"]),
-                          ("ORDER_COUNT_mLINEITEM1",    ["O_ORDERPRIORITY", "LINEITEM_ORDERKEY"]),
-                          ("ORDER_COUNT_mORDERS3_E1_1", ["LINEITEM_ORDERKEY"])]}
-         },
+	'4' : {'stmts':
+                {4: {'map_vars': [("ORDER_COUNT",               ["O_ORDERPRIORITY"]),
+                                  ("ORDER_COUNT_mLINEITEM1",    ["O_ORDERPRIORITY", "LINEITEM_ORDERKEY"]),
+                                  ("ORDER_COUNT_mORDERS3_E1_1", ["LINEITEM_ORDERKEY"])]}
+                 },
 
-       'bindings' : {'LINEITEM': {"LINEITEM_ORDERKEY", "LINEITEM_PARTKEY", "LINEITEM_SUPPKEY", "LINEITEM_LINENUMBER",
+               'bindings' : {'LINEITEM': {"LINEITEM_ORDERKEY", "LINEITEM_PARTKEY", "LINEITEM_SUPPKEY", "LINEITEM_LINENUMBER",
                                   "LINEITEM_QUANTITY", "LINEITEM_EXTENDEDPRICE", "LINEITEM_DISCOUNT", "LINEITEM_TAX",
                                   "LINEITEM_RETURNFLAG", "LINEITEM_LINESTATUS", "LINEITEM_SHIPDATE", "LINEITEM_COMMITDATE",
                                   "LINEITEM_RECEIPTDATE", "LINEITEM_SHIPINSTRUCT", "LINEITEM_SHIPMODE", "LINEITEM_COMMENT"},
 
-                     'ORDERS'  : {"ORDERS_ORDERKEY", "ORDERS_CUSTKEY", "ORDERS_ORDERSTATUS", "ORDERS_TOTALPRICE",
-                                  "ORDERS_ORDERDATE", "ORDERS_ORDERPRIORITY", "ORDERS_CLERK", "ORDERS_SHIPPRIORITY", "ORDERS_COMMENT"}
-                    },
+                             'ORDERS'  : {"ORDERS_ORDERKEY", "ORDERS_CUSTKEY", "ORDERS_ORDERSTATUS", "ORDERS_TOTALPRICE",
+                                              "ORDERS_ORDERDATE", "ORDERS_ORDERPRIORITY", "ORDERS_CLERK", "ORDERS_SHIPPRIORITY", "ORDERS_COMMENT"}
+                            },
 
-       'binding_patterns': {4: 'LINEITEM'}},
+               'binding_patterns': {4: 'LINEITEM'}},
 
 
-  3 : {'stmts':
+  '3' : {'stmts':
         {16: {'map_vars': [("QUERY3",            ["LINEITEM_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY"]),
                            ("QUERY3_mLINEITEM1", ["LINEITEM_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY"])]},
 
@@ -82,7 +82,7 @@ stmts_by_query = {
                              0: 'CUSTOMER', 1: 'CUSTOMER'}
       },
 
-  10 : {'stmts': {
+  '10' : {'stmts': {
           16: {'map_vars':
                 [("REVENUE",            ["C_CUSTKEY", "C_NAME", "C_ACCTBAL", "N_NAME", "C_ADDRESS", "C_PHONE", "C_COMMENT"]),
                  ("REVENUE_mLINEITEM2", ["C_CUSTKEY", "C_NAME", "C_ACCTBAL", "N_NAME", "C_ADDRESS", "C_PHONE", "C_COMMENT", "LINEITEM_ORDERKEY"])]},
@@ -136,7 +136,7 @@ stmts_by_query = {
 }
 
 # Per-invocation globals.
-query = 0
+query = ""
 stmts = {}
 buckets = {}
 
@@ -202,7 +202,10 @@ def k3tuple(t):
 def generate_pattern(varname, stmt_id):
   global pattern_map
 
-  bindings = stmts['bindings'][stmts['binding_patterns'][stmt_id]]
+  bind_pats = stmts['binding_patterns']
+  bind_pat = bind_pats[stmt_id]
+  bindings = stmts['bindings']
+  binding = bindings[bind_pat]
 
   (lhs_map_name, lhs_pv) = get_free_lhs(stmt_id, bindings)
   (lhs_map_id, lhs_bucket_sizes) = buckets['maps'][lhs_map_name]
@@ -286,26 +289,29 @@ def get_pmap(query):
     k3pmap.append({'key': n, 'value': dims})
   return {'pmap_input': k3pmap}
 
-def get_node_data(query, varname='route_opt_init_s', stmts=stmts['stmts'].keys()):
+def get_node_data(query, varname='route_opt_init_s', stmt_ids=None):
+  nd = {}
   init_pattern(query)
-  for (i,s) in enumerate(stmts):
-    k3nds.update(generate_pattern(args.varname, s))
+  if stmt_ids is None:
+    stmt_ids = stmts['stmts'].keys()
+  for (i,s) in enumerate(stmt_ids):
+    nd.update(generate_pattern(varname, s))
+  return nd
 
 def main():
   parser = argparse.ArgumentParser()
   parser.add_argument('--varname', metavar='VAR', default='route_opt_init_s', dest='varname', help='K3 variable name')
-  parser.add_argument('--query', metavar='QUERY', type=int, required=True, dest='query', help='TPCH query number')
+  parser.add_argument('--query', metavar='QUERY', type=string, required=True, dest='query', help='TPCH query number')
   parser.add_argument('--stmt', metavar='STMT', type=int, nargs='+', dest='stmts', help='Statement ids')
   parser.add_argument('--output', metavar='OUTPUT_FILE', dest='filename', help='Output file')
   args = parser.parse_args()
   if args:
-    stmt_ids = args.stmts if args.stmts else stmts['stmts'].keys()
     if args.stmts:
       nd = get_node_data(args.varname, args.query, args.stmts)
     else:
       nd = get_node_data(args.varname, args.query)
 
-    nd.update(get_pmap(args.query)
+    nd.update(get_pmap(args.query))
 
     if args.filename:
       with open(args.filename, 'w') as f:
