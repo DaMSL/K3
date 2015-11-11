@@ -8,6 +8,8 @@ import os
 import copy
 import re
 
+from routing_patterns import get_node_data
+
 def address(port):
     return ['127.0.0.1', port]
 
@@ -122,11 +124,22 @@ def create_local_file(args):
     for i in range(args.num_nodes):
         peers.append(('node', node_ports + i))
 
+    # optimized routing data and corresponding pmap
+    # create up front since it's heavy
+    switch_opt_route = None
+    pmap = None
+    if args.tpch_query:
+        switch_opt_route = routing_patterns.get_node_data(args.tpch_query)
+        pmap = routing_patterns.get_pmap(args.tpch_query)
+
     # convert to dictionaries
     peers2 = []
     switch_index = 0
     for (role, port) in peers:
         peer = {'role': wrap_role(role), 'me':address(port), 'peers':create_peers(peers)}
+
+        if pmap is not None:
+            peer.update(pmap)
 
         if role == 'switch' or role == 'switch_old':
             if args.csv_path:
@@ -141,6 +154,8 @@ def create_local_file(args):
                 if not args.tpch_query:
                   raise ValueError("Cannot infer mux files without tpch_query number")
                 peer['inorder'] = tpch_mux_file_local(args.tpch_data_path, switch_index, args.num_switches, args.tpch_query)
+            if switch_opt_route is not None:
+                peer.update(switch_opt_route)
             switch_index = switch_index + 1
 
         peer.update(extra_args)
@@ -163,25 +178,32 @@ def create_dist_file(args):
 
     extra_args = parse_extra_args(args.extra_args)
 
-    switch_role = "switch_old" if args.csv_path else "switch"
+    switch_role_nm = "switch_old" if args.csv_path else "switch"
+
+    pmap = routing_patterns.get_pmap(query)
 
     master_role = {'role': wrap_role('master')}
+    master_role.update(pmap)
     master_role.update(extra_args)
 
     timer_role = {'role': wrap_role('timer')}
+    timer_role.update(pmap)
     timer_role.update(extra_args)
 
-    switch_role = {'role': wrap_role(switch_role)}
+    switch_role = {'role': wrap_role(switch_role_nm)}
     if args.csv_path:
         switch_role['switch_path'] = args.csv_path
     if args.tpch_inorder_path:
         switch_role['inorder'] = args.tpch_inorder_path
+    switch_role.update(routing_patterns.get_node_data(query))
+    switch_role.update(pmap)
     switch_role.update(extra_args)
 
     node_role = {'role': wrap_role('node')}
+    node_role.update(pmap)
     node_role.update(extra_args)
 
-    switch1_env = {'peer_globals': [master_role, timer_role, switch_role]}
+    # switch1_env = {'peer_globals': [master_role, timer_role, switch_role]}
     #if args.tpch_data_path:
     #     switch1_env['k3_seq_files'] = \
     #     mk_k3_seq_files(num_switches, [0], args.tpch_data_path, )
@@ -238,36 +260,10 @@ def create_dist_file(args):
     # dump out
     dump_yaml(launch_roles)
 
-## deprecated?? ##
-def create_multicore_file(args):
-    if num_switches > 1:
-        raise ValueError("Can't create multicore deployment with more than one switch just yet.")
-
-    extra_args = parse_extra_args(args.extra_args)
-    switch_role = "switch_old" if args.csv_data else "switch"
-
-    role = {
-        "hostmask": "qp3",
-        "name": "Everything",
-        "peer_globals": [
-            {"role": wrap_role("master")}, {"role": wrap_role("timer")}, {"role": wrap_role(switch_role), "switch_path": file_path}
-        ] + [{"role": wrap_role("node")} for _ in range(num_nodes)],
-        "privileged": False,
-        'volumes'   : [{'host':'/local', 'container':'/local'}],
-    }
-
-    role["peers"] = len(role["peer_globals"])
-
-    for peer_role in role["peer_globals"]:
-        peer_role.update(extra_args)
-
-    dump_yaml([role])
-
 def main():
     parser = argparse.ArgumentParser()
     parser.set_defaults(run_mode = "local")
     parser.add_argument("-d", "--dist", action='store_const', dest="run_mode", const="dist")
-    parser.add_argument("-m", "--multicore", action='store_const', dest="run_mode", const="multicore")
     parser.add_argument("-s", "--switches", type=int, help="number of switches",
                         dest="num_switches", default=1)
     parser.add_argument("-n", "--nodes", type=int, help="number of nodes",
@@ -286,8 +282,6 @@ def main():
         create_dist_file(args)
     elif args.run_mode == "local":
         create_local_file(args)
-    elif args.run_mode == "multicore":
-        create_multicore_file(args)
 
 if __name__ == '__main__':
     main()

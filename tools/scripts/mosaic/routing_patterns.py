@@ -199,7 +199,7 @@ def k3tuple(t):
 
   return k3t
 
-def generate_pattern(varname, fileobj, stmt_id, with_pmap):
+def generate_pattern(varname, stmt_id):
   global pattern_map
 
   bindings = stmts['bindings'][stmts['binding_patterns'][stmt_id]]
@@ -276,42 +276,43 @@ def generate_pattern(varname, fileobj, stmt_id, with_pmap):
     k3ds.append({'key' : k3tuple(k), 'value' : [k3tuple(x) for x in v]})
 
   k3n = varname + str(stmt_id)
-  k3nds = {k3n: k3ds}
+  return {k3n: k3ds}
 
-  # Generate pmap_input yaml.
-  if with_pmap:
-    k3pmap = []
-    for (n, spec) in buckets['maps'].items():
-      dims = [{'key': i, 'value': sz} for (i,sz) in enumerate(spec[1])]
-      k3pmap.append({'key': n, 'value': dims})
+def get_pmap(query):
+  init_pattern(query)
+  k3pmap = []
+  for (n, spec) in buckets['maps'].items():
+    dims = [{'key': i, 'value': sz} for (i,sz) in enumerate(spec[1])]
+    k3pmap.append({'key': n, 'value': dims})
+  return {'pmap_input': k3pmap}
 
-    k3npmap = {'pmap_input': k3pmap}
-
-  # print(yaml.dump(k3nds))
-  # if with_pmap:
-  #   print(yaml.dump(k3npmap))
-  fileobj.write(yaml.dump(k3nds))
-  if with_pmap:
-    fileobj.write(yaml.dump(k3npmap))
-
+def get_node_data(query, varname='route_opt_init_s', stmts=stmts['stmts'].keys()):
+  init_pattern(query)
+  for (i,s) in enumerate(stmts):
+    k3nds.update(generate_pattern(args.varname, s))
 
 def main():
   parser = argparse.ArgumentParser()
   parser.add_argument('--varname', metavar='VAR', default='route_opt_init_s', dest='varname', help='K3 variable name')
   parser.add_argument('--query', metavar='QUERY', type=int, required=True, dest='query', help='TPCH query number')
-  parser.add_argument('--stmt', metavar='STMT', type=int, nargs='+', dest='stmt', help='Statement id')
-  parser.add_argument('--output', metavar='OUTPUT_FILE', required=True, dest='filename', help='Output file')
+  parser.add_argument('--stmt', metavar='STMT', type=int, nargs='+', dest='stmts', help='Statement ids')
+  parser.add_argument('--output', metavar='OUTPUT_FILE', dest='filename', help='Output file')
   args = parser.parse_args()
   if args:
-    init_pattern(args.query)
-    with open(args.filename, 'w') as f:
-      if not args.stmt:
-        stmt_ids = stmts['stmts'].keys()
-        for (i,s) in enumerate(stmt_ids):
-          generate_pattern(args.varname, f, s, i == len(stmt_ids)-1)
-      else:
-        for (i,s) in enumerate(args.stmt):
-          generate_pattern(args.varname, f, s, i == len(args.stmt)-1)
+    stmt_ids = args.stmts if args.stmts else stmts['stmts'].keys()
+    if args.stmts:
+      nd = get_node_data(args.varname, args.query, args.stmts)
+    else:
+      nd = get_node_data(args.varname, args.query)
+
+    nd.update(get_pmap(args.query)
+
+    if args.filename:
+      with open(args.filename, 'w') as f:
+        f.write(yaml.dump(nd))
+    else:
+      print(yaml.dump(nd))
+
   else:
     parser.print_help()
 
