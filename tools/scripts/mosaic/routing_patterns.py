@@ -79,7 +79,8 @@ def linearize(sizes, positions):
 
 def k3tuple(t):
   chars = string.ascii_lowercase
-  l = math.ceil(len(t) / len(chars))
+  l = int(math.ceil(float(len(t)) / len(chars)))
+  print(l)
   k3t = {}
   charseqs = [''.join(comb) for n in range(1, l + 1) for comb in itertools.product(chars, repeat=n)]
   for (v,i) in zip(t, charseqs):
@@ -147,7 +148,7 @@ def generate_pattern(varname, filename, stmt_id):
 
     for rhs_bucket in itertools.product(*rhs_enums):
       # print("RB : {}".format(rhs_bucket))
-      tuple = ltuple.copy()
+      tuple = list(ltuple)
       for map_name in rhs_map_ids:
         map_bucket = rebuild_bucket(map_name, lhs_bucket, rhs_bucket, rhs_enum_idx, rhs_npv[map_name])
         tuple.append(linearize(buckets['maps'][map_name][1], map_bucket))
