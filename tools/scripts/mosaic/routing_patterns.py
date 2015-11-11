@@ -139,6 +139,7 @@ stmts_by_query = {
 query = ""
 stmts = {}
 buckets = {}
+debug = False
 
 pattern_map = {}
 
@@ -149,7 +150,8 @@ def init_pattern(query_id):
   query = query_id
   stmts = stmts_by_query[query_id]
   buckets = map_buckets_by_query[query_id]
-  print ("Processing pattern for query: " + str(query_id))
+  if debug:
+      print ("Processing pattern for query: " + str(query_id))
 
 # Returns all maps present in a statement's rhs.
 def get_rhs_maps(stmt_id):
@@ -254,8 +256,9 @@ def generate_pattern(varname, stmt_id):
 
   rhs_enums = [range(sz) for sz in rhs_bucket_sizes]
 
-  print("LHS:\n" + "enums: {}".format(lhs_enums))
-  print("RHS:\n" + '\n'.join(["npv:          {}".format(rhs_npv),
+  if debug:
+      print("LHS:\n" + "enums: {}".format(lhs_enums))
+      print("RHS:\n" + '\n'.join(["npv:          {}".format(rhs_npv),
                               "uniqf_pos:    {}".format(rhs_uniqf_pos),
                               "uniqb_vars:   {}".format(rhs_uniqb_vars),
                               "enum_idx:     {}".format(rhs_enum_idx),
@@ -263,11 +266,13 @@ def generate_pattern(varname, stmt_id):
 
   for lhs_bucket in itertools.product(*lhs_enums):
     ltuple = [linearize(lhs_free_bs, lhs_bucket)]
-    # print("LT : {}".format(ltuple))
-    # print("LB : {}".format(lhs_bucket))
+    if debug:
+        print("LT : {}".format(ltuple))
+        print("LB : {}".format(lhs_bucket))
 
     for rhs_bucket in itertools.product(*rhs_enums):
-      # print("RB : {}".format(rhs_bucket))
+      if debug:
+          print("RB : {}".format(rhs_bucket))
       tuple = list(ltuple)
       for map_name in rhs_map_ids:
         map_bucket = rebuild_bucket(map_name, lhs_bucket, rhs_bucket, rhs_enum_idx, rhs_npv[map_name])
@@ -306,13 +311,17 @@ def get_node_data(query, varname='route_opt_init_s', stmt_ids=None):
   return nd
 
 def main():
+  global debug
   parser = argparse.ArgumentParser()
   parser.add_argument('--varname', metavar='VAR', default='route_opt_init_s', dest='varname', help='K3 variable name')
   parser.add_argument('--query', metavar='QUERY', type=str, required=True, dest='query', help='TPCH query number')
   parser.add_argument('--stmt', metavar='STMT', type=int, nargs='+', dest='stmts', help='Statement ids')
   parser.add_argument('--output', metavar='OUTPUT_FILE', dest='filename', help='Output file')
+  parser.add_argument('--debug', default=False, action='set_true', help='Debug output')
   args = parser.parse_args()
   if args:
+    if args.debug:
+        debug = args.debug
     if args.stmts:
       nd = get_node_data(args.query, args.varname, args.stmts)
     else:

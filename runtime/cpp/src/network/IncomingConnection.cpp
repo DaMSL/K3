@@ -99,7 +99,7 @@ void ExternalIncomingConnection::receiveMessages(
                   auto pv = make_unique<BufferPackedValue>(std::move(*payload_buf),
                                                       this_shared->format_);
                   auto m = std::make_unique<Message>(this_shared->trigger_, std::move(pv));
-                  #ifdef K3DEBUG
+                  #ifdef K3MESSAGETRACE
                   m->source_ = this_shared->peer_addr_;
                   m->destination_ = this_shared->peer_addr_;
                   #endif
