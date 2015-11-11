@@ -3,19 +3,19 @@
 import argparse, itertools, math, string, sys, yaml
 
 map_buckets_by_query = {
-  '4': {'maps': { 'ORDER_COUNT'             : (1, [64]),
-                'ORDER_COUNT_mLINEITEM1'    : (2, [8,64]),
-                'ORDER_COUNT_mORDERS3_E1_1' : (3, [64]) }},
+  '4': {'maps': { 'ORDER_COUNT'               : (1, [4]),
+                  'ORDER_COUNT_mLINEITEM1'    : (2, [2,4]),
+                  'ORDER_COUNT_mORDERS3_E1_1' : (3, [4]) }},
 
   '3': {'maps': { "QUERY3"                        : (1, [8, 8, 8]),
-                "QUERY3_mLINEITEM1"             : (2, [8, 8, 8]),
-                "QUERY3_mLINEITEM1_mCUSTOMER2"  : (3, [8, 8, 8, 8]),
-                "QUERY3_mORDERS1"               : (4, [8]),
-                "QUERY3_mORDERS3"               : (5, [8]),
-                "QUERY3_mORDERS6"               : (6, [8]),
-                "QUERY3_mCUSTOMER2"             : (7, [8, 8, 8, 8]),
-                "QUERY3_mCUSTOMER4"             : (8, [8, 8, 8, 8]),
-              }},
+                  "QUERY3_mLINEITEM1"             : (2, [8, 8, 8]),
+                  "QUERY3_mLINEITEM1_mCUSTOMER2"  : (3, [8, 8, 8, 8]),
+                  "QUERY3_mORDERS1"               : (4, [8]),
+                  "QUERY3_mORDERS3"               : (5, [8]),
+                  "QUERY3_mORDERS6"               : (6, [8]),
+                  "QUERY3_mCUSTOMER2"             : (7, [8, 8, 8, 8]),
+                  "QUERY3_mCUSTOMER4"             : (8, [8, 8, 8, 8]),
+                }},
 
   '10': {'maps': { "REVENUE"                     : (2, [8, 8, 8, 8, 8, 8, 8]),
                  "REVENUE_mLINEITEM2"            : (3, [8, 8, 8, 8, 8, 8, 8, 8]),
@@ -189,23 +189,25 @@ def linearize(sizes, positions):
     shift *= sz
   return idx
 
-def k3tuple(t):
-  chars = string.ascii_lowercase
-  l = int(math.ceil(float(len(t)) / len(chars)))
-  k3t = {}
-  charseqs = [''.join(comb) for n in range(1, l + 1) for comb in itertools.product(chars, repeat=n)]
-  for (v,i) in zip(t, charseqs):
-    k3t['r{}'.format(i)] = v
+def k3tuple(t, collection):
+  if len(t) == 1:
+    return {'elem': t[0]} if collection else t[0]
+  elif len(t) == 2:
+    return {'key': t[0], 'value': t[1]}
+  else:
+    chars = string.ascii_lowercase
+    l = int(math.ceil(float(len(t)) / len(chars)))
+    k3t = {}
+    charseqs = [''.join(comb) for n in range(1, l + 1) for comb in itertools.product(chars, repeat=n)]
+    for (v,i) in zip(t, charseqs):
+      k3t['r{}'.format(i)] = v
 
-  return k3t
+    return k3t
 
 def generate_pattern(varname, stmt_id):
   global pattern_map
 
-  bind_pats = stmts['binding_patterns']
-  bind_pat = bind_pats[stmt_id]
-  bindings = stmts['bindings']
-  binding = bindings[bind_pat]
+  bindings = stmts['bindings'][stmts['binding_patterns'][stmt_id]]
 
   (lhs_map_name, lhs_pv) = get_free_lhs(stmt_id, bindings)
   (lhs_map_id, lhs_bucket_sizes) = buckets['maps'][lhs_map_name]
@@ -252,8 +254,12 @@ def generate_pattern(varname, stmt_id):
 
   rhs_enums = [range(sz) for sz in rhs_bucket_sizes]
 
-  print("LHS:\n" + str(lhs_enums))
-  print("RHS:\n" + '\n'.join([str(rhs_npv), str(rhs_uniqf_pos), str(rhs_uniqb_vars), str(rhs_enum_idx), str(rhs_bucket_sizes)]))
+  print("LHS:\n" + "enums: {}".format(lhs_enums))
+  print("RHS:\n" + '\n'.join(["npv:          {}".format(rhs_npv),
+                              "uniqf_pos:    {}".format(rhs_uniqf_pos),
+                              "uniqb_vars:   {}".format(rhs_uniqb_vars),
+                              "enum_idx:     {}".format(rhs_enum_idx),
+                              "bucket_sizes: {}".format(rhs_bucket_sizes)]))
 
   for lhs_bucket in itertools.product(*lhs_enums):
     ltuple = [linearize(lhs_free_bs, lhs_bucket)]
@@ -276,7 +282,8 @@ def generate_pattern(varname, stmt_id):
   # Generate pattern yaml.
   k3ds = []
   for (k,v) in sorted(pattern_map.items()):
-    k3ds.append({'key' : k3tuple(k), 'value' : [k3tuple(x) for x in v]})
+    k3ds.append({'key' : k3tuple(k, collection=False),
+                 'value' : [k3tuple(x, collection=True) for x in v]})
 
   k3n = varname + str(stmt_id)
   return {k3n: k3ds}
@@ -301,15 +308,15 @@ def get_node_data(query, varname='route_opt_init_s', stmt_ids=None):
 def main():
   parser = argparse.ArgumentParser()
   parser.add_argument('--varname', metavar='VAR', default='route_opt_init_s', dest='varname', help='K3 variable name')
-  parser.add_argument('--query', metavar='QUERY', type=string, required=True, dest='query', help='TPCH query number')
+  parser.add_argument('--query', metavar='QUERY', type=str, required=True, dest='query', help='TPCH query number')
   parser.add_argument('--stmt', metavar='STMT', type=int, nargs='+', dest='stmts', help='Statement ids')
   parser.add_argument('--output', metavar='OUTPUT_FILE', dest='filename', help='Output file')
   args = parser.parse_args()
   if args:
     if args.stmts:
-      nd = get_node_data(args.varname, args.query, args.stmts)
+      nd = get_node_data(args.query, args.varname, args.stmts)
     else:
-      nd = get_node_data(args.varname, args.query)
+      nd = get_node_data(args.query, args.varname)
 
     nd.update(get_pmap(args.query))
 
