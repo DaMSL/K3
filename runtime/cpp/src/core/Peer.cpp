@@ -82,9 +82,9 @@ Peer::Peer(shared_ptr<ContextFactory> fac, const YAML::Node& config,
       }
     } catch (EndOfProgramException e) {
       finished_ = true;
-#ifdef K3DEBUG
+      #ifdef K3GLOBALTRACE
       logGlobals(true);
-#endif
+      #endif
     }
 
 #if defined(K3_LT_SAMPLE) || defined(K3_LT_HISTOGRAM)
@@ -128,26 +128,32 @@ void Peer::processBatch() {
 
   for (int i = 0; i < num; i++) {
     auto d = std::move(batch_[i]);
-#ifdef K3DEBUG
+    #ifdef K3MESSAGETRACE
     logMessage(*d);
+    #endif
+
+    #ifdef K3TRIGGERTIMES
     TriggerID tid = d->trigger_;
     std::chrono::high_resolution_clock::time_point start_time =
         std::chrono::high_resolution_clock::now();
-#endif  // K3DEBUG
+    #endif
 
     (*d)();  // Call the dispatcher (process a message)
 
-#ifdef K3DEBUG
+    #ifdef K3TRIGGERTIMES
     statistics_[tid].total_time +=
         std::chrono::high_resolution_clock::now() - start_time;
     statistics_[tid].total_count++;
+    #endif
+
+    #ifdef K3GLOBALTRACE
     logGlobals(false);
-#endif  // K3DEBUG
+    #endif
   }
 }
 
 void Peer::logMessage(const Dispatcher& d) {
-#ifdef K3DEBUG
+  #ifdef K3MESSAGETRACE
   if (logger_->level() <= spdlog::level::debug) {
     string trig = ProgramContext::__triggerName(d.trigger_);
     logger_->debug() << "Received:: @" << trig;
@@ -167,11 +173,11 @@ void Peer::logMessage(const Dispatcher& d) {
     }
   }
   message_counter_++;
-#endif  // K3DEBUG
+  #endif
 }
 
 void Peer::logGlobals(bool final) {
-#ifdef K3DEBUG
+  #ifdef K3GLOBALTRACE
   if (logger_->level() <= spdlog::level::trace) {
     std::ostringstream oss;
     oss << "Environment: " << std::endl;
@@ -199,7 +205,7 @@ void Peer::logGlobals(bool final) {
       }
     }
   }
-#endif  // K3DEBUG
+  #endif
 }
 
 void Peer::printStatistics() {
