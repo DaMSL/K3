@@ -263,7 +263,7 @@ control MosaicSendPut[lbl:label, tl:expr, ve:expr, ce1:expr, ce2:expr, ce3:expr]
         (if ($[lbl]_sendput_sample_mod == 0 or $[ve] % $[lbl]_push_sample_mod == 0)
          then (
           ($[lbl]_sendput_buffer.insert {etag: $[tl], evid: $[ve], pcomponent: $[ce1],
-                                         rkey: $[ce2], rrbucket: $[ce3], rrnode: 0});
+                                         rkey: "", rrbucket: $[ce2], rrnode: $[ce3]});
           (if $[lbl]_sendput_buffer.size() >= $[lbl]_sendput_buffer_batch_sz
             then ($[lbl]_sendput_buffer.iterate (\r -> (mosaic_routelog_sink, me) <- r));
                   $[lbl]_sendput_buffer.clear()
