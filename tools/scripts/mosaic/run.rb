@@ -246,7 +246,6 @@ def gen_yaml(role_path, script_path)
   if $options[:tpch_inorder_path]
     cmd << "--tpch_inorder_path " << $options[:tpch_inorder_path] << " "
   end
-  cmd << "--multicore " if $options[:run_mode] == :multicore
   cmd << "--dist " if $options[:run_mode] == :dist
 
   extra_args = []
@@ -739,7 +738,6 @@ def main()
     opts.on("--highmem", "High memory deployment (HM only)") { $options[:nmask] = 'qp-hm.'}
     opts.on("--brew", "Use homebrew (OSX)") { $options[:osx_brew] = true }
     opts.on("--run-local", "Run locally without mesos") { $options[:run_mode] = :local }
-    opts.on("--run-multicore", "Run all data nodes on the same host, via mesos") { $options[:run_mode] = :multicore }
     opts.on("--create-local", "Create the cpp file locally") { $options[:create_local] = true }
     opts.on("--compile-local", "Compile locally") { $options[:compile_local] = true }
     opts.on("--dbt-exec-only", "Execute DBToaster only (skipping query build)") { $options[:dbt_exec_only] = true }
