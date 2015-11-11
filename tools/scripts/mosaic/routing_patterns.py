@@ -9,44 +9,31 @@ map_buckets_by_query = {
 
   3: {'maps': { "QUERY3"                        : (1, [8, 8, 8]),
                 "QUERY3_mLINEITEM1"             : (2, [8, 8, 8]),
-                "QUERY3_mORDERS1"               : (3, [8]),
-                "QUERY3_mORDERS3"               : (4, [8]),
-                "QUERY3_mORDERS6"               : (5, [8]),
-                "QUERY3_mCUSTOMER2"             : (6, [8, 8, 8, 8]),
-                "QUERY3_mCUSTOMER4"             : (7, [8, 8, 8, 8]),
-                "QUERY3_mLINEITEM1_mCUSTOMER2"  : (8, [8, 8, 8, 8])
+                "QUERY3_mLINEITEM1_mCUSTOMER2"  : (3, [8, 8, 8, 8]),
+                "QUERY3_mORDERS1"               : (4, [8]),
+                "QUERY3_mORDERS3"               : (5, [8]),
+                "QUERY3_mORDERS6"               : (6, [8]),
+                "QUERY3_mCUSTOMER2"             : (7, [8, 8, 8, 8]),
+                "QUERY3_mCUSTOMER4"             : (8, [8, 8, 8, 8]),
               }},
 
-  10: {'maps': { "REVENUE"                       : (1, [8, 8, 8, 8, 8, 8, 8]),
-                 "REVENUE_mLINEITEM2"            : (2, [8, 8, 8, 8, 8, 8, 8, 8]),
-                 "REVENUE_mORDERS1"              : (3, [8]),
-                 "REVENUE_mORDERS4"              : (4, [8, 8, 8, 8, 8, 8, 8]),
-                 "REVENUE_mORDERS5"              : (5, [8]),
-                 "REVENUE_mCUSTOMER1"            : (6, [8]),
-                 "REVENUE_mCUSTOMER2"            : (7, [8, 8]),
-                 "REVENUE_mCUSTOMER3"            : (8, [8]),
-                 "REVENUE_mLINEITEM2_mCUSTOMER1" : (9, [8, 8])
-      }},
-
-  1: {'maps': { "AVG_DISC"                       : (1, [8, 8]),
-                "AVG_PRICE"                      : (2, [8, 8]),
-                "AVG_QTY"                        : (3, [8, 8]),
-                "AVG_DISC_mLINEITEM5"            : (4, [8, 8]),
-                "AVG_PRICE_mLINEITEM5"           : (5, [8, 8]),
-                "AVG_QTY_mLINEITEM5"             : (6, [8, 8]),
-                "AVG_QTY_mLINEITEM1_L3_1"        : (7, [8, 8])
-     }},
-
+  10: {'maps': { "REVENUE"                       : (2, [8, 8, 8, 8, 8, 8, 8]),
+                 "REVENUE_mLINEITEM2"            : (3, [8, 8, 8, 8, 8, 8, 8, 8]),
+                 "REVENUE_mLINEITEM2_mCUSTOMER1" : (4, [8, 8]),
+                 "REVENUE_mORDERS1"              : (5, [8]),
+                 "REVENUE_mORDERS4"              : (6, [8, 8, 8, 8, 8, 8, 8]),
+                 "REVENUE_mORDERS5"              : (7, [8]),
+                 "REVENUE_mCUSTOMER1"            : (8, [8]),
+                 "REVENUE_mCUSTOMER2"            : (9, [8, 8]),
+                 "REVENUE_mCUSTOMER3"            : (10, [8]),
+      }}
 }
 
 stmts_by_query = {
 	4 : {'stmts':
-        {0: {'map_vars': [("ORDER_COUNT",               ["O_ORDERPRIORITY"]),
+        {4: {'map_vars': [("ORDER_COUNT",               ["O_ORDERPRIORITY"]),
                           ("ORDER_COUNT_mLINEITEM1",    ["O_ORDERPRIORITY", "LINEITEM_ORDERKEY"]),
-                          ("ORDER_COUNT_mORDERS3_E1_1", ["LINEITEM_ORDERKEY"])]},
-
-         2: {'map_vars': [("ORDER_COUNT",               ["ORDERS_ORDERPRIORITY"]),
-                          ("ORDER_COUNT_mORDERS3_E1_1", ["ORDERS_ORDERKEY"])]}
+                          ("ORDER_COUNT_mORDERS3_E1_1", ["LINEITEM_ORDERKEY"])]}
          },
 
        'bindings' : {'LINEITEM': {"LINEITEM_ORDERKEY", "LINEITEM_PARTKEY", "LINEITEM_SUPPKEY", "LINEITEM_LINENUMBER",
@@ -58,39 +45,25 @@ stmts_by_query = {
                                   "ORDERS_ORDERDATE", "ORDERS_ORDERPRIORITY", "ORDERS_CLERK", "ORDERS_SHIPPRIORITY", "ORDERS_COMMENT"}
                     },
 
-       'binding_patterns': {0: 'LINEITEM', 2: 'ORDERS'}},
+       'binding_patterns': {4: 'LINEITEM'}},
 
 
   3 : {'stmts':
-        {0: {'map_vars': [("QUERY3",            ["LINEITEM_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY"]),
-                          ("QUERY3_mLINEITEM1", ["LINEITEM_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY"])]},
+        {16: {'map_vars': [("QUERY3",            ["LINEITEM_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY"]),
+                           ("QUERY3_mLINEITEM1", ["LINEITEM_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY"])]},
 
-         3: {'map_vars': [("QUERY3_mCUSTOMER2",            ["LINEITEM_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY", "QUERY3_mCUSTOMERCUSTOMER_CUSTKEY"]),
-                          ("QUERY3_mLINEITEM1_mCUSTOMER2", ["LINEITEM_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY", "QUERY3_mCUSTOMERCUSTOMER_CUSTKEY"])]},
+         19: {'map_vars': [("QUERY3_mCUSTOMER2",            ["LINEITEM_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY", "QUERY3_mCUSTOMERCUSTOMER_CUSTKEY"]),
+                           ("QUERY3_mLINEITEM1_mCUSTOMER2", ["LINEITEM_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY", "QUERY3_mCUSTOMERCUSTOMER_CUSTKEY"])]},
 
-         4: {'map_vars': [("QUERY3_mCUSTOMER4",            ["LINEITEM_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY", "QUERY3_mCUSTOMERCUSTOMER_CUSTKEY"]),
-                          ("QUERY3_mLINEITEM1_mCUSTOMER2", ["LINEITEM_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY", "QUERY3_mCUSTOMERCUSTOMER_CUSTKEY"])]},
+         20: {'map_vars': [("QUERY3_mCUSTOMER4",            ["LINEITEM_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY", "QUERY3_mCUSTOMERCUSTOMER_CUSTKEY"]),
+                           ("QUERY3_mLINEITEM1_mCUSTOMER2", ["LINEITEM_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY", "QUERY3_mCUSTOMERCUSTOMER_CUSTKEY"])]},
 
-         5: {'map_vars': [("QUERY3",          ["ORDERS_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY"]),
-                          ("QUERY3_mORDERS1", ["ORDERS_CUSTKEY"]),
-                          ("QUERY3_mORDERS3", ["ORDERS_ORDERKEY"]),
-                          ("QUERY3_mORDERS6", ["ORDERS_ORDERKEY"])]},
-
-         6: {'map_vars': [("QUERY3_mLINEITEM1", ["ORDERS_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY"]),
-                          ("QUERY3_mORDERS1",   ["ORDERS_CUSTKEY"])]},
-
-         7: {'map_vars': [("QUERY3_mCUSTOMER2", ["ORDERS_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY", "ORDERS_CUSTKEY"]),
-                          ("QUERY3_mORDERS3",   ["ORDERS_ORDERKEY"])]},
-
-         8: {'map_vars': [("QUERY3_mCUSTOMER4", ["ORDERS_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY", "ORDERS_CUSTKEY"]),
-                          ("QUERY3_mORDERS6",   ["ORDERS_ORDERKEY"])]},
-
-         9: {'map_vars': [("QUERY3",            ["ORDERS_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY"]),
+         0: {'map_vars': [("QUERY3",            ["ORDERS_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY"]),
                           ("QUERY3_mCUSTOMER2", ["ORDERS_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY", "CUSTOMER_CUSTKEY"]),
                           ("QUERY3_mCUSTOMER4", ["ORDERS_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY", "CUSTOMER_CUSTKEY"])]},
 
-         10: {'map_vars': [("QUERY3_mLINEITEM1",            ["QUERY3_mLINEITEMLINEITEM_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY"]),
-                           ("QUERY3_mLINEITEM1_mCUSTOMER2", ["QUERY3_mLINEITEMLINEITEM_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY", "CUSTOMER_CUSTKEY"])]}
+         1: {'map_vars': [("QUERY3_mLINEITEM1",            ["QUERY3_mLINEITEMLINEITEM_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY"]),
+                          ("QUERY3_mLINEITEM1_mCUSTOMER2", ["QUERY3_mLINEITEMLINEITEM_ORDERKEY", "ORDERS_ORDERDATE", "ORDERS_SHIPPRIORITY", "CUSTOMER_CUSTKEY"])]}
         },
 
         'bindings': {'LINEITEM': {"LINEITEM_ORDERKEY", "LINEITEM_PARTKEY", "LINEITEM_SUPPKEY", "LINEITEM_LINENUMBER",
@@ -105,45 +78,34 @@ stmts_by_query = {
                                   "CUSTOMER_ACCTBAL", "CUSTOMER_MKTSEGMENT", "CUSTOMER_COMMENT"}
                     },
 
-        'binding_patterns': {0: 'LINEITEM', 3: 'LINEITEM', 4: 'LINEITEM',
-                             5: 'ORDERS', 6: 'ORDERS', 7: 'ORDERS', 8: 'ORDERS',
-                             9: 'CUSTOMER', 10: 'CUSTOMER'}
+        'binding_patterns': {16: 'LINEITEM', 19: 'LINEITEM', 20: 'LINEITEM',
+                             0: 'CUSTOMER', 1: 'CUSTOMER'}
       },
 
   10 : {'stmts': {
-          0: [("REVENUE",            ["C_CUSTKEY", "C_NAME", "C_ACCTBAL", "N_NAME", "C_ADDRESS", "C_PHONE", "C_COMMENT"]),
-              ("REVENUE_mLINEITEM2", ["C_CUSTKEY", "C_NAME", "C_ACCTBAL", "N_NAME", "C_ADDRESS", "C_PHONE", "C_COMMENT", "LINEITEM_ORDERKEY"])],
+          16: [("REVENUE",            ["C_CUSTKEY", "C_NAME", "C_ACCTBAL", "N_NAME", "C_ADDRESS", "C_PHONE", "C_COMMENT"]),
+               ("REVENUE_mLINEITEM2", ["C_CUSTKEY", "C_NAME", "C_ACCTBAL", "N_NAME", "C_ADDRESS", "C_PHONE", "C_COMMENT", "LINEITEM_ORDERKEY"])],
 
-          1: [("REVENUE_mCUSTOMER1",            ["REVENUE_mCUSTOMERCUSTOMER_CUSTKEY"]),
-              ("REVENUE_mLINEITEM2_mCUSTOMER1", ["REVENUE_mCUSTOMERCUSTOMER_CUSTKEY", "LINEITEM_ORDERKEY"])],
+          19: [("REVENUE_mCUSTOMER1",            ["REVENUE_mCUSTOMERCUSTOMER_CUSTKEY"]),
+               ("REVENUE_mLINEITEM2_mCUSTOMER1", ["REVENUE_mCUSTOMERCUSTOMER_CUSTKEY", "LINEITEM_ORDERKEY"])],
 
-          2: [("REVENUE_mCUSTOMER3",            ["REVENUE_mCUSTOMERCUSTOMER_CUSTKEY"]),
-              ("REVENUE_mLINEITEM2_mCUSTOMER1", ["REVENUE_mCUSTOMERCUSTOMER_CUSTKEY", "LINEITEM_ORDERKEY"])],
+          20: [("REVENUE_mCUSTOMER3",            ["REVENUE_mCUSTOMERCUSTOMER_CUSTKEY"]),
+               ("REVENUE_mLINEITEM2_mCUSTOMER1", ["REVENUE_mCUSTOMERCUSTOMER_CUSTKEY", "LINEITEM_ORDERKEY"])],
 
-          3: [("REVENUE",          ["ORDERS_CUSTKEY", "C_NAME", "C_ACCTBAL", "N_NAME", "C_ADDRESS", "C_PHONE", "C_COMMENT"]),
+          6: [("REVENUE",          ["ORDERS_CUSTKEY", "C_NAME", "C_ACCTBAL", "N_NAME", "C_ADDRESS", "C_PHONE", "C_COMMENT"]),
               ("REVENUE_mORDERS4", ["ORDERS_CUSTKEY", "C_NAME", "C_ACCTBAL", "N_NAME", "C_ADDRESS", "C_PHONE", "C_COMMENT"]),
               ("REVENUE_mORDERS1", ["ORDERS_ORDERKEY"]),
               ("REVENUE_mORDERS5", ["ORDERS_ORDERKEY"])],
 
-          4: [("REVENUE_mLINEITEM2", ["ORDERS_CUSTKEY", "C_NAME", "C_ACCTBAL", "N_NAME", "C_ADDRESS", "C_PHONE", "C_COMMENT", "ORDERS_ORDERKEY"]),
+          7: [("REVENUE_mLINEITEM2", ["ORDERS_CUSTKEY", "C_NAME", "C_ACCTBAL", "N_NAME", "C_ADDRESS", "C_PHONE", "C_COMMENT", "ORDERS_ORDERKEY"]),
               ("REVENUE_mORDERS4",   ["ORDERS_CUSTKEY", "C_NAME", "C_ACCTBAL", "N_NAME", "C_ADDRESS", "C_PHONE", "C_COMMENT"])],
 
-          5: [("REVENUE_mCUSTOMER1", ["ORDERS_CUSTKEY"]),
-              ("REVENUE_mORDERS1",   ["ORDERS_ORDERKEY"])],
-
-          6: [("REVENUE_mCUSTOMER3", ["ORDERS_CUSTKEY"]),
-              ("REVENUE_mORDERS5",   ["ORDERS_ORDERKEY"])],
-
-          7: [("REVENUE",            ["CUSTOMER_CUSTKEY", "CUSTOMER_NAME", "CUSTOMER_ACCTBAL", "N_NAME", "CUSTOMER_ADDRESS", "CUSTOMER_PHONE", "CUSTOMER_COMMENT"]),
+          0: [("REVENUE",            ["CUSTOMER_CUSTKEY", "CUSTOMER_NAME", "CUSTOMER_ACCTBAL", "N_NAME", "CUSTOMER_ADDRESS", "CUSTOMER_PHONE", "CUSTOMER_COMMENT"]),
               ("REVENUE_mCUSTOMER2", ["N_NAME", "CUSTOMER_NATIONKEY"]),
               ("REVENUE_mCUSTOMER1", ["CUSTOMER_CUSTKEY"]),
               ("REVENUE_mCUSTOMER3", ["CUSTOMER_CUSTKEY"])],
 
-          8: [("REVENUE_mLINEITEM2",            ["CUSTOMER_CUSTKEY", "CUSTOMER_NAME", "CUSTOMER_ACCTBAL", "N_NAME", "CUSTOMER_ADDRESS", "CUSTOMER_PHONE", "CUSTOMER_COMMENT", "REVENUE_mLINEITEMLINEITEM_ORDERKEY"]),
-              ("REVENUE_mLINEITEM2_mCUSTOMER1", ["CUSTOMER_CUSTKEY", "REVENUE_mLINEITEMLINEITEM_ORDERKEY"]),
-              ("REVENUE_mCUSTOMER2",            ["N_NAME", "CUSTOMER_NATIONKEY"])],
-
-          9: [("REVENUE_mORDERS4",   ["CUSTOMER_CUSTKEY", "CUSTOMER_NAME", "CUSTOMER_ACCTBAL", "N_NAME", "CUSTOMER_ADDRESS", "CUSTOMER_PHONE", "CUSTOMER_COMMENT"]),
+          2: [("REVENUE_mORDERS4",   ["CUSTOMER_CUSTKEY", "CUSTOMER_NAME", "CUSTOMER_ACCTBAL", "N_NAME", "CUSTOMER_ADDRESS", "CUSTOMER_PHONE", "CUSTOMER_COMMENT"]),
               ("REVENUE_mCUSTOMER2", ["N_NAME", "CUSTOMER_NATIONKEY"])]
         },
 
@@ -160,42 +122,10 @@ stmts_by_query = {
                     },
 
         'binding_patterns': {
-          0: 'LINEITEM', 1: 'LINEITEM', 2: 'LINEITEM',
-          3: 'ORDERS', 4: 'ORDERS', 5: 'ORDERS', 6: 'ORDERS',
-          7: 'CUSTOMER', 8: 'CUSTOMER', 9: 'CUSTOMER'
-        }},
-
-  1: {
-    'stmts': {
-      0: [("AVG_QTY",                 ["LINEITEM_RETURNFLAG", "LINEITEM_LINESTATUS"]),
-          ("AVG_QTY_mLINEITEM1_L3_1", ["LINEITEM_RETURNFLAG", "LINEITEM_LINESTATUS"]),
-          ("AVG_QTY_mLINEITEM5",      ["LINEITEM_RETURNFLAG", "LINEITEM_LINESTATUS"]),
-          ("AVG_QTY_mLINEITEM1_L3_1", ["LINEITEM_RETURNFLAG", "LINEITEM_LINESTATUS"]),
-          ("AVG_QTY_mLINEITEM1_L3_1", ["LINEITEM_RETURNFLAG", "LINEITEM_LINESTATUS"])],
-
-      1: [("AVG_PRICE",               ["LINEITEM_RETURNFLAG", "LINEITEM_LINESTATUS"]),
-          ("AVG_QTY_mLINEITEM1_L3_1", ["LINEITEM_RETURNFLAG", "LINEITEM_LINESTATUS"]),
-          ("AVG_PRICE_mLINEITEM5",    ["LINEITEM_RETURNFLAG", "LINEITEM_LINESTATUS"]),
-          ("AVG_QTY_mLINEITEM1_L3_1", ["LINEITEM_RETURNFLAG", "LINEITEM_LINESTATUS"]),
-          ("AVG_QTY_mLINEITEM1_L3_1", ["LINEITEM_RETURNFLAG", "LINEITEM_LINESTATUS"])],
-
-      2: [("AVG_DISC",                 ["LINEITEM_RETURNFLAG", "LINEITEM_LINESTATUS"]),
-          ("AVG_QTY_mLINEITEM1_L3_1",  ["LINEITEM_RETURNFLAG", "LINEITEM_LINESTATUS"]),
-          ("AVG_DISC_mLINEITEM5",      ["LINEITEM_RETURNFLAG", "LINEITEM_LINESTATUS"]),
-          ("AVG_QTY_mLINEITEM1_L3_1",  ["LINEITEM_RETURNFLAG", "LINEITEM_LINESTATUS"]),
-          ("AVG_QTY_mLINEITEM1_L3_1",  ["LINEITEM_RETURNFLAG", "LINEITEM_LINESTATUS"])]
-    },
-
-    'bindings': {'LINEITEM': {"LINEITEM_ORDERKEY", "LINEITEM_PARTKEY", "LINEITEM_SUPPKEY", "LINEITEM_LINENUMBER",
-                              "LINEITEM_QUANTITY", "LINEITEM_EXTENDEDPRICE", "LINEITEM_DISCOUNT", "LINEITEM_TAX",
-                              "LINEITEM_RETURNFLAG", "LINEITEM_LINESTATUS", "LINEITEM_SHIPDATE", "LINEITEM_COMMITDATE",
-                              "LINEITEM_RECEIPTDATE", "LINEITEM_SHIPINSTRUCT", "LINEITEM_SHIPMODE", "LINEITEM_COMMENT"}
-                },
-
-    'binding_patterns': {
-      0: 'LINEITEM', 1: 'LINEITEM', 2: 'LINEITEM'
-    }
-  }
+          16: 'LINEITEM', 19: 'LINEITEM', 20: 'LINEITEM',
+          6: 'ORDERS', 7: 'ORDERS'
+          0: 'CUSTOMER', 2: 'CUSTOMER'
+        }}
 }
 
 # Per-invocation globals.
