@@ -3,7 +3,7 @@
 import argparse, itertools, math, string, sys, yaml
 
 map_buckets_by_query = {
-  '4': {'maps': { 'ORDER_COUNT'               : (1, [64]),
+  '4': {'maps': { 'ORDER_COUNT'             : (1, [64]),
                 'ORDER_COUNT_mLINEITEM1'    : (2, [8,64]),
                 'ORDER_COUNT_mORDERS3_E1_1' : (3, [64]) }},
 
@@ -234,7 +234,7 @@ def generate_pattern(varname, stmt_id):
   # Compute bucket sizes while accounting for repeated bound variables
   cnt = 0
   for (n,p) in rhs_uniqf_pos:
-    rhs_enum_idx[k] = cnt
+    rhs_enum_idx[(n,p)] = cnt
     rhs_bucket_sizes.append(buckets['maps'][n][1][p])
     cnt += 1
 
