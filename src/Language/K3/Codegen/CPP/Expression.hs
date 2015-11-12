@@ -89,6 +89,12 @@ pattern UnsafeAt c <- Node (EProject "unsafe_at" :@: _) [c]
 dataspaceIn :: K3 Expression -> [Identifier] -> Bool
 dataspaceIn e as = isJust $ getKTypeP e >>= \t -> t @~ \case { TAnnotation i -> i `elem` as; _ -> False }
 
+precludeInline :: K3 Expression -> Bool
+precludeInline e = isJust $ e @~ \case { (EProperty s) -> ePropertyName s == "NoInline"; _ -> False}
+
+doInline :: K3 Expression -> Bool
+doInline = not . precludeInline
+
 stlLinearDSs :: [Identifier]
 stlLinearDSs = ["Collection", "Set", "Vector", "Seq"]
 
@@ -329,7 +335,7 @@ inline e@(tag -> ELambda _) = do
 
     return ([], R.Lambda captures argList True (if isAccumulating then Just R.Void else returnType) fullBody)
 
-inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OApp, [p@(Fold c), f])), z])) = do
+inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OApp, [p@(Fold c), f])), z])) | doInline e = do
   (ce, cv) <- inline c
   (ze, zv) <- inline z
 
@@ -390,7 +396,7 @@ inline e@(tag &&& children -> (EOperate OApp, [
          (tag &&& children -> (EOperate OApp, [
            p@(InsertWith c),
            k])),
-           w])) | c `dataspaceIn` stlAssocDSs = do
+           w])) | c `dataspaceIn` stlAssocDSs && doInline e = do
   (ce, cv) <- inline c
   (ke, kv) <- inline k
   -- kg <- genSym
@@ -422,7 +428,7 @@ inline e@(tag &&& children -> (EOperate OApp, [
            p@(UpsertWith c),
            k])),
            n])),
-           w])) | c `dataspaceIn` stlAssocDSs = do
+           w])) | c `dataspaceIn` stlAssocDSs && doInline e = do
   (ce, cv) <- inline c
 
   kg <- genSym
@@ -469,7 +475,7 @@ inline e@(tag &&& children -> (EOperate OApp, [
            p@(Lookup c),
            k])),
            n])),
-           w])) | c `dataspaceIn` stlAssocDSs = do
+           w])) | c `dataspaceIn` stlAssocDSs && doInline e = do
   (ce, cv) <- inline c
   kg <- genSym
   ke <- reify (RDecl kg Nothing) k
@@ -513,7 +519,7 @@ inline e@(tag &&& children -> (EOperate OApp, [
          (tag &&& children -> (EOperate OApp, [
            p@(Peek c),
            n])),
-           w])) | c `dataspaceIn` stlLinearDSs = do
+           w])) | c `dataspaceIn` stlLinearDSs && doInline e = do
   (ce, cv) <- inline c
 
   ug <- genSym
@@ -542,7 +548,7 @@ inline e@(tag &&& children -> (EOperate OApp, [
            p@(SafeAt c),
            i])),
            n])),
-           w])) | c `dataspaceIn` stlLinearDSs = do
+           w])) | c `dataspaceIn` stlLinearDSs && doInline e = do
   (ce, cv) <- inline c
   ig <- genSym
   ie <- reify (RDecl ig Nothing) i
@@ -573,7 +579,7 @@ inline e@(tag &&& children -> (EOperate OApp, [
          (tag &&& children -> (EOperate OApp, [
            p@(UnsafeAt c),
            i])),
-           w])) | c `dataspaceIn` stlLinearDSs = do
+           w])) | c `dataspaceIn` stlLinearDSs && doInline e = do
   (ce, cv) <- inline c
   ig <- genSym
   ie <- reify (RDecl ig Nothing) i

@@ -148,10 +148,13 @@ optimizeMaterialization dbg mzfs is (p, f) d = runExceptT $ inferMaterialization
        t :@: as -> t :@: as
 
      attachE e = case e of
+       (EOperate OApp :@: as) -> (EOperate OApp :@: (maybeAttachNoInline $ (EMaterialization as' : as)))
        (t :@: as) -> (t :@: (EMaterialization as' : as))
       where
         Just u = e @~ isEUID >>= getUID
         as' = MM.fromList [((i, r), q) | ((Juncture u' i, r), q) <- M.toList m, u' == u]
+
+     maybeAttachNoInline = if isolateArgs mzfs then (EProperty (Left ("NoInline", Nothing)):) else id
 
 -- * Types
 
@@ -370,9 +373,10 @@ materializeE e@(Node (t :@: _) cs) = case t of
       Just (Juncture u i) -> return $ mOneOf (mVar u i In) [Forwarded] -??- "Forwarded by containing context?"
       Nothing -> return $ mBool True -??- "Temporary."
 
+    fnCopyOverride <- mBool <$> asks (isolateArgs . flags)
+
     u <- eUID e
-    constrain u anon In $ mITE moveable (mITE moveable (mAtom Moved) (mITE fwdContext (mAtom Forwarded) (mAtom Copied)))
-                            (mAtom Copied)
+    constrain u anon In $ mITE (moveable -&&- (mNot fnCopyOverride)) (mAtom Moved) (mAtom Copied)
 
   EOperate OSnd -> do
     let [h, m] = cs

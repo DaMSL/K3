@@ -110,7 +110,7 @@ instance Serialize CPPCGFlags
 defaultCPPCGFlags :: CPPCGFlags
 defaultCPPCGFlags
   = CPPCGFlags
-    { isolateLoopIndex = True
+    { isolateLoopIndex = False
     , enableLifetimeProfiling = False
     }
 
