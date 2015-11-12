@@ -126,10 +126,10 @@ def create_local_file(args):
 
     # optimized routing data and corresponding pmap
     # create up front since it's heavy
-    switch_opt_route = None
+    opt_route = None
     pmap = None
     if args.tpch_query:
-        switch_opt_route = routing_patterns.get_node_data(args.tpch_query)
+        opt_route = routing_patterns.get_node_data(args.tpch_query)
         pmap = routing_patterns.get_pmap(args.tpch_query)
 
     # convert to dictionaries
@@ -140,6 +140,10 @@ def create_local_file(args):
 
         if pmap is not None:
             peer.update(pmap)
+
+        if role == 'node':
+            if opt_route:
+                peer.update(opt_route)
 
         if role == 'switch' or role == 'switch_old':
             if args.csv_path:
@@ -154,8 +158,8 @@ def create_local_file(args):
                 if not args.tpch_query:
                   raise ValueError("Cannot infer mux files without tpch_query number")
                 peer['inorder'] = tpch_mux_file_local(args.tpch_data_path, switch_index, args.num_switches, args.tpch_query)
-            if switch_opt_route is not None:
-                peer.update(switch_opt_route)
+            if opt_route is not None:
+                peer.update(opt_route)
             switch_index = switch_index + 1
 
         peer.update(extra_args)
@@ -181,6 +185,7 @@ def create_dist_file(args):
     switch_role_nm = "switch_old" if args.csv_path else "switch"
 
     pmap = routing_patterns.get_pmap(query)
+    opt_route = routing_patterns.get_node_data(query)
 
     master_role = {'role': wrap_role('master')}
     master_role.update(pmap)
@@ -195,12 +200,13 @@ def create_dist_file(args):
         switch_role['switch_path'] = args.csv_path
     if args.tpch_inorder_path:
         switch_role['inorder'] = args.tpch_inorder_path
-    switch_role.update(routing_patterns.get_node_data(query))
     switch_role.update(pmap)
+    switch_role.update(opt_route)
     switch_role.update(extra_args)
 
     node_role = {'role': wrap_role('node')}
     node_role.update(pmap)
+    node_role.update(opt_route)
     node_role.update(extra_args)
 
     # switch1_env = {'peer_globals': [master_role, timer_role, switch_role]}
