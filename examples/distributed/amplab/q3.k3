@@ -107,8 +107,10 @@ trigger count_merges : () = \_ -> (
 
 trigger start : () = \_ -> (() @:Start) @AmplabBenchmark(
   queryTrigger       = [$ q3_local],
-  loadExpr           = [$ loadUVQ3 uservisitsFiles user_visits;
-                          loadRKQ3 rankingsFiles rk_by_url ],
+  loadExpr           = [$ print ("Loading UV Files: " ++ (itos (uservisitsFiles.size())));
+                          loadUVQ3 uservisitsFiles user_visits;
+			  print ("Loading RK Files: " ++ (itos (pinnedRankingsFiles.size())));
+                          loadRKQ3 pinnedRankingsFiles rk_by_url ],
   preLoadExpr        = [$ peers.iterate (\i -> peers_seq.insert i)],
   preReadyExpr       = [$ ()],
   finishArgT         = [: aggs_by_ip_elem],
