@@ -50,6 +50,7 @@ control AmplabBenchmark[queryTrigger       : expr,
   ?e @:Start  => (load_all, me)     <- $.[e]
     +> {
       declare rankingsFiles : collection {path: string} @Collection
+      declare pinnedRankingsFiles : collection {path: string} @Collection
       declare uservisitsFiles : collection {path: string} @Collection
 
       // Dummy trigger to warm up connections
