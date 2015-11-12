@@ -10,11 +10,13 @@ class Dispatcher {
   virtual ~Dispatcher();
   virtual void operator()() = 0;
   virtual base_string jsonify() const;
-#ifdef K3DEBUG
+  #ifdef K3MESSAGETRACE
   Address source_;
   Address destination_;
+  #endif
+  #if defined(K3MESSAGETRACE) || defined(K3TRIGGERTIMES)
   TriggerID trigger_;
-#endif
+  #endif
 };
 
 class SentinelDispatcher : public Dispatcher {

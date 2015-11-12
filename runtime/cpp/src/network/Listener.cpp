@@ -72,10 +72,12 @@ void Listener::registerConnection(shared_ptr<IncomingConnection> c) {
   shared_ptr<MessageHandler> m_handler = make_shared<MessageHandler>(
       [peer, tok](std::unique_ptr<Message> m) {
         auto d = peer->getContext().__getDispatcher(std::move(m->value_), m->trigger_);
-        #ifdef K3DEBUG
-        d->trigger_ = m->trigger_;
+        #ifdef K3MESSAGETRACE
         d->source_ = m->source_;
         d->destination_ = m->destination_;
+        #endif
+        #if defined(K3MESSAGETRACE) || defined(K3TRIGGERTIMES)
+        d->trigger_ = m->trigger_;
         #endif
         peer->getQueue().enqueue(tok, std::move(d));
       });

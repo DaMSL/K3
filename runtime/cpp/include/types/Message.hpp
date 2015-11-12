@@ -18,7 +18,7 @@ class Message {
 
   unique_ptr<PackedValue> value_;
   TriggerID trigger_;
-  #ifdef K3DEBUG
+  #ifdef K3MESSAGETRACE
   Address source_;
   Address destination_;
   #endif
@@ -32,7 +32,7 @@ class NetworkMessage : public Message {
     trigger_ = other.trigger_;
     value_ = std::move(other.value_);
     payload_length_ = other.payload_length_;
-    #ifdef K3DEBUG
+    #ifdef K3MESSAGETRACE
     source_ = std::move(other.source_);
     destination_ = std::move(other.destination_);
     #endif

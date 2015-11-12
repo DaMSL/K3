@@ -11,5 +11,6 @@ k3_globals:
   thresh: 1000
   slice_length: 8
 k3_data:
-  - {var: rankingsFiles, path: /local/data/amplab/1024/rankings, policy: global}
   - {var: uservisitsFiles, path: /local/data/amplab/1024/uservisits, policy: global}
+  - {var: rankingsFiles, path: /local/data/amplab/1024/rankings, policy: global}
+  - {var: pinnedRankingsFiles, path: /local/data/amplab/1024/rankings, policy: pinned}

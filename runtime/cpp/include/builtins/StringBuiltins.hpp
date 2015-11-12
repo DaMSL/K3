@@ -5,6 +5,7 @@
 
 #include "Common.hpp"
 #include "serialization/Codec.hpp"
+#include "serialization/Json.hpp"
 #include "types/Value.hpp"
 
 namespace K3 {
@@ -12,20 +13,30 @@ namespace K3 {
 class StringBuiltins {
  public:
   StringBuiltins();
+
+  template <class S>
+  string_impl toJson(const S& s);
+
   string_impl itos(int i);
   string_impl rtos(double d);
   string_impl atos(Address a);
+
   // Seq<R_elem<string_impl>> splitString(string_impl, const string_impl&);
+
   int tpch_date(const string_impl& s);
   string_impl tpch_date_to_string(const int& date);
+
   template <class S>
   S slice_string(const S& s, int x, int y);
+
   int strcomp(const string_impl& s1, const string_impl& s2);
+
   template <class T>
   T parsePSV(const string_impl& s1) {
     auto bs = BaseStringRefPackedValue(s1, CodecFormat::PSV);
     return *unpack<T>(bs);
   }
+
   template <class T>
   T parseYAS(const string_impl& s1) {
     auto bs = BaseStringRefPackedValue(s1, CodecFormat::YASBinary);
@@ -33,6 +44,11 @@ class StringBuiltins {
     return t;
   }
 };
+
+template<class S>
+string_impl StringBuiltins::toJson(const S& s) {
+  return K3::serialization::json::encode<S>(s);
+}
 
 template <class S>
 S StringBuiltins::slice_string(const S& s, int x, int y) {

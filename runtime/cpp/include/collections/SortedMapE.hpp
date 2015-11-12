@@ -133,7 +133,7 @@ class SortedMapE {
   unit_t update(const K& k, V&& val) {
     auto it = container.find(k.key);
     if (it != container.end()) {
-      container[k.key].value = std::move(val.value);
+      it->second.value = std::move(val.value);
     }
     return unit_t();
   }
@@ -148,9 +148,9 @@ class SortedMapE {
   unit_t insert_with(const R& rec, F f) {
     auto existing = container.find(rec.key);
     if (existing == std::end(container)) {
-      container[rec.key] = rec;
+      container.insert(existing, std::make_pair(rec.key, rec));
     } else {
-      container[rec.key] = f(std::move(existing->second), rec);
+      existing->second = f(std::move(existing->second), rec);
     }
 
     return unit_t {};
@@ -160,9 +160,9 @@ class SortedMapE {
   unit_t upsert_with(const K& k, F f, G g) {
     auto existing = container.find(k.key);
     if (existing == std::end(container)) {
-      container[k.key] = f(unit_t {});
+      container.insert(existing, std::make_pair(k.key, f(unit_t{})));
     } else {
-      container[k.key] = g(std::move(existing->second));
+      existing->second = g(std::move(existing->second));
     }
     return unit_t {};
   }

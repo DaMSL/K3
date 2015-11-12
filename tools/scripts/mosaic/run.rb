@@ -246,15 +246,13 @@ def gen_yaml(role_path, script_path)
   if $options[:tpch_inorder_path]
     cmd << "--tpch_inorder_path " << $options[:tpch_inorder_path] << " "
   end
-  cmd << "--multicore " if $options[:run_mode] == :multicore
   cmd << "--dist " if $options[:run_mode] == :dist
 
   extra_args = []
   extra_args << "ms_gc_interval=" + $options[:gc_epoch] if $options[:gc_epoch]
   extra_args << "sw_driver_sleep=" + $options[:msg_delay] if $options[:msg_delay]
   extra_args << "corrective_mode=false" if $options[:no_corrective]
-  extra_args << "pmap_area_factor=" + $options[:map_area] if $options[:map_area]
-  extra_args << "pmap_shift_factor=" + $options[:map_shift] if $options[:map_shift]
+  extra_args << "pmap_overlap_factor=" + $options[:map_overlap] if $options[:map_overlap]
   if $options[:batch_size]
     extra_args << "sw_poly_batch_size=" + $options[:batch_size]
     extra_args << "rebatch=" + $options[:batch_size]
@@ -422,7 +420,7 @@ def run_deploy_k3_local(bin_path, nice_name, script_path)
   args << "--json #{json_dist_path} " unless $options[:logging] == :none
   args << "--json_final_only " if $options[:logging] == :final
   cmd_suffix = "#{bin_path} -p #{role_path} #{args}"
-  frequency = if $options.has_key(:perf_frequency) then $options[:perf_frequency] else "10" end
+  frequency = if $options[:perf_frequency] then $options[:perf_frequency] else "10" end
   perf_cmd = "perf record -F #{frequency} -a --call-graph dwarf -- "
   run($options[:profile] == :perf ? perf_cmd + cmd_suffix : cmd_suffix)
 end
@@ -740,7 +738,6 @@ def main()
     opts.on("--highmem", "High memory deployment (HM only)") { $options[:nmask] = 'qp-hm.'}
     opts.on("--brew", "Use homebrew (OSX)") { $options[:osx_brew] = true }
     opts.on("--run-local", "Run locally without mesos") { $options[:run_mode] = :local }
-    opts.on("--run-multicore", "Run all data nodes on the same host, via mesos") { $options[:run_mode] = :multicore }
     opts.on("--create-local", "Create the cpp file locally") { $options[:create_local] = true }
     opts.on("--compile-local", "Compile locally") { $options[:compile_local] = true }
     opts.on("--dbt-exec-only", "Execute DBToaster only (skipping query build)") { $options[:dbt_exec_only] = true }
@@ -765,11 +762,10 @@ def main()
     opts.on("--no-reserve", "Prevent reserve on the poly buffers") { $options[:no_poly_reserve] = true }
     opts.on("--event-profile", "Run with event profiling") { $options[:event_profile] = true }
     opts.on("--raw-yaml [FILE]", "Supply a yaml file") { |s| $options[:raw_yaml_file] = s }
-    opts.on("--map-area [FLOAT]", "Adjust % of cluster used per map") { |f| $options[:map_area] = f }
-    opts.on("--map-shift [FLOAT]", "% of cluster to shift between maps") { |f| $options[:map_shift] = f }
+    opts.on("--map-overlap [FLOAT]", "Adjust % overlap of maps on cluster. 100%=all maps everywhere") { |f| $options[:map_overlap] = f }
     opts.on("--buckets [INT]", "Number of buckets (partitioning)") { |s| $options[:buckets] = s }
-    opts.on("--replicas [INT]", "Number of replicas in clock (for partitioning)") { |s| $options[:replicas] = s }
-    opts.on("--query [NAME]", "Name of query to run (for distributed)") { |s| $options[:query] = s }
+    opts.on("--replicas [INT]", "Number of replicas in consistent hashing (for partitioning)") { |s| $options[:replicas] = s }
+    opts.on("--query [NAME]", "Name of query to run (optional, derived from path)") { |s| $options[:query] = s }
 
     # Compile args synonyms
     opts.on("--compileargs [STRING]", "Pass arguments to compiler (distributed only)") { |s| $options[:compileargs] = s }
@@ -889,12 +885,14 @@ def main()
   dbt_path     = File.join(test_path, dbt_plat) # dbtoaster path
   dbt_lib_path = File.join(dbt_path, "lib", "dbt_c++")
 
-  nice_name =
+  nice_name, query =
     if match = basename.match(/query(.*)/)
-      lastpath + match.captures[0]
+      [lastpath + match.captures[0], match.captures[0]]
     else
-      basename
+      [basename, nil]
     end
+
+  $options[:query] = query unless $options[:query]
 
   k3_name = nice_name + ".k3"
   k3_path = File.join($workdir, k3_name)
