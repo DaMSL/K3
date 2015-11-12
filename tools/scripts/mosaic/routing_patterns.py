@@ -143,15 +143,18 @@ debug = False
 
 pattern_map = {}
 
-def init_pattern(query_id):
+def init_pattern(query_id, as_routing):
   global query
   global stmts
   global buckets
   query = query_id
-  stmts = stmts_by_query[query_id]
-  buckets = map_buckets_by_query[query_id]
-  if debug:
-      print ("Processing pattern for query: " + str(query_id))
+  valid = query in map_buckets_by_query && (not as_routing || query in stmts_by_query)
+  if valid:
+    buckets = map_buckets_by_query[query_id]
+    if as_routing:
+      stmts = stmts_by_query[query_id]
+
+  return valid
 
 # Returns all maps present in a statement's rhs.
 def get_rhs_maps(stmt_id):
@@ -296,21 +299,25 @@ def generate_pattern(varname, stmt_id):
   return {k3n: k3ds}
 
 def get_pmap(query):
-  init_pattern(query)
-  k3pmap = []
-  for (n, spec) in buckets['maps'].items():
-    dims = [{'key': i, 'value': sz} for (i,sz) in enumerate(spec[1])]
-    k3pmap.append({'key': n, 'value': dims})
-  return {'pmap_input': k3pmap}
+  available = init_pattern(query, False)
+  if available:
+    k3pmap = []
+    for (n, spec) in buckets['maps'].items():
+      dims = [{'key': i, 'value': sz} for (i,sz) in enumerate(spec[1])]
+      k3pmap.append({'key': n, 'value': dims})
+    return {'pmap_input': k3pmap}
+  return None
 
 def get_node_data(query, varname='route_opt_init_s', stmt_ids=None):
   nd = {}
-  init_pattern(query)
-  if stmt_ids is None:
-    stmt_ids = stmts['stmts'].keys()
-  for (i,s) in enumerate(stmt_ids):
-    nd.update(generate_pattern(varname, s))
-  return nd
+  available = init_pattern(query, True)
+  if available:
+    if stmt_ids is None:
+      stmt_ids = stmts['stmts'].keys()
+    for (i,s) in enumerate(stmt_ids):
+      nd.update(generate_pattern(varname, s))
+    return nd
+  return None
 
 def main():
   global debug

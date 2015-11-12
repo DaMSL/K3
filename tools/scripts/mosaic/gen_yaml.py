@@ -188,11 +188,11 @@ def create_dist_file(args):
     opt_route = routing_patterns.get_node_data(query)
 
     master_role = {'role': wrap_role('master')}
-    master_role.update(pmap)
+    master_role.update(pmap if pmap is not None else {})
     master_role.update(extra_args)
 
     timer_role = {'role': wrap_role('timer')}
-    timer_role.update(pmap)
+    timer_role.update(pmap if pmap is not None else {})
     timer_role.update(extra_args)
 
     switch_role = {'role': wrap_role(switch_role_nm)}
@@ -200,13 +200,13 @@ def create_dist_file(args):
         switch_role['switch_path'] = args.csv_path
     if args.tpch_inorder_path:
         switch_role['inorder'] = args.tpch_inorder_path
-    switch_role.update(pmap)
-    switch_role.update(opt_route)
+    switch_role.update(pmap if pmap is not None else {})
+    switch_role.update(opt_route if opt_route is not None else {})
     switch_role.update(extra_args)
 
     node_role = {'role': wrap_role('node')}
-    node_role.update(pmap)
-    node_role.update(opt_route)
+    node_role.update(pmap if pmap is not None else {})
+    node_role.update(opt_route if opt_route is not None else {})
     node_role.update(extra_args)
 
     # switch1_env = {'peer_globals': [master_role, timer_role, switch_role]}
