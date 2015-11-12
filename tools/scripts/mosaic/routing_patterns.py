@@ -350,6 +350,19 @@ def linearize(sizes, positions):
     shift *= sz
   return idx
 
+# map from rmod to lmod, returning a mapping of rbucket -> lbucket set
+def find_mod_pats(lmod, rmod):
+  # normally we need to go up to the lowest common multiple, but we use the fact that
+  # all our bucket dimensions are powers of 2 to simplify it
+  route = {}
+  max_mod = max(lmod, rmod)
+  for i in range(max_mod):
+      if route.has_key(i % rmod):
+          route[i % rmod].add(i % lmod)
+      else:
+          route[i % rmod] = set([i % lmod])
+  return route
+
 def k3tuple(t, collection):
   if len(t) == 1:
     return {'elem': t[0]} if collection else t[0]
