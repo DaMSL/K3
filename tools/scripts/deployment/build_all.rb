@@ -60,7 +60,9 @@ QUERIES = {
   },
 
   "graph" => {
-    :roles => {},
+    :roles => {
+      "twitter" => "graph_twitter.yml"
+    },
     :queries => {
       "page_rank" => "examples/distributed/graph/page_rank.k3",
     }
