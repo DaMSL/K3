@@ -4,7 +4,7 @@ import argparse, itertools, math, string, sys, yaml
 
 map_buckets_by_query = {
   '4': {'maps': { 'ORDER_COUNT'               : (1, [4]),
-                  'ORDER_COUNT_mLINEITEM1'    : (2, [2,4]),
+                  'ORDER_COUNT_mLINEITEM1'    : (2, [4,4]),
                   'ORDER_COUNT_mORDERS3_E1_1' : (3, [4]) }},
 
   '3': {'maps': { "QUERY3"                        : (1, [8, 8, 8]),
@@ -277,12 +277,14 @@ def generate_pattern(varname, stmt_id):
       for map_name in rhs_map_ids:
         map_bucket = rebuild_bucket(map_name, lhs_bucket, rhs_bucket, rhs_enum_idx, rhs_npv[map_name])
         tuple.append(linearize(buckets['maps'][map_name][1], map_bucket))
-        # print("MB {}: {}".format(map_name, map_bucket))
+        if debug:
+            print("MB {}: {}".format(map_name, map_bucket))
 
       if rhs_bucket not in pattern_map:
         pattern_map[rhs_bucket] = []
       pattern_map[rhs_bucket].append(tuple)
-      # print("{} {}".format(rhs_bucket, tuple))
+      if debug:
+          print("{} {}".format(rhs_bucket, tuple))
 
   # Generate pattern yaml.
   k3ds = []
@@ -317,7 +319,7 @@ def main():
   parser.add_argument('--query', metavar='QUERY', type=str, required=True, dest='query', help='TPCH query number')
   parser.add_argument('--stmt', metavar='STMT', type=int, nargs='+', dest='stmts', help='Statement ids')
   parser.add_argument('--output', metavar='OUTPUT_FILE', dest='filename', help='Output file')
-  parser.add_argument('--debug', default=False, action='set_true', help='Debug output')
+  parser.add_argument('--debug', default=False, action='store_true', help='Debug output')
   args = parser.parse_args()
   if args:
     if args.debug:
