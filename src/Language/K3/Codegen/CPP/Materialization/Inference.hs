@@ -330,7 +330,7 @@ materializeE e@(Node (t :@: _) cs) = case t of
           Just (EType (tag &&& children -> (TFunction, [t, _]))) -> isNonScalarType t
           _ -> False
 
-    constrain u i In $ mITE (ehw -||- mBool (topL && argShouldBeMoved) -||- fnCopyOverride) (mAtom Copied) (mAtom Forwarded)
+    constrain u i In $ mITE (ehw -||- mBool (topL && argShouldBeMoved)) (mAtom Copied) (mAtom Forwarded)
 
     cls <- ePrv e >>= \case
       (tag -> PLambda _ cls) -> return cls
@@ -347,8 +347,7 @@ materializeE e@(Node (t :@: _) cs) = case t of
       outerP <- chasePPtr ptr
       moveable <- contextualizeNow outerP >>= isMoveableNow
 
-      constrain u name In $ mITE fnCopyOverride (mAtom Copied)
-                              (mITE needsOwn (mITE moveable (mAtom Moved) (mAtom Copied)) (mAtom ConstReferenced))
+      constrain u name In $ mITE needsOwn (mITE (moveable -&&- mNot fnCopyOverride) (mAtom Moved) (mAtom Copied)) (mAtom ConstReferenced)
 
     clps <- sequence [withNearestBind u (contextualizeNow $ pbvar m) | m <- cls]
     nrvo <- mOr <$> traverse (`occursIn` fProv) (ci:clps)
