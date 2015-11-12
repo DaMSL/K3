@@ -17,17 +17,35 @@ map_buckets_by_query = {
                   "QUERY3_mCUSTOMER4"             : (8, [4, 4, 4, 4]),
                 }},
 
-  '10': {'maps': { "REVENUE"                     : (2, [8, 8, 8, 8, 8, 8, 8]),
-                 "REVENUE_mLINEITEM2"            : (3, [8, 8, 8, 8, 8, 8, 8, 8]),
-                 "REVENUE_mLINEITEM2_mCUSTOMER1" : (4, [8, 8]),
-                 "REVENUE_mORDERS1"              : (5, [8]),
-                 "REVENUE_mORDERS4"              : (6, [8, 8, 8, 8, 8, 8, 8]),
-                 "REVENUE_mORDERS5"              : (7, [8]),
-                 "REVENUE_mCUSTOMER1"            : (8, [8]),
-                 "REVENUE_mCUSTOMER2"            : (9, [8, 8]),
-                 "REVENUE_mCUSTOMER3"            : (10, [8]),
+  '10': {'maps': { "REVENUE"                       : (2, [8, 8, 8, 8, 8, 8, 8]),
+                   "REVENUE_mLINEITEM2"            : (3, [8, 8, 8, 8, 8, 8, 8, 8]),
+                   "REVENUE_mLINEITEM2_mCUSTOMER1" : (4, [8, 8]),
+                   "REVENUE_mORDERS1"              : (5, [8]),
+                   "REVENUE_mORDERS4"              : (6, [8, 8, 8, 8, 8, 8, 8]),
+                   "REVENUE_mORDERS5"              : (7, [8]),
+                   "REVENUE_mCUSTOMER1"            : (8, [8]),
+                   "REVENUE_mCUSTOMER2"            : (9, [8, 8]),
+                   "REVENUE_mCUSTOMER3"            : (10, [8]),
       }}
+
+  '11a': {'maps': { "QUERY11A"            : (1, [8])
+                    "QUERY11A_mSUPPLIER1" : (2, [8,8])
+                    "QUERY11A_mPARTSUPP1" : (3, [8]) }},
+
+  '12': {'maps': { "HIGH_LINE_COUNT"            : (1, [8]),
+                   "HIGH_LINE_COUNT_mLINEITEM1" : (2, [8]),
+                   "HIGH_LINE_COUNT_mLINEITEM8" : (3, [8]),
+                   "HIGH_LINE_COUNT_mORDERS1"   : (4, [8, 8]),
+                   "HIGH_LINE_COUNT_mORDERS4"   : (5, [8, 8]),
+                   "LOW_LINE_COUNT"             : (6, [8]),
+                   "LOW_LINE_COUNT_mLINEITEM6"  : (7, [8]) }}
 }
+
+
+## Template
+# 'x' : {'stmts'    : {i: {'map_vars': []}},
+#        'bindings' : {},
+#        'binding_patterns': {}},
 
 stmts_by_query = {
 	'4' : {'stmts':
@@ -132,8 +150,37 @@ stmts_by_query = {
           16: 'LINEITEM', 19: 'LINEITEM', 20: 'LINEITEM',
           6: 'ORDERS', 7: 'ORDERS',
           0: 'CUSTOMER', 2: 'CUSTOMER'
-        }}
+        }},
+
+  '11a' : {'stmts'    : {4: {'map_vars': [("QUERY11A",            ["PS_PARTKEY"]),
+                                          ("QUERY11A_mSUPPLIER1", ["PS_PARTKEY", "SUPPLIER_SUPPKEY"])]}},
+
+           'bindings' : {'SUPPLIER': {"SUPPLIER_SUPPKEY", "SUPPLIER_NAME", "SUPPLIER_ADDRESS", "SUPPLIER_NATIONKEY", "SUPPLIER_PHONE", "SUPPLIER_ACCTBAL", "SUPPLIER_COMMENT"},
+                         'PARTSUPP': {"PARTSUPP_PARTKEY", "PARTSUPP_SUPPKEY", "PARTSUPP_AVAILQTY", "PARTSUPP_SUPPLYCOST", "PARTSUPP_COMMENT"}},
+
+           'binding_patterns': {4: 'SUPPLIER'}},
+
+  '12' : {'stmts'    : {0: {'map_vars': [("HIGH_LINE_COUNT",          ["L_SHIPMODE"])
+                                         ("HIGH_LINE_COUNT_mORDERS1", ["L_SHIPMODE", "ORDERS_ORDERKEY"])
+                                         ("HIGH_LINE_COUNT_mORDERS4", ["L_SHIPMODE", "ORDERS_ORDERKEY"])]},
+
+                        3: {'map_vars': [("LOW_LINE_COUNT",           ["L_SHIPMODE"])
+                                         ("HIGH_LINE_COUNT_mORDERS1", ["L_SHIPMODE", "ORDERS_ORDERKEY"])
+                                         ("HIGH_LINE_COUNT_mORDERS4", ["L_SHIPMODE", "ORDERS_ORDERKEY"])]}},
+
+          'bindings' : {'LINEITEM': {"LINEITEM_ORDERKEY", "LINEITEM_PARTKEY", "LINEITEM_SUPPKEY", "LINEITEM_LINENUMBER",
+                                  "LINEITEM_QUANTITY", "LINEITEM_EXTENDEDPRICE", "LINEITEM_DISCOUNT", "LINEITEM_TAX",
+                                  "LINEITEM_RETURNFLAG", "LINEITEM_LINESTATUS", "LINEITEM_SHIPDATE", "LINEITEM_COMMITDATE",
+                                  "LINEITEM_RECEIPTDATE", "LINEITEM_SHIPINSTRUCT", "LINEITEM_SHIPMODE", "LINEITEM_COMMENT"},
+
+                       'ORDERS'  : {"ORDERS_ORDERKEY", "ORDERS_CUSTKEY", "ORDERS_ORDERSTATUS", "ORDERS_TOTALPRICE",
+                                    "ORDERS_ORDERDATE", "ORDERS_ORDERPRIORITY", "ORDERS_CLERK", "ORDERS_SHIPPRIORITY", "ORDERS_COMMENT"}},
+
+          'binding_patterns': {0: 'ORDERS', 3: 'ORDERS'}},
 }
+
+
+
 
 # Per-invocation globals.
 query = ""
