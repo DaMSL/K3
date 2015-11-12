@@ -9,7 +9,10 @@ trigger t : () = \_ -> (
   print ("Initial size: " ++ (itos (c.size())));
 
   c.unsafe_at 3 (\r -> print ("unsafe_at elem@3: " ++ (itos r.elem)));
-  (print ("erase_at elem@3: " ++ (itos (c.erase_at 3).elem)))
+  (print ("erase_at elem@3: " ++ (itos (c.erase_at 3).elem)));
+  
+  //// TO GPU ?? ////
+  c.to_device ()
 )
 
 source s1 : () = value ()			    

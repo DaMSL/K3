@@ -28,7 +28,7 @@ annotation GPUVector given type a, b, c, d
   /////////////////////////////////////
 
   // Transfer host vector to device
-  provides lifted to_device : self -> gpuself 
+  provides lifted to_device : () -> gpuself 
     with effects \_ -> R[self]
 
 }

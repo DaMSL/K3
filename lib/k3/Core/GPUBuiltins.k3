@@ -1,0 +1,12 @@
+include "Annotation/Collection.k3"
+
+// CUDA Driver API Wrapper
+declare get_device_count : () -> int
+
+// A Simple function, send a GPU code string and
+// compile it in runtime with no headers
+// Usage: compile_ptx <code string> <ptx filename>
+@:CArgs 1
+declare compile_ptx : string -> string -> ()
+  with effects \x -> [R[x]]
+
