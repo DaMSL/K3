@@ -7,14 +7,14 @@ map_buckets_by_query = {
                   'ORDER_COUNT_mLINEITEM1'    : (2, [4,4]),
                   'ORDER_COUNT_mORDERS3_E1_1' : (3, [4]) }},
 
-  '3': {'maps': { "QUERY3"                        : (1, [8, 8, 8]),
-                  "QUERY3_mLINEITEM1"             : (2, [8, 8, 8]),
-                  "QUERY3_mLINEITEM1_mCUSTOMER2"  : (3, [8, 8, 8, 8]),
-                  "QUERY3_mORDERS1"               : (4, [8]),
-                  "QUERY3_mORDERS3"               : (5, [8]),
-                  "QUERY3_mORDERS6"               : (6, [8]),
-                  "QUERY3_mCUSTOMER2"             : (7, [8, 8, 8, 8]),
-                  "QUERY3_mCUSTOMER4"             : (8, [8, 8, 8, 8]),
+  '3': {'maps': { "QUERY3"                        : (1, [4, 4, 4]),
+                  "QUERY3_mLINEITEM1"             : (2, [4, 4, 4]),
+                  "QUERY3_mLINEITEM1_mCUSTOMER2"  : (3, [4, 4, 4, 4]),
+                  "QUERY3_mORDERS1"               : (4, [4]),
+                  "QUERY3_mORDERS3"               : (5, [4]),
+                  "QUERY3_mORDERS6"               : (6, [4]),
+                  "QUERY3_mCUSTOMER2"             : (7, [4, 4, 4, 4]),
+                  "QUERY3_mCUSTOMER4"             : (8, [4, 4, 4, 4]),
                 }},
 
   '10': {'maps': { "REVENUE"                     : (2, [8, 8, 8, 8, 8, 8, 8]),
@@ -148,7 +148,7 @@ def init_pattern(query_id, as_routing):
   global stmts
   global buckets
   query = query_id
-  valid = query in map_buckets_by_query && (not as_routing || query in stmts_by_query)
+  valid = query in map_buckets_by_query and (not as_routing or query in stmts_by_query)
   if valid:
     buckets = map_buckets_by_query[query_id]
     if as_routing:
