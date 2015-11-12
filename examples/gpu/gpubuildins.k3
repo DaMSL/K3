@@ -1,0 +1,12 @@
+include "Core/Builtins.k3"
+include "Core/GPUBuiltins.k3"
+
+declare devicecount : mut int = 0
+
+trigger t : () = \_ -> (
+   devicecount = get_device_count ();
+   print ("GPU device count: " ++ (itos devicecount)) 
+)
+
+source s1 : () = value ()
+feed s1 |> t

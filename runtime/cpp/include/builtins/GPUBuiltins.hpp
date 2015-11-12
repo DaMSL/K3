@@ -32,7 +32,7 @@ public:
     return unit_t{};
   }
 
-
+};
 } // namespace K3
  
 #endif

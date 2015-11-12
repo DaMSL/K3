@@ -28,7 +28,8 @@ class ProgramContext : public StandardBuiltins,
                        public FileBuiltins,
                        public MosaicBuiltins,
                        public VectorBuiltins,
-                       public AmplabLoaders {
+                       public AmplabLoaders, 
+	               public GPUBuiltins {
  public:
   explicit ProgramContext(Engine& e);
   virtual ~ProgramContext() { }
