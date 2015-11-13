@@ -12,7 +12,11 @@ namespace K3 {
 class GPUBuiltins {
 
 public:
-  GPUBuiltins();
+  GPUBuiltins(){
+    /* initialize CUDA driver API here */
+    if(CUDA_SUCCESS != cuInit(0))
+      throw "CUDA Driver cannot be initialized.";
+  }
 
   /* CUDA Driver API wrapper */
   int get_device_count(unit_t) { 
