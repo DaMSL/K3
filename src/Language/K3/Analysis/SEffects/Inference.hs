@@ -936,6 +936,7 @@ inferDeclEffect extInfOpt d@(tag -> DTrigger n _ e) = do
   void $ fistoreM n u f
   return d
 
+{-
 inferDeclEffect extInfOpt d@(tag -> DDataAnnotation n _ mems) = do
   mEffs <- mapM inferMems mems
   void $ fistoreaM n $ catMaybes mEffs
@@ -952,6 +953,7 @@ inferDeclEffect extInfOpt d@(tag -> DDataAnnotation n _ mems) = do
               Just (DEffect eff) -> either return return eff
               _ -> maybe (effectsOfType [] mt) (inferEffects extInfOpt) meOpt
       return $ Just (mn, u, mf, lifted)
+-}
 
 inferDeclEffect _ d = return d
 

@@ -1040,6 +1040,7 @@ inferDeclProv d@(tag -> DTrigger n _ e) = do
   void $ pistoretM n u $ (tisdup ti, pglobal n p')
   return d
 
+{-
 inferDeclProv d@(tag -> DDataAnnotation n _ mems) = do
   mProvs <- mapM inferMemsProv mems
   void $ pistoreatM n $ catMaybes mProvs
@@ -1056,6 +1057,7 @@ inferDeclProv d@(tag -> DDataAnnotation n _ mems) = do
                     Just (DProvenance prv) -> declProvWithTI prv
                     _ -> initProvWithTI mt meOpt
       return $ Just (mn,u,mp,lifted,ti)
+-}
 
 inferDeclProv d = return d
 
