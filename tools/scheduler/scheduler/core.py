@@ -91,6 +91,7 @@ class Job:
     self.jsonlog        = kwargs.get("jsonlog", False)
     self.jsonfinal      = kwargs.get("jsonfinal", False)
     self.perf_profile   = kwargs.get("perf_profile", False)
+    self.core_dump      = kwargs.get("core_dump", False)
     self.perf_frequency = kwargs.get("perf_frequency", '10')
     self.stdout         = kwargs.get("stdout", False)
     self.roles          = {}

@@ -199,7 +199,6 @@ public:
 
 
     // Build the K3 Command which will run inside this container
-    k3_cmd = "cd $MESOS_SANDBOX && ";
     if (hostParams["perf_profile"]) {
       string frequency = hostParams["perf_frequency"] ? hostParams["perf_frequency"].as<string>() : "10";
       k3_cmd += "perf record -F " + frequency + " -a --call-graph dwarf -- ";
@@ -224,6 +223,7 @@ public:
     string datapolicy = "default";
     int peerStart = 0;
     int peerEnd = 0;
+    bool ulimit = false;
 
     // Create host-specific set of parameters (e.g. peers, local data files, etc...
     for (const_iterator param=hostParams.begin(); param!=hostParams.end(); param++)  {
@@ -235,7 +235,9 @@ public:
         if (key == "roles") {
           continue;
         }
-
+        else if (key == "core_dump") {
+            ulimit = true;
+        }
         else if (key == "peers") {
             peerParams["peers"] = hostParams["peers"];
         }
@@ -353,6 +355,13 @@ public:
             }
           }
         }
+        else if (dataFile.policy == "local") {
+          int localPeers = peers.size();
+          for (int i = 0; i < numfiles; i++) {
+            int peer = i % localPeers;
+            peerFiles[peer][dataFile.varName].push_back(filePaths[i]);
+          }
+        }
         else if (dataFile.policy == "replicate") {
           for (unsigned int p = 0; p < peers.size(); p++) {
             for (int i =0; i < numfiles; i++) {
@@ -365,6 +374,7 @@ public:
         else if (dataFile.policy == "pinned") {
           for(int filenum = 0; filenum < numfiles; filenum++) {
             peerFiles[0][dataFile.varName].push_back(filePaths[filenum]);
+            myfiles++;
           }
 
         }
@@ -552,12 +562,20 @@ public:
     // Redirect Program's output
     k3_cmd += " > stdout_" + host_name + " 2>&1";
 
-    // Wrap the k3_cmd with a call to ulimit
-    //std::ostringstream ul;
-    //ul << "cd $MESOS_SANDBOX && bash -c 'ulimit -c unlimited && " << k3_cmd << "'";
-    //std::string ulimit_cmd = ul.str(); 
-    
-    cout << "FINAL COMMAND: " << k3_cmd << endl;
+    string final_cmd;
+
+    if (ulimit) {
+        // Wrap the k3_cmd with a call to ulimit
+        std::ostringstream ul;
+        ul << "cd $MESOS_SANDBOX && bash -c 'ulimit -c unlimited && " << k3_cmd << "'";
+        std::string ulimit_cmd = ul.str();
+        final_cmd = ulimit_cmd;
+    } else {
+        final_cmd = "cd $MESOS_SANDBOX && " + k3_cmd;
+    }
+
+
+    cout << "FINAL COMMAND: " << final_cmd << endl;
 
     bool isMaster = false;
     cout << "Checking master" << endl;
@@ -566,9 +584,7 @@ public:
             cout << "I am master" << endl;
     }
     cout << "Launching K3: " << endl;
-    thread = new std::thread(runK3Job, task, k3_cmd, driver, isMaster, webaddr, app_name, job_id, host_name);
-
-
+    thread = new std::thread(runK3Job, task, final_cmd, driver, isMaster, webaddr, app_name, job_id, host_name);
   }
 
 

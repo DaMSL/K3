@@ -380,6 +380,7 @@ def run_deploy_k3_remote(uid, server_url, bin_path, nice_name, script_path, perf
   uid_s = uid == "latest" ? "" : "/#{uid}"
 
   # Generate mesos yaml file"
+  stage "[5] Generating YAML deployment configuration"
   gen_yaml(role_path, script_path) unless $options[:raw_yaml_file]
 
   stage "[5] Creating new mesos job"
@@ -395,6 +396,9 @@ def run_deploy_k3_remote(uid, server_url, bin_path, nice_name, script_path, perf
     if perf_frequency != ""
       curl_args['perf_frequency'] = perf_frequency
     end
+  end
+  if $options[:core_dump]
+    curl_args['core_dump'] = 'yes'
   end
   res = curl(server_url, "/jobs/#{nice_name}#{uid_s}", json:true, post:true, file:role_path, args:curl_args)
   jobid = res['jobId']
@@ -754,6 +758,7 @@ def main()
     opts.on("--no-ktrace", "Turn off JSON logging for ktrace") { $options[:logging] = :none }
     opts.on("--perf-profile", "Turn on perf profiling") { $options[:profile] = :perf }
     opts.on("--perf-frequency [NUM]", String, "Set perf profiling frequency") { |s| $options[:perf_frequency] = s }
+    opts.on("--core-dump", "Turn on core dump for distributed run") { $options[:core_dump] = true }
     opts.on("--dots", "Get the awesome dots") { $options[:dots] = true }
     opts.on("--gc-epoch [MS]", "Set gc epoch time (ms)") { |i| $options[:gc_epoch] = i }
     opts.on("--msg-delay [MS]", "Set switch message delay (ms)") { |i| $options[:msg_delay] = i }
