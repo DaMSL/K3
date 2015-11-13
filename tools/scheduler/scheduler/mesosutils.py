@@ -107,7 +107,7 @@ def executorInfo(k3job, tnum, webaddr): #, jobid, binary_url, volumes=[], enviro
   if docker.privileged:
     logging.warning ("NOTE: running privileged mode")
 
-   
+
   # Create the Container
   container = mesos_pb2.ContainerInfo()
   container.type = container.DOCKER
@@ -152,6 +152,7 @@ def taskInfo(k3job, tnum, webaddr, slaveId):
       "jsonfinal"        : k3job.jsonfinal,
       "perf_profile"     : k3job.perf_profile,
       "perf_frequency"   : k3job.perf_frequency,
+      "core_dump"        : k3job.core_dump,
       "stdout"           : k3job.stdout }
 
   # TODO:  When logging is fully implemented, remove this & update executor to accept
@@ -167,6 +168,9 @@ def taskInfo(k3job, tnum, webaddr, slaveId):
 
   if task_data['perf_profile'] == False:
     del task_data['perf_profile']
+
+  if task_data['core_dump'] == False:
+    del task_data['core_dump']
 
   if task_data['perf_frequency'] == '':
     del task_data['perf_frequency']

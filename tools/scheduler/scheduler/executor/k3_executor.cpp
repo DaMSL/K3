@@ -235,7 +235,7 @@ public:
         if (key == "roles") {
           continue;
         }
-        else if (key == "ulimit") {
+        else if (key == "core_dump") {
             ulimit = true;
         }
         else if (key == "peers") {

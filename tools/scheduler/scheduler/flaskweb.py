@@ -645,6 +645,7 @@ def createJob(appName, appUID):
         jsonfinal      = True if 'jsonfinal' in request.form else False
         perf_profile   = True if 'perf_profile' in request.form else False
         perf_frequency = request.form['perf_frequency'] if 'perf_frequency' in request.form else ''
+        core_dump      = True if 'core_dump' in request.form else False
         stdout = request.form['stdout'] if 'stdout' in request.form else False
         user = request.form['user'] if 'user' in request.form else 'anonymous'
         tag = request.form['tag'] if 'tag' in request.form else ''
@@ -657,6 +658,7 @@ def createJob(appName, appUID):
         logger.debug("JSON LOGGING is :  %s"       %  ("ON" if jsonlog else "OFF"))
         logger.debug("JSON FINAL LOGGING is :  %s" %  ("ON" if jsonfinal else "OFF"))
         logger.debug("PERF PROFILING is :  %s"     %  ("ON" if perf_profile else "OFF"))
+        logger.debug("CORE DUMPS are :  %s"        %  ("ON" if core_dump else "OFF"))
         # trials = int(request.form['trials']) if 'trials' in request.form else 1
 
         # Check for valid submission
@@ -691,7 +693,7 @@ def createJob(appName, appUID):
         newJob = Job(binary=apploc, appName=appName, jobId=jobId,
                      rolefile=os.path.join(path, filename), logging=k3logging,
                      jsonlog=jsonlog, jsonfinal=jsonfinal,
-                     perf_profile=perf_profile, perf_frequency=perf_frequency)
+                     perf_profile=perf_profile, perf_frequency=perf_frequency, core_dump=core_dump)
 
         # Submit to Mesos
         dispatcher.submit(newJob)
