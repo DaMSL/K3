@@ -80,7 +80,7 @@ transformM cstages prog = foldM processStage (prog, []) cstages
     processStage (p,lg) SCGPrepare             = trace "Running SCGPrepare stage."       $ chainLog   lg $ ST.runCGPreparePassesM p
     processStage (p,lg) (SMaterialization dbg) = trace "Running SMaterialization stage." $ chainLog   lg $ ST.materializationPass dbg (MatI.prepareInitialIState dbg p) p
     processStage (p,lg) SCodegen               = trace "Running SCodegen stage."         $ chainLog   lg $ ST.runCGPassesM p
-    processStage (p,lg) (SDeclOpt cSpec)       = wrapReport lg $ ST.runDeclOptPassesM cSpec Nothing p
+    processStage (p,lg) (SDeclOpt cSpec)       = trace "Running SDeclOpt stage."         $ wrapReport lg $ ST.runDeclOptPassesM cSpec Nothing p
 
     chainLog   lg m = m >>= return . (,lg)
     wrapReport lg m = m >>= \np -> get >>= \st -> return (np, lg ++ (prettyLines $ ST.report st))
