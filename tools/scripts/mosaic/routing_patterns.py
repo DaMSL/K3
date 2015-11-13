@@ -62,7 +62,11 @@ map_buckets_by_query = {
                    "QUERY18_mCUSTOMER1_mLINEITEM1" : (4, [4, 4, 4, 4]),
                    "QUERY18_mLINEITEM1"            : (5, [4, 4, 4, 4, 4]),
                    "QUERY18_mLINEITEM1_mLINEITEM1" : (6, [4, 4, 4, 4, 4]),
-                   "QUERY18_mLINEITEM1_E1_1_L1_1"  : (7, [4]) }}
+                   "QUERY18_mLINEITEM1_E1_1_L1_1"  : (7, [4]) }},
+
+  '22a': {'maps': {"QUERY22"                 : (1, [8]),
+                   "QUERY22_mCUSTOMER1"      : (2, [8, 8, 8]),
+                   "QUERY22_mCUSTOMER1_L3_1" : (4, [8]) }}
 }
 
 
@@ -288,6 +292,18 @@ stmts_by_query = {
                                8: 'ORDERS', 11: 'ORDERS', 12: 'ORDERS',
                                18: ':LINEITEM', 19: 'LINEITEM'}},
 
+  '22a' : {'stmts'    : {6: {'map_vars': [("QUERY22",                 ["C1_NATIONKEY"]),
+                                          ("QUERY22_mCUSTOMER1",      ["C1_NATIONKEY", "ORDERS_CUSTKEY", "C1_ACCTBAL"]),
+                                          ("QUERY22_mCUSTOMER1_L3_1", ["ORDERS_CUSTKEY"])]}},
+
+           'bindings' : {'ORDERS'  : {"ORDERS_ORDERKEY", "ORDERS_CUSTKEY", "ORDERS_ORDERSTATUS", "ORDERS_TOTALPRICE",
+                                     "ORDERS_ORDERDATE", "ORDERS_ORDERPRIORITY", "ORDERS_CLERK", "ORDERS_SHIPPRIORITY", "ORDERS_COMMENT"},
+
+                        'CUSTOMER': {"CUSTOMER_CUSTKEY", "CUSTOMER_NAME", "CUSTOMER_ADDRESS", "CUSTOMER_NATIONKEY", "CUSTOMER_PHONE",
+                                     "CUSTOMER_ACCTBAL", "CUSTOMER_MKTSEGMENT", "CUSTOMER_COMMENT"}
+                        },
+
+           'binding_patterns': {6: 'ORDERS'}},
 }
 
 

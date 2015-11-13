@@ -957,11 +957,12 @@ inferProgramProvenance symSOpt prog = do
     inferWithSimplify np = inferPlain np >>= simplifyProgramProvenance
 
     globalsProv :: K3 Declaration -> PInfM (K3 Declaration)
-    globalsProv p = inferAllRcrDecls p >>= inferAllDecls
+    globalsProv p = inferAllRcrDecls p >>= inferAllDataAnnotationDecls >>= inferAllDecls
 
-    inferAllRcrDecls p = mapProgram initializeRcrDeclProv return return Nothing p
-    inferAllDecls    p = mapProgram inferDeclProv return return Nothing p
-    markAllGlobals   p = mapProgram markGlobalProv return return Nothing p
+    inferAllRcrDecls            p = mapProgram initializeRcrDeclProv return return Nothing p
+    inferAllDataAnnotationDecls p = mapProgram inferDataAnnotationDeclProv return return Nothing p
+    inferAllDecls               p = mapProgram inferDeclProv return return Nothing p
+    markAllGlobals              p = mapProgram markGlobalProv return return Nothing p
 
 
 -- | Repeat provenance inference on a global with an initializer.
@@ -1057,6 +1058,26 @@ inferDeclProv d@(tag -> DDataAnnotation n _ mems) = do
       return $ Just (mn,u,mp,lifted,ti)
 
 inferDeclProv d = return d
+
+inferDataAnnotationDeclProv :: K3 Declaration -> PInfM (K3 Declaration)
+inferDataAnnotationDeclProv d@(tag -> DDataAnnotation n _ mems) = do
+  mProvs <- mapM inferMemsProv mems
+  void $ pistoreatM n $ catMaybes mProvs
+  return d
+
+  where
+    inferMemsProv m@(Lifted    Provides mn mt meOpt mas) = inferMemberProv m True  mn mt meOpt mas
+    inferMemsProv m@(Attribute Provides mn mt meOpt mas) = inferMemberProv m False mn mt meOpt mas
+    inferMemsProv _ = return Nothing
+
+    inferMemberProv mem lifted mn mt meOpt mas = do
+      u  <- memUID mem mas
+      (ti, mp) <- case find isDProvenance mas of
+                    Just (DProvenance prv) -> declProvWithTI prv
+                    _ -> initProvWithTI mt meOpt
+      return $ Just (mn,u,mp,lifted,ti)
+
+inferDataAnnotationDeclProv d = return d
 
 -- | Compute a provenance tree in a single pass, tracking expression-provenance associations.
 --   Then, apply a second pass to attach associated provenances to each expression node.
