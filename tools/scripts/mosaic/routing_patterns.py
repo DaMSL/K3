@@ -337,6 +337,11 @@ def get_free_lhs(stmt_id, bound_vars):
   (lhs_map_name, lhs_vars) = stmts['stmts'][stmt_id]['map_vars'][0]
   return (lhs_map_name, [(i,v) for (i,v) in enumerate(lhs_vars) if v not in bound_vars])
 
+# Returns names and positions of bound variables in an lhs map.
+def get_bound_lhs(stmt_id, bound_vars):
+  lhs_vars = stmts['stmts'][stmt_id]['map_vars'][0][1]
+  return [(i,v) for (i,v) in enumerate(lhs_vars) if v in bound_vars]
+
 # Returns all variables present in a statement's rhs except for those in ignores.
 def get_freebound_rhs(stmt_id, ignores):
   rhs_npv = {}
@@ -345,17 +350,29 @@ def get_freebound_rhs(stmt_id, ignores):
 
   return rhs_npv
 
-def rebuild_bucket(map_name, lb, rb, ridx, rpv):
+def rebuild_lhs_bucket(map_name, bb, bidx, lfb, lfpv):
   lidx = 0
-  idx_set = {p for (p,_) in rpv}
+  idx_set = {p for (p,_) in lfpv}
   bucket = []
   for i in range(len(buckets['maps'][map_name][1])):
     if i in idx_set:
+      bucket.append(lfb[lidx])
+      lidx += 1
+    else:
+      bucket.append(bb[bidx[(map_name, i)]])
+  return bucket
+
+def rebuild_rhs_bucket(map_name, bb, bidx, lb, rb, ridx):
+  lidx = 0
+  bucket = []
+  for i in range(len(buckets['maps'][map_name][1])):
+    if (map_name, i) in bidx:
+      bucket.append(bb[bidx[(map_name, i)]])
+    elif (map_name, i) in ridx:
       bucket.append(rb[ridx[(map_name, i)]])
     else:
       bucket.append(lb[lidx])
       lidx += 1
-
   return bucket
 
 def linearize(sizes, positions):
@@ -402,6 +419,8 @@ def generate_pattern(varname, stmt_id):
   (lhs_map_name, lhs_pv) = get_free_lhs(stmt_id, bindings)
   (lhs_map_id, lhs_bucket_sizes) = buckets['maps'][lhs_map_name]
 
+  lhs_bound_pv = get_bound_lhs(stmt_id, bindings)
+
   lhs_free_bs = [lhs_bucket_sizes[i] for (i,_) in lhs_pv]
   lhs_enums = [range(sz) for sz in lhs_free_bs]
 
@@ -410,15 +429,6 @@ def generate_pattern(varname, stmt_id):
 
   # A list of (mapname, position) pairs for rhs free variables.
   rhs_uniqf_pos = list({(rhs_map_name, p) for (rhs_map_name, rhs_pv) in rhs_npv.items() for (p,v) in rhs_pv if v not in bindings})
-
-  # A dict of varname => (mapname, position) pairs for rhs bound variables.
-  rhs_uniqb_vars = {}
-  for (rhs_map_name, rhs_pv) in rhs_npv.items():
-    for (p,v) in rhs_pv:
-      if v in bindings:
-        if v not in rhs_uniqb_vars:
-          rhs_uniqb_vars[v] = []
-        rhs_uniqb_vars[v].append((rhs_map_name, p))
 
   rhs_bucket_sizes = []
   rhs_enum_idx = {}
@@ -430,49 +440,78 @@ def generate_pattern(varname, stmt_id):
     rhs_bucket_sizes.append(buckets['maps'][n][1][p])
     cnt += 1
 
-  for (v,np) in rhs_uniqb_vars.items():
-    bs = 0
-    for (n,p) in np:
-      if bs == 0:
-        bs = buckets['maps'][n][1][p]
-      else:
-        if bs != buckets['maps'][n][1][p]:
-          raise ValueError("Bucket size mismatch on {}[{}]".format(n,v))
-      rhs_enum_idx[(n,p)] = cnt
-    rhs_bucket_sizes.append(bs)
-    cnt += 1
-
   rhs_enums = [range(sz) for sz in rhs_bucket_sizes]
 
+  # A dict of varname => (mapname, position) pairs for all bound
+  # variables occurrences in either lhs or rhs maps.
+  uniqb_vars = {}
+
+  for (p,v) in lhs_bound_pv:
+    if v not in uniqb_vars:
+      uniqb_vars[v] = []
+    uniqb_vars[v].append((lhs_map_name, p))
+
+  for (rhs_map_name, rhs_pv) in rhs_npv.items():
+    for (p,v) in rhs_pv:
+      if v in bindings:
+        if v not in uniqb_vars:
+          uniqb_vars[v] = []
+        uniqb_vars[v].append((rhs_map_name, p))
+
+  bound_bucket_sizes = []
+  bound_enum_idx = {}
+  bound_cnt = 0
+
+  for v in bindings:
+    bs = 0
+    if v in uniqb_vars:
+      for (n,p) in uniqb_vars[v]:
+        if bs == 0:
+          bs = buckets['maps'][n][1][p]
+        else:
+          if bs != buckets['maps'][n][1][p]:
+            raise ValueError("Bucket size mismatch on {}[{}]".format(n,v))
+        bound_enum_idx[(n,p)] = bound_cnt
+      bound_bucket_sizes.append(bs)
+      bound_cnt += 1
+
+  bound_enums = [range(sz) for sz in bound_bucket_sizes]
+
   if debug:
+      print("Bound:\n" + '\n'.join(["uniqb_vars:   {}".format(uniqb_vars),
+                                    "enum_idx:     {}".format(bound_enum_idx),
+                                    "bucket_sizes: {}".format(bound_bucket_sizes)]))
+
       print("LHS:\n" + "enums: {}".format(lhs_enums))
+
       print("RHS:\n" + '\n'.join(["npv:          {}".format(rhs_npv),
-                              "uniqf_pos:    {}".format(rhs_uniqf_pos),
-                              "uniqb_vars:   {}".format(rhs_uniqb_vars),
-                              "enum_idx:     {}".format(rhs_enum_idx),
-                              "bucket_sizes: {}".format(rhs_bucket_sizes)]))
+                                  "uniqf_pos:    {}".format(rhs_uniqf_pos),
+                                  "enum_idx:     {}".format(rhs_enum_idx),
+                                  "bucket_sizes: {}".format(rhs_bucket_sizes)]))
 
-  for lhs_bucket in itertools.product(*lhs_enums):
-    ltuple = [linearize(lhs_free_bs, lhs_bucket)]
-    if debug:
-        print("LT : {}".format(ltuple))
-        print("LB : {}".format(lhs_bucket))
-
-    for rhs_bucket in itertools.product(*rhs_enums):
+  for bound_bucket in itertools.product(*bound_enums):
+    for lhs_bucket in itertools.product(*lhs_enums):
+      lhs_map_bucket = rebuild_lhs_bucket(lhs_map_name, bound_bucket, bound_enum_idx, lhs_bucket, lhs_pv)
+      ltuple = [linearize(buckets['maps'][lhs_map_name][1], lhs_map_bucket)]
       if debug:
-          print("RB : {}".format(rhs_bucket))
-      tuple = list(ltuple)
-      for map_name in rhs_map_ids:
-        map_bucket = rebuild_bucket(map_name, lhs_bucket, rhs_bucket, rhs_enum_idx, rhs_npv[map_name])
-        tuple.append(linearize(buckets['maps'][map_name][1], map_bucket))
+          print("LT : {}".format(ltuple))
+          print("LB : {}".format(lhs_bucket))
+
+      for rhs_bucket in itertools.product(*rhs_enums):
         if debug:
-            print("MB {}: {}".format(map_name, map_bucket))
+            print("RB : {}".format(rhs_bucket))
+        tuple = list(ltuple)
+        for map_name in rhs_map_ids:
+          map_bucket = rebuild_rhs_bucket(map_name, bound_bucket, bound_enum_idx, lhs_bucket, rhs_bucket, rhs_enum_idx)
+          tuple.append(linearize(buckets['maps'][map_name][1], map_bucket))
+          if debug:
+              print("MB {}: {}".format(map_name, map_bucket))
 
-      if rhs_bucket not in pattern_map:
-        pattern_map[rhs_bucket] = []
-      pattern_map[rhs_bucket].append(tuple)
-      if debug:
-          print("{} {}".format(rhs_bucket, tuple))
+        if bound_bucket not in pattern_map:
+          pattern_map[bound_bucket] = []
+        pattern_map[bound_bucket].append(tuple)
+        if debug:
+            print("{} {}".format(bound_bucket, tuple))
 
   # Generate pattern yaml.
   k3ds = []
@@ -481,6 +520,7 @@ def generate_pattern(varname, stmt_id):
                  'value' : [k3tuple(x, collection=True) for x in v]})
 
   k3n = varname + str(stmt_id)
+  pattern_map = {}
   return {k3n: k3ds}
 
 def get_pmap(query):
