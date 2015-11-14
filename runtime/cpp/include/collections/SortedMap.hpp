@@ -253,7 +253,6 @@ class SortedMap {
   SortedMap<R> filter_lt(const R& k) const {
     const auto& x = getConstContainer();
     auto it = x.lower_bound(k.key);
-    if (it != x.begin()) --it;
     return SortedMap<R>(x.begin(), it);
   }
 
@@ -272,7 +271,6 @@ class SortedMap {
   SortedMap<R> filter_leq(const R& k) const {
     const auto& x = getConstContainer();
     auto it = x.upper_bound(k.key);
-    if (it != x.begin()) --it;
     return SortedMap<R>(x.begin(), it);
   }
 

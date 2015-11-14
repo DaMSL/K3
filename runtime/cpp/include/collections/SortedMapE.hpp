@@ -260,7 +260,6 @@ class SortedMapE {
   SortedMapE<R> filter_lt(const K& k) const {
     const auto& x = getConstContainer();
     auto it = x.lower_bound(k.key);
-    if (it != x.begin()) --it;
     return SortedMapE<R>(x.begin(), it);
   }
 
@@ -282,7 +281,6 @@ class SortedMapE {
   SortedMapE<R> filter_leq(const K& k) const {
     const auto& x = getConstContainer();
     auto it = x.upper_bound(k.key);
-    if (it != x.begin()) --it;
     return SortedMapE<R>(x.begin(), it);
   }
 

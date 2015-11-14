@@ -177,7 +177,6 @@ class SortedSet {
   SortedSet<Elem> filter_lt(const Elem& bound) const {
     const auto& x = getConstContainer();
     auto it = x.lower_bound(bound);
-    if (it != x.begin()) --it;
     return SortedSet<Elem>(x.begin(), it);
   }
 
@@ -196,7 +195,6 @@ class SortedSet {
   SortedSet<Elem> filter_leq(const Elem& bound) const {
     const auto& x = getConstContainer();
     auto it = x.upper_bound(bound);
-    if (it != x.begin()) --it;
     return SortedSet<Elem>(x.begin(), it);
   }
 
