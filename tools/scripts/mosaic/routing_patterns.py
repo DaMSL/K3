@@ -45,7 +45,7 @@ map_buckets_by_query = {
                    "AVG_YEARLY_mLINEITEM1"           : (3, [8]),
                    "AVG_YEARLY_mLINEITEM2_L1_1_L1_1" : (4, [8]),
                    "AVG_YEARLY_mLINEITEM2_L1_2"      : (5, [8]),
-                   "AVG_YEARLY_mLINEITEM5"           : (6, [8]) }},
+                   "AVG_YEARLY_mLINEITEM5"           : (6, [8, 8]) }},
 
   '18a': {'maps': { "QUERY18"                       : (1, [8]),
                     "QUERY18_mLINEITEM2"            : (2, [8, 8]),
