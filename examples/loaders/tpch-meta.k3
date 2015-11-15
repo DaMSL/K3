@@ -24,7 +24,7 @@ typedef q5_lineitem_r = { l_orderkey      : int,
                           l_suppkey       : int,
                           l_extendedprice : real,
                           l_discount      : real,
-			  meta: int
+                          meta: int
                         }
 
 
