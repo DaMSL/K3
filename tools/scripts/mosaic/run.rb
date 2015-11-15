@@ -261,6 +261,7 @@ def gen_yaml(role_path, script_path)
   end
   extra_args << "do_poly_reserve=false" if $options[:no_poly_reserve]
   extra_args << "do_profiling=true" if $options[:event_profile]
+  extra_args << "do_tracing=true" if $options[:str_trace]
   if $options[:buckets]
     extra_args << "pmap_buckets=" + $options[:buckets]
   else
@@ -768,6 +769,7 @@ def main()
     opts.on("--batch-size [SIZE]", "Set the batch size") {|s| $options[:batch_size] = s }
     opts.on("--no-reserve", "Prevent reserve on the poly buffers") { $options[:no_poly_reserve] = true }
     opts.on("--event-profile", "Run with event profiling") { $options[:event_profile] = true }
+    opts.on("--str-trace", "Run with string tracing") { $options[:str_trace] = true }
     opts.on("--raw-yaml [FILE]", "Supply a yaml file") { |s| $options[:raw_yaml_file] = s }
     opts.on("--map-overlap [FLOAT]", "Adjust % overlap of maps on cluster. 100%=all maps everywhere") { |f| $options[:map_overlap] = f }
     opts.on("--buckets [INT]", "Number of buckets (partitioning)") { |s| $options[:buckets] = s }
