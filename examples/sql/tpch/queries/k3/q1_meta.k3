@@ -1,0 +1,136 @@
+include "tpch/benchmark.k3"
+include "Annotation/Set.k3"
+
+declare master : address
+
+typedef q1_agg = { sum_qty: real, sum_base_price: real, sum_disc_price: real, sum_charge: real
+                 , avg_qty_sum : real, avg_price_sum : real, avg_disc_sum : real, sum_bxp: real, count_order : int }
+
+typedef q1_result_r = { l_returnflag   : string
+                      , l_linestatus   : string
+                      , ay             : string
+                      , sum_qty        : real
+                      , sum_base_price : real
+                      , sum_disc_price : real
+                      , sum_charge     : real
+                      , avg_qty        : real
+                      , avg_price      : real
+                      , avg_disc       : real
+                      , sum_bxp       : real
+                      , count_order    : int }
+
+typedef q1_result = collection q1_result_r @Collection
+
+declare lineitem_r  : lineitem_r
+declare lineitem    : mut q1_lineitem_meta_bag
+declare init_agg    : q1_agg
+declare results     : mut q1_result
+
+declare accum_agg : q1_agg -> q1_lineitem_meta_r -> q1_agg = \acc -> \r ->
+  { sum_qty        : acc.sum_qty        + r.l_quantity
+  , sum_base_price : acc.sum_base_price + r.l_extendedprice
+  , sum_disc_price : acc.sum_disc_price + (r.l_extendedprice * (1 - r.l_discount))
+  , sum_charge     : acc.sum_charge     + (r.l_extendedprice * (1 - r.l_discount) * (1 + r.l_tax))
+  , avg_qty_sum    : acc.avg_qty_sum    + r.l_quantity
+  , avg_price_sum  : acc.avg_price_sum  + r.l_extendedprice
+  , avg_disc_sum   : acc.avg_disc_sum   + r.l_discount
+  , sum_bxp        : acc.sum_bxp        + r.meta.b.x.p
+  , count_order    : acc.count_order    + 1
+  }
+
+declare merge_agg : q1_agg -> q1_agg -> q1_agg = \a -> \b -> (
+  { sum_qty        : a.sum_qty        + b.sum_qty
+  , sum_base_price : a.sum_base_price + b.sum_base_price
+  , sum_disc_price : a.sum_disc_price + b.sum_disc_price
+  , sum_charge     : a.sum_charge     + b.sum_charge
+  , avg_qty_sum    : a.avg_qty_sum    + b.avg_qty_sum
+  , avg_price_sum  : a.avg_price_sum  + b.avg_price_sum
+  , avg_disc_sum   : a.avg_disc_sum   + b.avg_disc_sum
+  , sum_bxp        : a.sum_bxp        + b.sum_bxp
+  , count_order    : a.count_order    + b.count_order
+  }
+)
+
+declare finalize_agg : {key: (string, string, string), value: q1_agg} -> q1_result_r = \r ->
+  bind r.key as (retflag, linestat, ay) in
+  { l_returnflag   : retflag
+  , l_linestatus   : linestat
+  , ay             : ay
+  , sum_qty        : r.value.sum_qty
+  , sum_base_price : r.value.sum_base_price
+  , sum_disc_price : r.value.sum_disc_price
+  , sum_charge     : r.value.sum_charge
+  , avg_qty        : r.value.avg_qty_sum   / r.value.count_order
+  , avg_price      : r.value.avg_price_sum / r.value.count_order
+  , avg_disc       : r.value.avg_disc_sum  / r.value.count_order
+  , count_order    : r.value.count_order }
+
+
+declare order_agg : {elem : q1_result_r} -> {elem : q1_result_r} -> int =
+  \a -> \b -> let strdiff = strcomp a.elem.l_returnflag b.elem.l_returnflag
+              in if strdiff <> 0 then strdiff
+                 else strcomp a.elem.l_linestatus b.elem.l_linestatus
+
+trigger q1 : () = \_ -> (
+  (ignore
+    ((lineitem.filter   (\r -> r.l_shipdate <= 19980902))
+              .group_by (\r -> (r.l_returnflag, r.l_linestatus, r.meta.a.y))
+                        accum_agg
+                        init_agg)
+  ) @DistributedGroupBy(
+      lbl         = [# groupby],
+      clear_expr  = [$ lineitem = empty q1_lineitem_meta_r @Collection ],
+      peer_next   = [$ (\x -> ((x.iterate (\kv -> results.insert (finalize_agg kv)));
+                               ((() @:Result) @TPCHBenchmarkWithoutMaster))) ],
+      next        = [$ ()],
+      merge       = [$ merge_agg],
+      coordinator = [$ master],
+      nodes       = [$ peers],
+      masters     = [$ masters ],
+      masters_map = [$ peer_masters ],
+      profile     = [$ true] )
+)
+
+declare finalize : collection {key: address, value: q1_result} @Map -> () = \x -> (
+  (x.iterate (\t ->
+    t.value.iterate (\v ->
+      (results_sink, me) <- (v.l_returnflag,
+                             v.l_linestatus,
+                             v.sum_qty,
+                             v.sum_base_price,
+                             v.sum_disc_price,
+                             v.sum_charge,
+                             v.avg_qty,
+                             v.avg_price,
+                             v.avg_disc,
+                             v.count_order)
+    )
+   ))
+)
+
+declare populate_record_meta: () -> record_meta = \_ -> empty_record_meta
+
+trigger start : () = \_ -> (
+  (() @:Start) @TPCHBenchmarkWithoutMaster(
+    nodes                = [$ peers],
+    loadExpr             = [$ q1_lineitemLoaderMPC lineitemFiles lineitem lineitem_r populate_record_meta ],
+    preLoadExpr          = [$ ()],
+    preReadyExpr         = [$ ()],
+    onReadyExpr          = [$ (q1, me) <- ()],
+    finishArgT           = [: ()],
+    preTestFinishExpr    = [$ (\_ -> ())],
+    preFinishExpr        = [$ (ignore results) @GatherCollection(
+                                                    lbl   = [# groupby],
+                                                    nodes = [$ peers],
+                                                    next  = [$ (\a -> (finalize a; peers.iterate (\p -> (shutdown, p.addr) <- ()) ))])
+                           ],
+    preShutdownExpr      = [$ ()],
+    finishAsShutdownExpr = [$ false]
+  )
+)
+
+sink results_sink : (string, string, real, real, real, real, real, real, real, int)  = file "results.csv" text psv
+sink query_time_sink : int  = file "time.csv" text csv
+
+source rows : () = value ()
+feed rows |> start

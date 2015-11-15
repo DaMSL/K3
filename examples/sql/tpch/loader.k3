@@ -86,6 +86,8 @@ declare regionLoaderPE : collection {path: string} @Collection -> region_elem_ba
 declare q1_lineitemLoaderPC : collection {path: string} @Collection -> q1_lineitem_bag -> lineitem_r -> ()
   with effects \_ -> \_ -> \_ -> io
 
+declare q1_lineitemLoaderMPC : collection {path: string} @Collection -> q1_lineitem_meta_bag -> lineitem_r -> (() -> record_meta) -> ()
+  with effects \_ -> \_ -> \_ -> \_ -> io
 // Q3
 
 @:CArgs 3
