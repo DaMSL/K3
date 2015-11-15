@@ -1,0 +1,44 @@
+include "Annotation/Collection.k3"
+include "Core/Builtins.k3"
+
+typedef lineitem_r = {
+      l_orderkey         : int,
+      l_partkey          : int,
+      l_suppkey          : int,
+      l_linenumber       : int,
+      l_quantity         : real,
+      l_extendedprice    : real,
+      l_discount         : real,
+      l_tax              : real,
+      l_returnflag       : string,
+      l_linestatus       : string,
+      l_shipdate         : int @::TPCHDate,
+      l_commitdate       : int @::TPCHDate,
+      l_receiptdate      : int @::TPCHDate,
+      l_shipinstruct     : string,
+      l_shipmode         : string,
+      l_comments         : string
+    }
+
+typedef q5_lineitem_r = { l_orderkey      : int,
+                          l_suppkey       : int,
+                          l_extendedprice : real,
+                          l_discount      : real,
+			  meta: int
+                        }
+
+
+declare q5_lineitemLoaderMPC : collection {path: string} @Collection -> collection q5_lineitem_r @Collection -> lineitem_r -> (() -> int) -> ()
+  with effects \_ -> \_ -> \_ -> io
+declare paths: collection {path: string} @Collection
+declare lineitem: collection q5_lineitem_r @Collection
+declare wit: lineitem_r
+
+trigger t: () = \_ -> (
+  q5_lineitemLoaderMPC paths lineitem wit (\_ -> 5);
+  lineitem.iterate (\x -> print (itos x.meta));
+  haltEngine()
+)
+
+source s1: () = value ()
+feed s1 |> t
