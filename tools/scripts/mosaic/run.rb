@@ -39,7 +39,9 @@ end
 
 def run_mosaic(k3_path, mosaic_path, source)
   stage "[1] Creating mosaic files"
-  run("#{File.join(mosaic_path, "tests", "auto_test.py")} --workdir #{$workdir} --no-interp -d -f #{source}")
+  args = ""
+  args << "--no-deletes " unless $options[:use_deletes]
+  run("#{File.join(mosaic_path, "tests", "auto_test.py")} --workdir #{$workdir} --no-interp #{args} -d -f #{source}")
 
   # change the k3 file to use the dynamic path
   s = File.read(k3_path)
@@ -771,6 +773,7 @@ def main()
     opts.on("--buckets [INT]", "Number of buckets (partitioning)") { |s| $options[:buckets] = s }
     opts.on("--replicas [INT]", "Number of replicas in consistent hashing (for partitioning)") { |s| $options[:replicas] = s }
     opts.on("--query [NAME]", "Name of query to run (optional, derived from path)") { |s| $options[:query] = s }
+    opts.on("--use-deletes", "Generate deletes") { $options[:use_deletes] = true }
 
     # Compile args synonyms
     opts.on("--compileargs [STRING]", "Pass arguments to compiler (distributed only)") { |s| $options[:compileargs] = s }
