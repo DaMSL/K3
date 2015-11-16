@@ -249,6 +249,7 @@ def gen_yaml(role_path, script_path)
     cmd << "--tpch_inorder_path " << $options[:tpch_inorder_path] << " "
   end
   cmd << "--dist " if $options[:run_mode] == :dist
+  cmd << "--latency-profiling " if $options[:latency_profiling]
 
   extra_args = []
   extra_args << "ms_gc_interval=" + $options[:gc_epoch] if $options[:gc_epoch]
@@ -769,6 +770,10 @@ def main()
     opts.on("--batch-size [SIZE]", "Set the batch size") {|s| $options[:batch_size] = s }
     opts.on("--no-reserve", "Prevent reserve on the poly buffers") { $options[:no_poly_reserve] = true }
     opts.on("--event-profile", "Run with event profiling") { $options[:event_profile] = true }
+    opts.on("--latency-profiling", "Run with latency profiling options") {
+      $options[:event_profile] = true
+      $options[:latency_profiling] = true
+    }
     opts.on("--str-trace", "Run with string tracing") { $options[:str_trace] = true }
     opts.on("--raw-yaml [FILE]", "Supply a yaml file") { |s| $options[:raw_yaml_file] = s }
     opts.on("--map-overlap [FLOAT]", "Adjust % overlap of maps on cluster. 100%=all maps everywhere") { |f| $options[:map_overlap] = f }

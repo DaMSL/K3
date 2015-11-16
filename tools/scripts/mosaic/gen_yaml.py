@@ -146,6 +146,9 @@ def create_local_file(args):
                 peer.update(opt_route)
 
         if role == 'switch' or role == 'switch_old':
+            if args.latency_profiling:
+                peer['mosaic_event_buffer_batch_sz'] = 1
+                peer['mosaic_event_sample_mod'] = 0
             if args.csv_path:
                 peer['switch_path'] = args.csv_path
             if args.tpch_data_path:
@@ -202,6 +205,10 @@ def create_dist_file(args):
         switch_role['inorder'] = args.tpch_inorder_path
     switch_role.update(pmap if pmap is not None else {})
     switch_role.update(opt_route if opt_route is not None else {})
+    # latency profiling needs full switch logging
+    if args.latency_profiling:
+        switch_role['mosaic_event_buffer_batch_sz'] = 1
+        switch_role['mosaic_event_sample_mod'] = 0
     switch_role.update(extra_args)
 
     node_role = {'role': wrap_role('node')}
@@ -283,6 +290,7 @@ def main():
     parser.add_argument("--tpch_infer_inorder_path", action='store_false', default=True, help="automatic inorder file")
     parser.add_argument("--tpch_query", type=str, help="query")
     parser.add_argument("--extra-args", help="extra arguments in x=y format")
+    parser.add_argument("--latency-profiling", action='store_true', default=False, dest="latency_profiling", help="activate profiling")
     args = parser.parse_args()
     if args.run_mode == "dist":
         create_dist_file(args)
