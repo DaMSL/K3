@@ -84,7 +84,7 @@ declare merge_q_by_ncodt_r : loc_q_by_ncodt_r -> loc_q_by_ncodt_r -> loc_q_by_nc
   = \a -> \b -> {key: a.key, value: a.value + b.value}
 
 trigger lineitem_having : () = \_ -> (
-  (ignore (lineitem.group_by (\li -> { k: li.l_orderkey, m: li.meta.b.y })
+  (ignore (lineitem.group_by (\li -> { k: li.l_orderkey, m: li.meta.a.y })
                             (\acc -> \li -> acc + li.l_quantity)
                             0.0)
   ) @DistributedGroupBy(
