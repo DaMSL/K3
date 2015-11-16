@@ -174,8 +174,8 @@ def process_events(switch_files, node_files, save_intermediate):
 
 def main():
   parser = argparse.ArgumentParser()
-  parser.add_argument('--switches', metavar='SWITCH_EVENTS', nargs='+', required=True, dest='switch_files', help='switch event data files')
-  parser.add_argument('--nodes',    metavar='NODE_EVENTS',   nargs='+', required=True, dest='node_files',   help='node event data files')
+  parser.add_argument('-s', '--switches', metavar='SWITCH_EVENTS', nargs='+', required=True, dest='switch_files', help='switch event data files')
+  parser.add_argument('-n', '--nodes',    metavar='NODE_EVENTS',   nargs='+', required=True, dest='node_files',   help='node event data files')
   parser.add_argument('--save', default=False, action='store_true', help='save intermediate output')
   args = parser.parse_args()
   if args:

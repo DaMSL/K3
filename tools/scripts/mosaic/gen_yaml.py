@@ -151,6 +151,8 @@ def create_local_file(args):
             if args.latency_profiling:
                 peer['mosaic_event_buffer_batch_sz'] = 1
                 peer['mosaic_event_sample_mod'] = 0
+                peer['mosaic_route_sample_mod'] = 1000000
+                peer['mosaic_sendput_sample_mod'] = 1000000
             if args.csv_path:
                 peer['switch_path'] = args.csv_path
             if args.tpch_data_path:

@@ -23,6 +23,11 @@ unit_t StandardBuiltins::sleep(int n) {
   return unit_t();
 }
 
+unit_t StandardBuiltins::usleep(int n) {
+  std::this_thread::sleep_for(std::chrono::microseconds(n));
+  return unit_t();
+}
+
 unit_t StandardBuiltins::haltEngine(unit_t) {
   throw EndOfProgramException();
   return unit_t();

@@ -17,7 +17,10 @@ class StandardBuiltins {
   StandardBuiltins(Engine& engine);
 
   unit_t print(const string_impl& message);
-  unit_t sleep(int n);
+
+  unit_t sleep(int n);    // Sleep in milliseconds
+  unit_t usleep(int n);   // Sleep in microseconds
+
   unit_t haltEngine(unit_t);
 
   template <class T>
