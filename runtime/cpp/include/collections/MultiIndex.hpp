@@ -34,6 +34,7 @@
 #include <bdlma_multipoolallocator.h>
 #include <bdlma_sequentialallocator.h>
 #include <bdlma_localsequentialallocator.h>
+#include <bdlma_countingallocator.h>
 #endif
 
 namespace K3 {
@@ -554,6 +555,8 @@ public:
   #elif BLOCAL
   constexpr size_t lsz = 2<<14;
   extern thread_local BloombergLP::bdlma::LocalSequentialAllocator<lsz>* mpool;
+  #elif BCOUNT
+  extern thread_local BloombergLP::bdlma::CountingAllocator* mpool;
   #else
   extern thread_local BloombergLP::bdlma::MultipoolAllocator* mpool;
   #endif
@@ -707,7 +710,6 @@ class MultiIndexVMap
         if ( vit != vmap.end() ) {
           vmap.erase(vit);
           do_insert = true;
-        } else {
         }
       });
       if ( do_insert ) {
@@ -747,9 +749,9 @@ class MultiIndexVMap
         auto& vmap = std::get<1>(elem);
         auto vexisting = vmap.find(v);
         if ( vexisting == vmap.end() ) {
-	  vmap.insert(vexisting, std::make_pair(v, rec));
+	        vmap.insert(vexisting, std::make_pair(v, rec));
         } else {
-	  vexisting->second = f(std::move(vexisting->second), rec);
+	        vexisting->second = f(std::move(vexisting->second), rec);
         }
       });
     }
@@ -769,7 +771,7 @@ class MultiIndexVMap
         auto& vmap = std::get<1>(elem);
         auto vexisting = vmap.find(v);
         if ( vexisting == vmap.end() ) {
-	  vmap.insert(vexisting, std::make_pair(v, f(unit_t{})));
+	        vmap.insert(vexisting, std::make_pair(v, f(unit_t{})));
         } else {
           vexisting->second = g(std::move(vexisting->second));
         }
@@ -833,7 +835,7 @@ class MultiIndexVMap
         auto& vmap = std::get<1>(elem);
         auto vit = vmap.upper_bound(v);
         if ( vit == vmap.end() ) {
-	  vmap.insert(vit, std::make_pair(v, f(unit_t{})));
+	        vmap.insert(vit, std::make_pair(v, f(unit_t{})));
         } else {
           vit->second = g(std::move(vit->second));
         }
@@ -878,7 +880,7 @@ class MultiIndexVMap
     return unit_t();
   }
 
-  // Inclusive update greater than a given version.
+  // Update (strictly) greater than a given version.
   template <class F>
   unit_t update_after(const Version& v, const R& rec, F f) {
     auto it = container.find(rec.key);

@@ -24,6 +24,7 @@
 #include <bdlma_multipoolallocator.h>
 #include <bdlma_sequentialallocator.h>
 #include <bdlma_localsequentialallocator.h>
+#include <bdlma_countingallocator.h>
 #include "collections/AllCollections.hpp"
 #endif
 
@@ -64,6 +65,9 @@ class Peer {
   BloombergLP::bdlma::MultipoolAllocator mpool_;
   #elif BLOCAL
   BloombergLP::bdlma::LocalSequentialAllocator<lsz> mpool_;
+  #elif BCOUNT
+  BloombergLP::bdlma::MultipoolAllocator backing_pool_;
+  BloombergLP::bdlma::CountingAllocator mpool_;
   #else
   BloombergLP::bdlma::MultipoolAllocator mpool_;
   #endif
