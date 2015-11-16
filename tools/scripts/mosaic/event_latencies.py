@@ -76,7 +76,7 @@ def event_span(tg, vid, t):
 def banner(s):
   return '\n'.join(['-' * 50, s, '-' * 50])
 
-def process_events(switch_files, node_files):
+def process_events(switch_files, node_files, save_intermediate):
   # Build an interval tree with switch files.
   # Probe and reconstruct latencies from node files.
   for fn in switch_files:
@@ -129,8 +129,8 @@ def process_events(switch_files, node_files):
           max_from_start('corr_done', vid, t)
           event_span('corr_done', vid, t)
 
-        else:
-          print("Unknown node tag: {tg}".format(**locals()))
+        # else:
+        #   print("Unknown node tag: {tg}".format(**locals()))
 
   # Build latency histograms
   print(banner("Computing latency histograms"))
@@ -159,22 +159,24 @@ def process_events(switch_files, node_files):
       except Exception:
         print("Exception on {}".format(k))
 
-  # Finally, save intermediate data for now.
-  print(banner("Saving intermediate latency data"))
+  if save_intermediate:
+    # Finally, save intermediate data for now.
+    print(banner("Saving intermediate latency data"))
 
-  with open('latencies.yml', 'w') as outfile:
-    yaml.dump(latencies, outfile, default_flow_style=True)
+    with open('latencies.yml', 'w') as outfile:
+      yaml.dump(latencies, outfile, default_flow_style=True)
 
-  with open('nodespans.yml', 'w') as outfile:
-    yaml.dump(nodespans, outfile, default_flow_style=True)
+    with open('nodespans.yml', 'w') as outfile:
+      yaml.dump(nodespans, outfile, default_flow_style=True)
 
 def main():
   parser = argparse.ArgumentParser()
   parser.add_argument('--switches', metavar='SWITCH_EVENTS', nargs='+', required=True, dest='switch_files', help='switch event data files')
   parser.add_argument('--nodes',    metavar='NODE_EVENTS',   nargs='+', required=True, dest='node_files',   help='node event data files')
+  parser.add_argument('--save', default=False, action='store_true', help='save intermediate output')
   args = parser.parse_args()
   if args:
-    process_events(args.switch_files, args.node_files)
+    process_events(args.switch_files, args.node_files, args.save)
   else:
     parser.print_help()
 
