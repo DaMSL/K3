@@ -3,11 +3,11 @@ include "Annotation/Seq.k3"
 include "Annotation/Vector.k3"
 include "Core/CppBuiltins.k3"
 
-typedef record_meta = {a: {x: int, y: string, z: real}, b: { x: { m: int, n: real, p: real}, y: string, z: real}, c: int }
+typedef record_meta = {a: {x: int, y: string, z: real}, b: { x: { m: int, n: real, p: real}, y: real, z: real}, c: int }
 declare empty_record_meta : record_meta
 
 declare populate_record_meta: () -> record_meta = \_ -> (
-  {a: {x: random 100, y: randomWord (), z: randomFraction ()}, b: { x: { m: random 100, n: randomFraction (), p: randomFraction ()}, y: randomWord (), z: randomFraction ()}, c: random 100 }
+  {a: {x: random 100, y: randomWord (), z: randomFraction ()}, b: { x: { m: random 100, n: randomFraction (), p: randomFraction ()}, y: randomFraction (), z: randomFraction ()}, c: random 100 }
 )
 
 typedef array_meta = collection { elem: real } @ RealVector
