@@ -11,9 +11,9 @@ $options = {
   :result_file   => "results.csv",
   :num_machines  => 8, #qp-hd[1-9]$
   :queries       => ["1","3","4","6","11a","12","17"],
-  :scale_factors => ["0.1"],
+  :scale_factors => ["0.1","1", "10"],
   :switch_counts => [1],
-  :node_counts   => [8, 32, 128],
+  :node_counts   => [8, 16, 32, 64, 128],
   :correctives   => false
 }
 
@@ -35,7 +35,7 @@ def run_trial(sf, query, switches, nodes, perhost)
   # Construct a call to run.rb
   corrective_opt = $options[:correctives] ? "" : "--no-correctives"
   cmd = "./tools/scripts/mosaic/run.rb -5"\
-	" -w tpch#{query}/"\
+	" -w /local/mosaic/tpch#{query}/"\
 	" -p /local/data/tpch#{sf}g-fpb/"\
 	" -s #{switches}"\
 	" -n #{nodes}"\
@@ -86,6 +86,7 @@ def parse_args()
     opts.banner = usage
     opts.on("-d", "--dry-run", "Dry Run -- Print options and exit") {|s| $options[:dry_run] = true}
     opts.on("-w", "--workdir [PATH]", "Path in which to create files") {|s| $options[:workdir] = s}
+    opts.on("-r", "--result-file [NAME]", "Name of result file to create") {|s| $options[:result_file] = s}
     opts.on("-s", "--sf x,y,z", Array, "List of scale factors to run") {|s| $options[:scale_factors] = s}
     opts.on("-q", "--queries x,y,z", Array, "List of queries to run") {|s| $options[:queries] = s}
     opts.on("-n", "--node-counts x,y,z", Array, "List of node configs to run") {|s| $options[:node_counts] = s.map {|x| x.to_i}}
