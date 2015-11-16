@@ -5,6 +5,12 @@ include "Annotation/Vector.k3"
 typedef record_meta = {a: {x: int, y: string, z: real}, b: { x: { m: int, n: string, p: real}, y: string, z: real}, c: string }
 declare empty_record_meta : record_meta
 
+typedef array_meta = collection { elem: real } @ RealVector
+declare empty_array_meta : array_meta
+
+typedef mixed_meta ={a: {x: int, y: string, z: real}, b: { x: { m: array_meta, n: string, p: real}, y: string, z: real}, c: array_meta }
+declare empty_mixed_meta : mixed_meta
+
 typedef lineitem_r = {
       l_orderkey         : int,
       l_partkey          : int,
