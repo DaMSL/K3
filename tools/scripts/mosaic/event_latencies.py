@@ -14,6 +14,7 @@ events = { 'switch_process' : 0
          , 'rcv_push'       : 2
          , 'do_complete'    : 3
          , 'corr_done'      : 4
+         , 'buffered_push'  : 5
          }
 
 tags = { 'pre_send_fetch'   : 0
@@ -116,7 +117,8 @@ def process_events(switch_files, node_files, save_intermediate):
           event_span('rcv_fetch', vid, t)
 
         elif tg == tags['buffered_push']:
-          print("NYI: buffered pushes")
+          max_from_start('buffered_push', vid, t)
+          event_span('buffered_push', vid, t)
 
         elif tg == tags['push_done']:
           max_from_start('rcv_push', vid, t)
