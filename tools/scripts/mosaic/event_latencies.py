@@ -16,6 +16,18 @@ events = { 'switch_process' : 0
          , 'corr_done'      : 4
          }
 
+tags = { 'pre_send_fetch' : 0
+       , 'post_send_fetch' : 1
+       , 'rcv_fetch' : 2
+       , 'buffered_push' : 3
+       , 'push_done' : 4
+       , 'do_complete_done' : 5
+       , 'corr_done' : 6
+       , 'push_cnts' : 7
+       , 'push_decr' : 8
+       , 'fetch_route' : 9
+       }
+
 # An interval tree of vid-segments to update start times.
 switchspans = IntervalTree()
 
@@ -71,10 +83,10 @@ def process_events(switch_files, node_files):
       for row in swreader:
         [tg, vid, comp, t] = map(lambda x: int(x), row)
 
-        if tg == 0:
+        if tg == tags['pre_send_fetch']:
           prev_vid = vid
           prev_t = t
-        elif tg == 1:
+        elif tg == tags['post_send_fetch']:
           switchspans[prev_vid:vid] = t
           l = t - prev_t
 
@@ -94,22 +106,22 @@ def process_events(switch_files, node_files):
 
         # For each class of event, track the last event from the start of the
         # update at this vid, and the timespan of the event class.
-        if tg == 2:
+        if tg == tags['rcv_fetch']:
           max_from_start('rcv_fetch', vid, t)
           event_span('rcv_fetch', vid, t)
 
-        elif tg == 3:
+        elif tg == tags['buffered_push']:
           print("NYI: buffered pushes")
 
-        elif tg == 4:
+        elif tg == tags['push_done']:
           max_from_start('rcv_push', vid, t)
           event_span('rcv_push', vid, t)
 
-        elif tg == 5:
+        elif tg == tags['do_complete_done']:
           max_from_start('do_complete', vid, t)
           event_span('do_complete', vid, t)
 
-        elif tg == 6:
+        elif tg == tags['corr_done']:
           max_from_start('corr_done', vid, t)
           event_span('corr_done', vid, t)
 
