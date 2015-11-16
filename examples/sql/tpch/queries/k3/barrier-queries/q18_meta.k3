@@ -107,7 +107,7 @@ trigger lineitem_having : () = \_ -> (
 // join as a distributed group-by on orders, with probes and intermediate
 // construction occurring in the merge trigger.
 trigger lineitem_orders : () = \_ -> (
-  (ignore (orders.group_by (\o -> { k: o.o_orderkey, m: o.meta.b.y })
+  (ignore (orders.group_by (\o -> { k: o.o_orderkey, m: o.meta.a.y })
                           (\_ -> \o -> { o_custkey    : o.o_custkey
                                        , o_orderdate  : o.o_orderdate
                                        , o_totalprice : o.o_totalprice })
@@ -161,7 +161,7 @@ trigger lineitem_orders_customer : () = \_ -> (
 
         , lhs_query = [$ lo_odtq_by_ck]
         , lhs_query_clear = [$ () ]
-        , rhs_query = [$ (customer.group_by (\c -> { k: c.c_custkey, m: c.meta.b.y })
+        , rhs_query = [$ (customer.group_by (\c -> { k: c.c_custkey, m: c.meta.a.y })
                                            (\_ -> \c -> c.c_name)
                                            e_string)
                                   .fold    (\acc -> \c -> ((acc.insert c); acc))
