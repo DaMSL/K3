@@ -89,7 +89,7 @@ trigger lineitem_having : () = \_ -> (
                             0.0)
   ) @DistributedGroupBy(
       lbl         = [# li_having],
-      clear_expr  = [$ lineitem = empty q18_lineitem_r @Collection ],
+      clear_expr  = [$ lineitem = empty q18_lineitem_meta_r @Collection ],
       peer_next   = [$ (\result -> (
                           print "LI shuffle done." ;
                           li_having_result = result.filter (\okq -> okq.value > 300)
@@ -114,7 +114,7 @@ trigger lineitem_orders : () = \_ -> (
                           {o_custkey:0, o_orderdate:0, o_totalprice:0.0})
   ) @DistributedGroupByGeneric(
       lbl         = [# lo ],
-      clear_expr  = [$ orders = empty q18_orders_r @Collection ],
+      clear_expr  = [$ orders = empty q18_orders_meta_r @Collection ],
       peer_next   = [$ print "LI-OR shuffle done." ],
       next        = [$ (lineitem_orders_customer, me) <- () ],
       merge       = [$ (\o ->
@@ -231,7 +231,7 @@ trigger lineitem_orders_customer : () = \_ -> (
                                       )
 
                                   );
-                                  loc_q_by_ncodt = empty { key: {nm:string, ck:int, ok:int, od:int, tp:real}, value: real} @Map
+                                  loc_q_by_ncodt = empty { key: {nm:string, ck:int, ok:int, od:int, tp:real, m: string}, value: real} @Map
                                ]
 
       , next                 = [$ print "LI-OR-CS join all nodes finished." ]
