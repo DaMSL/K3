@@ -157,6 +157,8 @@ declare random : int -> int
 // Uniform random real generation in [0,1)
 declare randomFraction : () -> real
 
+declare randomWord : () -> string
+
 // Polymorphic hash function
 declare hash : forall a . a -> int
   with effects \x -> R[x]

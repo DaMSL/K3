@@ -111,7 +111,9 @@ declare finalize : collection {key: address, value: q1_result} @Map -> () = \x -
    ))
 )
 
-declare populate_record_meta: () -> record_meta = \_ -> empty_record_meta
+declare populate_record_meta: () -> record_meta = \_ -> (
+  {a: {x: random 100, y: randomWord (), z: randomFraction ()}, b: { x: { m: random 100, n: randomWord (), p: randomFraction ()}, y: randomWord (), z: randomFraction ()}, c: randomWord () }
+)
 
 trigger start : () = \_ -> (
   (() @:Start) @TPCHBenchmarkWithoutMaster(

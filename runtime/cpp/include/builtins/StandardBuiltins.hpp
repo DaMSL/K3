@@ -26,12 +26,17 @@ class StandardBuiltins {
   unit_t ignore(const T& t);
   template <class T>
   int hash(const T& t);
+  int random(int);
   double randomFraction(unit_t);
+  K3::base_string randomWord(unit_t);
  protected:
   Engine& __engine_;
   static boost::mutex __mutex_;
   std::default_random_engine __rand_generator_;
   std::uniform_real_distribution<double> __rand_distribution_;
+  std::discrete_distribution<int> __word_distribution_;
+  std::vector<K3::base_string> __words_;
+  unsigned int __seed_;
 };
 
 template <class T>

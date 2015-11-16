@@ -1,3 +1,5 @@
+#include <time.h>
+#include <stdlib.h>
 #include <thread>
 #include <chrono>
 
@@ -8,7 +10,22 @@
 namespace K3 {
 
 StandardBuiltins::StandardBuiltins(Engine& engine)
-    : __engine_(engine), __rand_distribution_(0.0, 1.0) {}
+    : __engine_(engine), __rand_distribution_(0.0, 1.0), __word_distribution_{1, 1, 1, 1} {
+  __seed_ = time(NULL);
+  __words_.push_back(K3::base_string("aaaaaaaaaa"));
+  __words_.push_back(K3::base_string("bbbbbbbbbb"));
+  __words_.push_back(K3::base_string("cccccccccc"));
+  __words_.push_back(K3::base_string("dddddddddd"));
+}
+
+K3::base_string StandardBuiltins::randomWord(unit_t) {
+  int i = __word_distribution_(__rand_generator_);
+  return __words_.at(i);
+}
+
+int StandardBuiltins::random(int n) {
+  return rand_r(&__seed_) % n;
+}
 
 boost::mutex StandardBuiltins::__mutex_;
 
