@@ -9,6 +9,10 @@
 #include <regex>
 #include <sstream>
 
+#ifdef BSL_ALLOC
+#include <bsl_iostream.h>
+#endif
+
 #include "core/Peer.hpp"
 #include "core/Engine.hpp"
 #include "core/ProgramContext.hpp"
