@@ -108,7 +108,7 @@ declare q3_ordersLoaderPC : collection {path: string} @Collection -> q3_orders_b
 declare q5_lineitemLoaderPC : collection {path: string} @Collection -> q5_lineitem_bag -> lineitem_r -> ()
   with effects \_ -> \_ -> \_ -> io
 
-declare q5_lineitemLoaderMPC : collection {path: string} @Collection -> q5_lineitem_meta_bag -> lineitem_r -> (() -> record_meta)()
+declare q5_lineitemLoaderMPC : collection {path: string} @Collection -> q5_lineitem_meta_bag -> lineitem_r -> (() -> record_meta) -> ()
   with effects \_ -> \_ -> \_ -> \_ -> io
 
 @:CArgs 3
