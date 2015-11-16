@@ -230,6 +230,13 @@ typedef q5_lineitem_r = { l_orderkey      : int,
                           l_discount      : real
                         }
 
+typedef q5_lineitem_meta_r = { l_orderkey      : int,
+                               l_suppkey       : int,
+                               l_extendedprice : real,
+                               l_discount      : real,
+                               meta            : record_meta
+                             }
+
 typedef q5_customer_r = { c_custkey   : int,
                           c_nationkey : int
                         }
@@ -258,6 +265,8 @@ typedef q5_orders_bag   = collection q5_orders_r   @Collection
 typedef q5_supplier_bag = collection q5_supplier_r @Collection
 typedef q5_nation_bag   = collection q5_nation_r   @Collection
 typedef q5_region_bag   = collection q5_region_r   @Collection
+
+typedef q5_lineitem_meta_bag = collection q5_lineitem_meta_r @Collection
 
 typedef q6_lineitem_r = { l_quantity         : real,
                           l_extendedprice    : real,
