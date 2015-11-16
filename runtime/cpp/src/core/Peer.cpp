@@ -98,16 +98,6 @@ Peer::Peer(shared_ptr<ContextFactory> fac, const YAML::Node& config,
 #if defined(K3_LT_SAMPLE) || defined(K3_LT_HISTOGRAM)
     lifetime::__active_lt_profiler.dump();
 #endif
-
-#ifdef BSL_ALLOC
-#ifdef BCOUNT
-    std::string alloc_out_path = std::string("vmapalloc_") + addressAsString(address_);
-    bsl::ofstream alloc_out(alloc_out_path.c_str());
-    mpool_.print(alloc_out);
-    alloc_out.close();
-#endif
-#endif
-
     //catch (const std::exception& e) {
     //  logger_->error() << "Peer failed: " << e.what();
     //}

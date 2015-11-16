@@ -21,6 +21,12 @@
 #include "jemalloc/jemalloc.h"
 #endif
 
+#ifdef BSL_ALLOC
+#ifdef BCOUNT
+#include <bsl_iostream.h>
+#endif
+#endif
+
 #include "boost/thread/mutex.hpp"
 #include "boost/thread/thread.hpp"
 
@@ -71,18 +77,32 @@ class __heap_profiler {
 class ProfilingBuiltins: public __heap_profiler {
  public:
   ProfilingBuiltins();
+
   // PCM
   unit_t pcmStart(unit_t);
   unit_t pcmStop(unit_t);
+
   // TCMalloc
   unit_t tcmallocStart(unit_t);
   unit_t tcmallocStop(unit_t);
+
   // JEMalloc
   unit_t jemallocStart(unit_t);
   unit_t jemallocStop(unit_t);
   unit_t jemallocDump(unit_t);
 
+  // BSL Allocator
+  unit_t vmapStart(const Address& addr);
+  unit_t vmapStop(unit_t);
+  unit_t vmapDump(unit_t);
+
  protected:
+#ifdef BSL_ALLOC
+#ifdef BCOUNT
+  bsl::ofstream vmapAllocLog;
+#endif
+#endif
+
 #ifdef K3_PCM
   PCM *pcm_instance_;
   shared_ptr<SystemCounterState> pcm_initial_state_;
