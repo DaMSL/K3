@@ -10,7 +10,7 @@
 namespace K3 {
 
 StandardBuiltins::StandardBuiltins(Engine& engine)
-    : __engine_(engine), __rand_distribution_(0.0, 1.0), __word_distribution_{1, 1, 1, 1} {
+    : __engine_(engine), __rand_generator_(time(NULL)), __rand_distribution_(0.0, 1.0), __word_distribution_{1, 1, 1, 1} {
   __seed_ = time(NULL);
   __words_.push_back(K3::base_string("aaaaaaaaaa"));
   __words_.push_back(K3::base_string("bbbbbbbbbb"));
