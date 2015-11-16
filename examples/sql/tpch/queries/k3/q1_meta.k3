@@ -63,6 +63,7 @@ declare finalize_agg : {key: (string, string, string), value: q1_agg} -> q1_resu
   , avg_qty        : r.value.avg_qty_sum   / r.value.count_order
   , avg_price      : r.value.avg_price_sum / r.value.count_order
   , avg_disc       : r.value.avg_disc_sum  / r.value.count_order
+  , sum_bxp        : r.value.sum_bxp
   , count_order    : r.value.count_order }
 
 
@@ -96,6 +97,7 @@ declare finalize : collection {key: address, value: q1_result} @Map -> () = \x -
     t.value.iterate (\v ->
       (results_sink, me) <- (v.l_returnflag,
                              v.l_linestatus,
+                             v.ay,
                              v.sum_qty,
                              v.sum_base_price,
                              v.sum_disc_price,
@@ -103,6 +105,7 @@ declare finalize : collection {key: address, value: q1_result} @Map -> () = \x -
                              v.avg_qty,
                              v.avg_price,
                              v.avg_disc,
+                             v.sum_bxp,
                              v.count_order)
     )
    ))
@@ -129,7 +132,7 @@ trigger start : () = \_ -> (
   )
 )
 
-sink results_sink : (string, string, real, real, real, real, real, real, real, int)  = file "results.csv" text psv
+sink results_sink : (string, string, string, real, real, real, real, real, real, real, real, int)  = file "results.csv" text psv
 sink query_time_sink : int  = file "time.csv" text csv
 
 source rows : () = value ()
