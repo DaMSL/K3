@@ -508,6 +508,7 @@ public:
         // Mosaic specific logging hack
         peerParams["eventlog"] = "eventlog_" + std::to_string(i) + ".csv";
         peerParams["msgcountlog"] = "msgcountlog_" + std::to_string(i) + ".csv";
+        peerParams["routelog"] = "routelog_" + std::to_string(i) + ".csv";
         YAML::Node globals = hostParams["globals"][i];
         for (const_iterator p=globals.begin(); p!=globals.end(); p++)  {
           thispeer[p->first.as<string>()] = p->second;
