@@ -351,7 +351,7 @@ class StrMap {
   Acc fold(Fun f, Acc acc) const {
     map_str* m = get_map_str();
     for (auto o = map_str_begin(m); o < map_str_end(m); o = map_str_next(m, o)) {
-      acc = f(std::move(acc), *static_cast<R*>map_str_get(m, o));
+      acc = f(std::move(acc), *static_cast<R*>(map_str_get(m, o)));
     }
     return acc;
   }
