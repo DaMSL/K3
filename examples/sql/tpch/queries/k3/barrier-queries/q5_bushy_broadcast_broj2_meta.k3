@@ -138,7 +138,7 @@ trigger q5_sl_start : () = \_ -> (
                                                      { g: 0.0, bxp: 0.0, ays: empty { ay: string } @ Collection})
                                             .fold    ((\acc -> \okepd -> ((acc.insert okepd); acc)) @:Accumulate)
                                                      (empty {key: {nationkey: int, orderkey: int}, value: {g: real, bxp: real, ays: collection { ay: string } @ Collection }} @Map) );
-                              ( lineitem = empty q5_lineitem_r @Collection )
+                              ( lineitem = empty q5_lineitem_meta_r @Collection )
                            ]
       , next             = [$ () ]
       , coordinator      = [$ master]
@@ -245,7 +245,7 @@ trigger q5_result_aggregate : q5_r_by_n_map = \vals -> (
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   nodes               = [$ peers],
-  loadExpr            = [$ q5_lineitemLoaderPC lineitemFiles lineitem lineitem_r;
+  loadExpr            = [$ q5_lineitemLoaderMPC lineitemFiles lineitem lineitem_r populate_record_meta;
                            q5_ordersLoaderPC   ordersFiles   orders   orders_r ;
                            q5_customerLoaderPC customerFiles customer customer_r;
                            q5_supplierLoaderPC supplierFiles supplier supplier_r;
