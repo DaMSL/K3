@@ -10,6 +10,8 @@ namespace K3 {
 	thread_local BloombergLP::bdlma::MultipoolAllocator* mpool;
 	#elif BLOCAL
 	thread_local BloombergLP::bdlma::LocalSequentialAllocator<lsz>* mpool;
+    #elif BCOUNT
+    thread_local BloombergLP::bdlma::CountingAllocator* mpool;
 	#else
 	thread_local BloombergLP::bdlma::MultipoolAllocator* mpool;
 	#endif

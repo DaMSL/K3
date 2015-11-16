@@ -17,7 +17,7 @@
 namespace K3 {
 
 Peer::Peer(shared_ptr<ContextFactory> fac, const YAML::Node& config,
-           std::function<void()> callback, const JSONOptions& opts) 
+           std::function<void()> callback, const JSONOptions& opts)
 #ifdef BSL_ALLOC
   :
   #ifdef BSEQ
@@ -26,6 +26,8 @@ Peer::Peer(shared_ptr<ContextFactory> fac, const YAML::Node& config,
   seqpool_(), mpool_(8, &seqpool_)
   #elif BLOCAL
   mpool_()
+  #elif BCOUNT
+  backing_pool_(8), mpool_(&backing_pool_)
   #else
   mpool_(8)
   #endif
@@ -62,6 +64,8 @@ Peer::Peer(shared_ptr<ContextFactory> fac, const YAML::Node& config,
     mpool = &mpool_;
     #elif BLOCAL
     mpool = &mpool_;
+    #elif BCOUNT
+    mpool = &mpool_;
     #else
     mpool = &mpool_;
     #endif
@@ -90,6 +94,13 @@ Peer::Peer(shared_ptr<ContextFactory> fac, const YAML::Node& config,
 #if defined(K3_LT_SAMPLE) || defined(K3_LT_HISTOGRAM)
     lifetime::__active_lt_profiler.dump();
 #endif
+
+#ifdef BSL_ALLOC
+#ifdef BCOUNT
+    mpool_.print(bsl::cout);
+#endif
+#endif
+
     //catch (const std::exception& e) {
     //  logger_->error() << "Peer failed: " << e.what();
     //}
