@@ -84,6 +84,7 @@ def process_events(switch_files, node_files, save_intermediate):
       swreader = csv.reader(csvfile, delimiter=',')
       prev_vid = 0
       prev_v = 0
+      prev_t = 0
       for row in swreader:
         [tg, vid, comp, t] = map(lambda x: int(x), row)
 

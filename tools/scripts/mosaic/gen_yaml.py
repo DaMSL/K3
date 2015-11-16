@@ -135,8 +135,10 @@ def create_local_file(args):
     # convert to dictionaries
     peers2 = []
     switch_index = 0
+    peer_index = 0
     for (role, port) in peers:
-        peer = {'role': wrap_role(role), 'me':address(port), 'peers':create_peers(peers)}
+        peer = {'role': wrap_role(role), 'me':address(port), 'peers':create_peers(peers), 'eventlog': 'events%d.csv' % peer_index}
+        peer_index += 1
 
         if pmap is not None:
             peer.update(pmap)

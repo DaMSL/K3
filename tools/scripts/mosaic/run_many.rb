@@ -20,6 +20,17 @@ $options = {
   :backfill_files => []
 }
 
+# Lifted from StackOverflow. Duplicate-Aware Array subtraction.
+class Array
+  # Subtract each passed value once:
+  #   %w(1 2 3 1).subtract_once %w(1 1 2) # => ["2", "3"]
+  # Time complexity of O(n + m)
+  def subtract_once(values)
+    counts = values.inject(Hash.new(0)) { |h, v| h[v] += 1; h }
+    reject { |e| counts[e] -= 1 unless counts[e].zero? }
+  end
+end
+
 # Run a single configuration
 def run_trial(sf, query, switches, nodes, perhost)
   # Keep a seperate output file for the trial
@@ -179,14 +190,3 @@ def main()
 end
 
 main()
-
-# Lifted from StackOverflow. Duplicate-Aware Array subtraction.
-class Array
-  # Subtract each passed value once:
-  #   %w(1 2 3 1).subtract_once %w(1 1 2) # => ["2", "3"]
-  # Time complexity of O(n + m)
-  def subtract_once(values)
-    counts = values.inject(Hash.new(0)) { |h, v| h[v] += 1; h }
-    reject { |e| counts[e] -= 1 unless counts[e].zero? }
-  end
-end
