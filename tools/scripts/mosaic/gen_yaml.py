@@ -292,7 +292,7 @@ def main():
     parser.add_argument("--tpch_infer_inorder_path", action='store_false', default=True, help="automatic inorder file")
     parser.add_argument("--tpch_query", type=str, help="query")
     parser.add_argument("--extra-args", help="extra arguments in x=y format")
-    parser.add_argument("--latency-profiling", dest="latency_profiling", help="activate profiling")
+    parser.add_argument("--latency-profiling", action="store_true", default=False, dest="latency_profiling", help="activate profiling")
     args = parser.parse_args()
     if args.run_mode == "dist":
         create_dist_file(args)

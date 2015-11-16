@@ -17,6 +17,8 @@ $options = {
   :node_counts    => [8, 16, 32, 64, 128],
   :correctives    => false,
   :trials         => 1,
+  :rebatch        => nil,
+  :sleep_time     => nil,
   :backfill_files => []
 }
 
@@ -40,6 +42,8 @@ def run_trial(sf, query, switches, nodes, perhost)
 
   # Construct a call to run.rb
   corrective_opt = $options[:correctives] ? "" : "--no-correctives"
+  batch_opt = $options[:rebatch] ? "--batch-size #{$options[:rebatch]}" : ""
+  sleep_opt = $options[:sleep_time] ? "--msg-delay #{$options[:sleep_time]}" : ""
   cmd = "./tools/scripts/mosaic/run.rb -5"\
 	" -w /local/mosaic/tpch#{query}/"\
 	" -p /local/data/tpch#{sf}g-fpb/"\
@@ -51,6 +55,8 @@ def run_trial(sf, query, switches, nodes, perhost)
 	" --nmask \".*hd[1-9]$\""\
 	" --compile-local"\
 	" #{corrective_opt}"\
+	" #{batch_opt}"\
+	" #{sleep_opt}"\
 	" --map-overlap 0"\
 	" ../K3-Mosaic/tests/queries/tpch/query#{query}.sql"\
 	" 2>&1 | tee #{output_path}"

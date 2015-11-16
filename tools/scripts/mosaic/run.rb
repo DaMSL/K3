@@ -770,7 +770,7 @@ def main()
     opts.on("--batch-size [SIZE]", "Set the batch size") {|s| $options[:batch_size] = s }
     opts.on("--no-reserve", "Prevent reserve on the poly buffers") { $options[:no_poly_reserve] = true }
     opts.on("--event-profile", "Run with event profiling") { $options[:event_profile] = true }
-    opts.on("--latency-profile", "Run with latency profiling options") {
+    opts.on("--latency-profiling", "Run with latency profiling options") {
       $options[:event_profile] = true
       $options[:latency_profiling] = true
     }
