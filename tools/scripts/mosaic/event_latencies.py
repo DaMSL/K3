@@ -16,16 +16,20 @@ events = { 'switch_process' : 0
          , 'corr_done'      : 4
          }
 
-tags = { 'pre_send_fetch' : 0
-       , 'post_send_fetch' : 1
-       , 'rcv_fetch' : 2
-       , 'buffered_push' : 3
-       , 'push_done' : 4
+tags = { 'pre_send_fetch'   : 0
+       , 'post_send_fetch'  : 1
+       , 'rcv_fetch'        : 2
+       , 'buffered_push'    : 3
+       , 'push_done'        : 4
        , 'do_complete_done' : 5
-       , 'corr_done' : 6
-       , 'push_cnts' : 7
-       , 'push_decr' : 8
-       , 'fetch_route' : 9
+       , 'corr_done'        : 6
+       , 'corr_send'        : 7
+       , 'push_cnts'        : 8
+       , 'push_decr'        : 9
+       , 'fetch_route'      : 10
+       , 'send_put'         : 11
+       , 'gc_start'         : 12
+       , 'gc_done'          : 13
        }
 
 # An interval tree of vid-segments to update start times.
