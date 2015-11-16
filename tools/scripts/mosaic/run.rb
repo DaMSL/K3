@@ -252,7 +252,7 @@ def gen_yaml(role_path, script_path)
 
   extra_args = []
   extra_args << "ms_gc_interval=" + $options[:gc_epoch] if $options[:gc_epoch]
-  extra_args << "sw_driver_sleep=" + $options[:msg_delay] if $options[:msg_delay]
+  extra_args << "sw_event_driver_sleep=" + $options[:msg_delay] if $options[:msg_delay]
   extra_args << "corrective_mode=false" if $options[:no_corrective]
   extra_args << "pmap_overlap_factor=" + $options[:map_overlap] if $options[:map_overlap]
   if $options[:batch_size]
