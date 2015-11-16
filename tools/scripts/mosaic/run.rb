@@ -11,10 +11,10 @@ require 'csv'
 require 'open3'
 #require 'pg'
 
-def run(cmd, checks=[])
+def run(cmd, checks:[], always_out:false)
   puts cmd if $options[:debug]
   out, err, s = Open3.capture3(cmd)
-  puts out if $options[:debug]
+  puts out if $options[:debug] || always_out
   puts err if $options[:debug]
   res = s.success?
   # other tests
@@ -690,6 +690,29 @@ def run_ktrace(script_path, jobid)
 
 end
 
+def post_process_latencies(jobid, sw_regex, script_path)
+  job_path = File.join($workdir, "job_#{jobid}")
+  dirs = Dir.entries(job_path).select {|entry|
+    File.directory? File.join(job_path, entry) and !(entry == '.' || entry == '..')
+  }
+  switch_dirs = dirs.select {|d| d =~ sw_regex}
+  switch_files = switch_dirs.map {|d|
+    Dir.entries(d).select {|f| f =~ /eventlog_.+\.csv/}
+  }.flatten.map {|d| File.join(job_path, d)}
+
+  node_dirs = dirs.select {|d| !(switch_dirs.include? d) }
+  node_files = node_dirs.map {|d|
+    Dir.entries(d).select {|f| f =~ /eventlog_.+\.csv/}
+  }.flatten.map {|d| File.join(job_path, d)}
+
+  cmd = ""
+  cmd << "--switches " << switch_files.join(",") << " "
+  cmd << "--nodes " << node_files.join(",") << " "
+
+  run("#{File.join(script_path, "event_latencies.py")} #{cmd}", always_out:true)
+
+end
+
 def check_param(p, nm)
   if p.nil?
     puts "Please provide #{nm} param"
@@ -790,6 +813,7 @@ def main()
     opts.on("--wmoderate",  "Skew argument")                                   { $options[:compileargs] = "#{$options[:compileargs]} --workerfactor hm=3 --workerblocks hd=4:qp3=4:qp4=4:qp5=4:qp6=4" }
     opts.on("--wmoderate2", "Skew argument")                                   { $options[:compileargs] = "#{$options[:compileargs]} --workerfactor hm=3 --workerblocks hd=2:qp3=2:qp4=2:qp5=2:qp6=2" }
     opts.on("--wextreme",   "Skew argument")                                   { $options[:compileargs] = "#{$options[:compileargs]} --workerfactor hm=4 --workerblocks hd=1:qp3=1:qp4=1:qp5=1:qp6=1" }
+    opts.on("--process-latencies [SWITCH_REGEX]", "Post-processing on latency files") { |s| $options[:process_latencies] = s }
 
     # Stages.
     # Ktrace is not run by default.
@@ -979,6 +1003,11 @@ def main()
   # options to fetch to job results
   if $options[:fetch_results]
     wait_and_fetch_results(5, jobid, server_url, nice_name, script_path)
+  end
+
+  # post-process latency files
+  if $options[:process_latencies]
+    post_process_latencies(jobid, $options[:process_latencies], script_path)
   end
 
   if $options[:compare]
