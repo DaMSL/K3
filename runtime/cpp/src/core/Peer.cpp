@@ -101,7 +101,10 @@ Peer::Peer(shared_ptr<ContextFactory> fac, const YAML::Node& config,
 
 #ifdef BSL_ALLOC
 #ifdef BCOUNT
-    mpool_.print(bsl::cout);
+    std::string alloc_out_path = std::string("vmapalloc_") + addressAsString(address_);
+    bsl::ofstream alloc_out(alloc_out_path.c_str());
+    mpool_.print(alloc_out);
+    alloc_out.close();
 #endif
 #endif
 
