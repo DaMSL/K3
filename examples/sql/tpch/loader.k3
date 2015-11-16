@@ -146,14 +146,22 @@ declare q6_lineitemLoaderPC : collection {path: string} @Collection -> q6_lineit
 declare q18_lineitemLoaderPC : collection {path: string} @Collection -> q18_lineitem_bag -> lineitem_r -> ()
   with effects \_ -> \_ -> \_ -> io
 
+declare q18_lineitemLoaderMPC : collection {path: string} @Collection -> q18_lineitem_meta_bag -> lineitem_r -> (() -> record_meta) -> ()
+  with effects \_ -> \_ -> \_ -> \_ -> io
+
 @:CArgs 3
 declare q18_customerLoaderPC : collection {path: string} @Collection -> q18_customer_bag -> customer_r -> ()
   with effects \_ -> \_ -> \_ -> io
+
+declare q18_customerLoaderMPC : collection {path: string} @Collection -> q18_customer_meta_bag -> customer_r -> (() -> record_meta) -> ()
+  with effects \_ -> \_ -> \_ -> \_ -> io
 
 @:CArgs 3
 declare q18_ordersLoaderPC : collection {path: string} @Collection -> q18_orders_bag -> orders_r -> ()
   with effects \_ -> \_ -> \_ -> io
 
+declare q18_ordersLoaderMPC : collection {path: string} @Collection -> q18_orders_meta_bag -> orders_r -> (() -> record_meta) -> ()
+  with effects \_ -> \_ -> \_ -> \_ -> io
 
 // Q22
 

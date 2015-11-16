@@ -287,8 +287,18 @@ typedef q18_lineitem_r = { l_orderkey : int,
                            l_quantity : real
                          }
 
+typedef q18_lineitem_meta_r = { l_orderkey : int,
+                           l_quantity : real,
+                           meta       : record_meta
+                         }
+
 typedef q18_customer_r = { c_custkey : int,
                            c_name    : string
+                         }
+
+typedef q18_customer_meta_r = { c_custkey : int,
+                           c_name    : string,
+                           meta      : record_meta
                          }
 
 typedef q18_orders_r   = { o_orderkey   : int,
@@ -297,9 +307,21 @@ typedef q18_orders_r   = { o_orderkey   : int,
                            o_orderdate  : int @::TPCHDate
                          }
 
+typedef q18_orders_meta_r   = { o_orderkey   : int,
+                           o_custkey    : int,
+                           o_totalprice : real,
+                           o_orderdate  : int @::TPCHDate,
+                           meta         : record_meta
+                         }
+
+
 typedef q18_lineitem_bag = collection q18_lineitem_r @Collection
 typedef q18_customer_bag = collection q18_customer_r @Collection
 typedef q18_orders_bag   = collection q18_orders_r   @Collection
+
+typedef q18_lineitem_meta_bag = collection q18_lineitem_meta_r @Collection
+typedef q18_customer_meta_bag = collection q18_customer_meta_r @Collection
+typedef q18_orders_meta_bag = collection q18_orders_meta_r @Collection
 
 typedef q22_customer_r = { c_custkey : int,
                            c_phone   : string,
