@@ -695,19 +695,21 @@ def post_process_latencies(jobid, sw_regex, script_path)
   dirs = Dir.entries(job_path).select {|entry|
     File.directory? File.join(job_path, entry) and !(entry == '.' || entry == '..')
   }
-  switch_dirs = dirs.select {|d| d =~ sw_regex}
+  switch_dirs = dirs.select {|d| d =~ Regexp.new(sw_regex)}.map {|d| File.join(job_path, d) }
   switch_files = switch_dirs.map {|d|
-    Dir.entries(d).select {|f| f =~ /eventlog_.+\.csv/}
-  }.flatten.map {|d| File.join(job_path, d)}
+    files = Dir.entries(d).select {|f| f =~ /eventlog_.+\.csv/}
+    files.map {|x| File.join(d, x) }
+  }.flatten
 
-  node_dirs = dirs.select {|d| !(switch_dirs.include? d) }
+  node_dirs = dirs.select {|d| !(switch_dirs.include? d) }.map {|d| File.join(job_path, d) }
   node_files = node_dirs.map {|d|
-    Dir.entries(d).select {|f| f =~ /eventlog_.+\.csv/}
-  }.flatten.map {|d| File.join(job_path, d)}
+    files = Dir.entries(d).select {|f| f =~ /eventlog_.+\.csv/}
+    files.map {|x| File.join(d, x) }
+  }.flatten
 
   cmd = ""
-  cmd << "--switches " << switch_files.join(",") << " "
-  cmd << "--nodes " << node_files.join(",") << " "
+  cmd << "--switches " << switch_files.join(" ") << " "
+  cmd << "--nodes " << node_files.join(" ") << " "
 
   run("#{File.join(script_path, "event_latencies.py")} #{cmd}", always_out:true)
 
