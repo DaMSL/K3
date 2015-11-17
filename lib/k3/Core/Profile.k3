@@ -261,7 +261,7 @@ control MosaicPushBarrier[lbl:label, tl:expr, ve:expr, ce1:expr, ce2:expr]
         (if ($[lbl]_push_sample_mod == 0 or $[ve] % $[lbl]_push_sample_mod == 0)
          then (
           ($[lbl]_push_buffer.insert {etag: $[tl], evid: $[ve], pcomponent: $[ce1], t: $[ce2]});
-          (if $[lbl]_push_buffer.size() >= $[lbl]_sendput_buffer_batch_sz
+          (if $[lbl]_push_buffer.size() >= $[lbl]_push_buffer_batch_sz
             then ($[lbl]_push_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
                   $[lbl]_push_buffer.clear()
             else ())
@@ -309,7 +309,7 @@ control MosaicSendPut[lbl:label, tl:expr, ve:expr, ce1:expr, ce2:expr, ce3:expr]
   +> {}
 
   ?e => ( $.[e] );
-        (if ($[lbl]_sendput_sample_mod == 0 or $[ve] % $[lbl]_push_sample_mod == 0)
+        (if ($[lbl]_sendput_sample_mod == 0 or $[ve] % $[lbl]_sendput_sample_mod == 0)
          then (
           ($[lbl]_sendput_buffer.insert {etag: $[tl], evid: $[ve], pcomponent: $[ce1],
                                          rkey: "", rrbucket: $[ce2], rrnode: $[ce3]});
