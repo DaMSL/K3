@@ -5,6 +5,9 @@ annotation FlatPolyBuffer[variants: [labeltylit]] given type a
   provides lifted size : () -> int
     with effects \_ -> R[self]
 
+  provides lifted byte_size : () -> int
+    with effects \_ -> R[self]
+
   provides lifted clear : () -> ()
     with effects \_ -> [R[self]; W[self]]
 
