@@ -177,6 +177,59 @@ control MosaicPostEvent[lbl:label, tl:expr, ve:expr, ce:expr]
   }
 }
 
+control MosaicSendPoly[lbl:label, ce1:expr, ce2:expr, ce3:expr]
+{
+  ?e @:Flush => ($[lbl]_sendpoly_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
+                ($[lbl]_sendpoly_buffer.clear());
+                $.[e]
+  +> {}
+
+  ?e => ( $.[e] );
+        (if ($[lbl]_sendpoly_sample_mod == 0 or $[ce1] % $[lbl]_sendpoly_sample_mod == 0)
+         then (
+          ($[lbl]_sendpoly_buffer.insert {etag: 17, evid: $[ce1], pcomponent: $[ce2], t: $[ce3].byte_size() });
+          ($[lbl]_sendpoly_buffer.insert {etag: 18, evid: $[ce1], pcomponent: $[ce2], t: 1 });
+
+          (if $[lbl]_sendpoly_buffer.size() >= $[lbl]_sendpoly_buffer_batch_sz
+            then ($[lbl]_sendpoly_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
+                  $[lbl]_sendpoly_buffer.clear()
+            else ())
+        ) else ())
+  +> {}
+  shared {
+    declare $[lbl]_sendpoly_buffer : collection {etag:int, evid:int, pcomponent:int, t:int} @Vector
+    declare $[lbl]_sendpoly_buffer_batch_sz : mut int = 2 * 1000
+    declare $[lbl]_sendpoly_sample_mod      : mut int = 10
+  }
+}
+
+control MosaicSendUPoly[lbl:label, ce1:expr, ce2:expr, ce3:expr, ce4:expr]
+{
+  ?e @:Flush => ($[lbl]_sendupoly_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
+                ($[lbl]_sendupoly_buffer.clear());
+                $.[e]
+  +> {}
+
+  ?e => ( $.[e] );
+        (if ($[lbl]_sendupoly_sample_mod == 0 or $[ce1] % $[lbl]_sendupoly_sample_mod == 0)
+         then (
+          ($[lbl]_sendupoly_buffer.insert {etag: 14, evid: $[ce1], pcomponent: $[ce2], t: $[ce3].byte_size() });
+          ($[lbl]_sendupoly_buffer.insert {etag: 15, evid: $[ce1], pcomponent: $[ce2], t: $[ce4].byte_size() });
+          ($[lbl]_sendpoly_buffer.insert  {etag: 16, evid: $[ce1], pcomponent: $[ce2], t: 1 });
+
+          (if $[lbl]_sendupoly_buffer.size() >= $[lbl]_sendupoly_buffer_batch_sz
+            then ($[lbl]_sendupoly_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
+                  $[lbl]_sendupoly_buffer.clear()
+            else ())
+        ) else ())
+  +> {}
+  shared {
+    declare $[lbl]_sendupoly_buffer : collection {etag:int, evid:int, pcomponent:int, t:int} @Vector
+    declare $[lbl]_sendupoly_buffer_batch_sz : mut int = 3 * 1000
+    declare $[lbl]_sendupoly_sample_mod      : mut int = 10
+  }
+}
+
 control MosaicMsgCounts[lbl:label, tl:expr, ve:expr, ce1:expr, ce2:expr]
 {
   ?e @:Flush => ($[lbl]_msgcount_buffer.iterate (\r -> (mosaic_msgcount_sink, me) <- r));
@@ -212,7 +265,7 @@ control MosaicPushBarrier[lbl:label, tl:expr, ve:expr, ce1:expr, ce2:expr]
         (if ($[lbl]_push_sample_mod == 0 or $[ve] % $[lbl]_push_sample_mod == 0)
          then (
           ($[lbl]_push_buffer.insert {etag: $[tl], evid: $[ve], pcomponent: $[ce1], t: $[ce2]});
-          (if $[lbl]_push_buffer.size() >= $[lbl]_sendput_buffer_batch_sz
+          (if $[lbl]_push_buffer.size() >= $[lbl]_push_buffer_batch_sz
             then ($[lbl]_push_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
                   $[lbl]_push_buffer.clear()
             else ())
@@ -260,7 +313,7 @@ control MosaicSendPut[lbl:label, tl:expr, ve:expr, ce1:expr, ce2:expr, ce3:expr]
   +> {}
 
   ?e => ( $.[e] );
-        (if ($[lbl]_sendput_sample_mod == 0 or $[ve] % $[lbl]_push_sample_mod == 0)
+        (if ($[lbl]_sendput_sample_mod == 0 or $[ve] % $[lbl]_sendput_sample_mod == 0)
          then (
           ($[lbl]_sendput_buffer.insert {etag: $[tl], evid: $[ve], pcomponent: $[ce1],
                                          rkey: "", rrbucket: $[ce2], rrnode: $[ce3]});
