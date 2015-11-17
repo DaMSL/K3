@@ -48,7 +48,7 @@ declare lineitem_r : lineitem_r
 declare customer_r : customer_r
 declare orders_r   : orders_r
 
-declare lineitem : mut q18_lineitem_meta_bag
+declare lineitem : mut q18_lineitem_bag
 declare customer : mut q18_customer_meta_bag
 declare orders   : mut q18_orders_meta_bag
 
@@ -66,7 +66,7 @@ typedef o_cdt_by_ok_r = {key : int, value : { o_custkey    : int
                                             , o_totalprice : real}}
 
 typedef lo_q_by_odt_r     = {key : {ok: int, od: int, tp: real}, value : real}
-typedef lo_odtq_by_ck_r   = {key : {k: int, m: string }, value : collection lo_q_by_odt_r @Map}
+typedef lo_odtq_by_ck_r   = {key : {k: int}, value : collection lo_q_by_odt_r @Map}
 typedef lo_odtq_by_ck_map = collection lo_odtq_by_ck_r @Map
 
 declare master : address
@@ -84,12 +84,12 @@ declare merge_q_by_ncodt_r : loc_q_by_ncodt_r -> loc_q_by_ncodt_r -> loc_q_by_nc
   = \a -> \b -> {key: a.key, value: a.value + b.value}
 
 trigger lineitem_having : () = \_ -> (
-  (ignore (lineitem.group_by (\li -> { k: li.l_orderkey, m: li.meta.a.y })
+  (ignore (lineitem.group_by (\li -> { k: li.l_orderkey})
                             (\acc -> \li -> acc + li.l_quantity)
                             0.0)
   ) @DistributedGroupBy(
       lbl         = [# li_having],
-      clear_expr  = [$ lineitem = empty q18_lineitem_meta_r @Collection ],
+      clear_expr  = [$ lineitem = empty q18_lineitem_r @Collection ],
       peer_next   = [$ (\result -> (
                           print "LI shuffle done." ;
                           li_having_result = result.filter (\okq -> okq.value > 300)
@@ -107,7 +107,7 @@ trigger lineitem_having : () = \_ -> (
 // join as a distributed group-by on orders, with probes and intermediate
 // construction occurring in the merge trigger.
 trigger lineitem_orders : () = \_ -> (
-  (ignore (orders.group_by (\o -> { k: o.o_orderkey, m: o.meta.a.y })
+  (ignore (orders.group_by (\o -> { k: o.o_orderkey, m: o.meta.a.y})
                           (\_ -> \o -> { o_custkey    : o.o_custkey
                                        , o_orderdate  : o.o_orderdate
                                        , o_totalprice : o.o_totalprice })
@@ -118,7 +118,7 @@ trigger lineitem_orders : () = \_ -> (
       peer_next   = [$ print "LI-OR shuffle done." ],
       next        = [$ (lineitem_orders_customer, me) <- () ],
       merge       = [$ (\o ->
-                          li_having_result.lookup {key: o.key, value: 0.0}
+                          li_having_result.lookup {key: {k: o.key.k}, value: 0.0}
                             (\_ -> () )
                             (\li ->  lo_odtq_by_ck.insert_with
                                         {key: { k: o.value.o_custkey, m: o.key.m }
@@ -274,7 +274,7 @@ declare finalize : collection {key: address, value: q18_result} @Map -> () = \x 
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   nodes                = [$ peers ],
-  loadExpr             = [$ ( q18_lineitemLoaderMPC lineitemFiles lineitem lineitem_r populate_record_meta;
+  loadExpr             = [$ ( q18_lineitemLoaderPC lineitemFiles lineitem lineitem_r;
                               q18_ordersLoaderMPC   ordersFiles   orders   orders_r populate_record_meta;
                               q18_customerLoaderMPC customerFiles customer customer_r populate_record_meta
                             ) ],
