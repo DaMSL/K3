@@ -281,8 +281,9 @@ public:
   size_t tags_size()     const { return vector_size(const_cast<TContainer*>(tagsc())); }
   size_t tags_capacity() const { return vector_capacity(const_cast<TContainer*>(tagsc())); }
 
-  size_t byte_size()     const { return fixseg_size() + varseg_size() + tags_size() * sizeof(Tag); }
-  size_t byte_capacity() const { return fixseg_capacity() + varseg_capacity() + tags_capacity() * sizeof(Tag); }
+  size_t byte_size()       const { return fixseg_size() + varseg_size() + tags_size() * sizeof(Tag); }
+  size_t byte_size(unit_t) const { return byte_size(); }
+  size_t byte_capacity()   const { return fixseg_capacity() + varseg_capacity() + tags_capacity() * sizeof(Tag); }
 
   void reserve_fixed(size_t sz) { buffer_reserve(fixed(), sz); }
   void reserve_var(size_t sz)   { buffer_reserve(variable(), sz); }

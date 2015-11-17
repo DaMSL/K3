@@ -17,8 +17,21 @@ $options = {
   :node_counts    => [8, 16, 32, 64, 128],
   :correctives    => false,
   :trials         => 1,
+  :rebatch        => nil,
+  :sleep_time     => nil,
   :backfill_files => []
 }
+
+# Lifted from StackOverflow. Duplicate-Aware Array subtraction.
+class Array
+  # Subtract each passed value once:
+  #   %w(1 2 3 1).subtract_once %w(1 1 2) # => ["2", "3"]
+  # Time complexity of O(n + m)
+  def subtract_once(values)
+    counts = values.inject(Hash.new(0)) { |h, v| h[v] += 1; h }
+    reject { |e| counts[e] -= 1 unless counts[e].zero? }
+  end
+end
 
 # Run a single configuration
 def run_trial(sf, query, switches, nodes, perhost)
@@ -29,6 +42,8 @@ def run_trial(sf, query, switches, nodes, perhost)
 
   # Construct a call to run.rb
   corrective_opt = $options[:correctives] ? "" : "--no-correctives"
+  batch_opt = $options[:rebatch] ? "--batch-size #{$options[:rebatch]}" : ""
+  sleep_opt = $options[:sleep_time] ? "--msg-delay #{$options[:sleep_time]}" : ""
   cmd = "./tools/scripts/mosaic/run.rb -5"\
 	" -w /local/mosaic/tpch#{query}/"\
 	" -p /local/data/tpch#{sf}g-fpb/"\
@@ -40,6 +55,8 @@ def run_trial(sf, query, switches, nodes, perhost)
 	" --nmask \".*hd[1-9]$\""\
 	" --compile-local"\
 	" #{corrective_opt}"\
+	" #{batch_opt}"\
+	" #{sleep_opt}"\
 	" --map-overlap 0"\
 	" ../K3-Mosaic/tests/queries/tpch/query#{query}.sql"\
 	" 2>&1 | tee #{output_path}"
@@ -173,20 +190,9 @@ def main()
   log_csv(*$headers)
 
   for config in remaining
-    datanodes_per_host = node_count / $options[:num_machines]
+    datanodes_per_host = config["#nodes"].to_i / $options[:num_machines]
     run_trial(*config.values, datanodes_per_host)
   end
 end
 
 main()
-
-# Lifted from StackOverflow. Duplicate-Aware Array subtraction.
-class Array
-  # Subtract each passed value once:
-  #   %w(1 2 3 1).subtract_once %w(1 1 2) # => ["2", "3"]
-  # Time complexity of O(n + m)
-  def subtract_once(values)
-    counts = values.inject(Hash.new(0)) { |h, v| h[v] += 1; h }
-    reject { |e| counts[e] -= 1 unless counts[e].zero? }
-  end
-end

@@ -77,6 +77,15 @@ def event_span(tg, vid, t):
 def banner(s):
   return '\n'.join(['-' * 50, s, '-' * 50])
 
+def dump_final_latencies():
+  print("Dumping Final latencies:")
+  with open("latencies.txt", 'w') as f:
+    for vid in latencies:
+      l = latencies[vid][events['do_complete']]
+      if l > 0:
+        f.write(str(l) + '\n')
+
+
 def process_events(switch_files, node_files, save_intermediate):
   # Build an interval tree with switch files.
   # Probe and reconstruct latencies from node files.
@@ -85,6 +94,7 @@ def process_events(switch_files, node_files, save_intermediate):
       swreader = csv.reader(csvfile, delimiter=',')
       prev_vid = 0
       prev_v = 0
+      prev_t = 0
       for row in swreader:
         [tg, vid, comp, t] = map(lambda x: int(x), row)
 
@@ -94,6 +104,7 @@ def process_events(switch_files, node_files, save_intermediate):
         elif tg == tags['post_send_fetch']:
           switchspans[prev_vid:vid] = t
           l = t - prev_t
+          print(vid, l)
 
           latencies[vid] = {v : -sys.maxint - 1 for v in events.values()}
           latencies[vid][events['switch_process']] = l
@@ -133,33 +144,37 @@ def process_events(switch_files, node_files, save_intermediate):
 
         # else:
         #   print("Unknown node tag: {tg}".format(**locals()))
+  dump_final_latencies()
 
   # Build latency histograms
-  print(banner("Computing latency histograms"))
+  #print(banner("Computing latency histograms"))
 
-  for ecls, span in latencyspans.iteritems():
-    lhists[ecls] = Hist1D(nbins, span[0], span[1])
+  #for ecls, span in latencyspans.iteritems():
+  #  lhists[ecls] = Hist1D(nbins, span[0], span[1])
 
-  for eventl in latencies.values():
-    for ecls, l in eventl.iteritems():
-      lhists[ecls].fill(l)
+  #for eventl in latencies.values():
+  #  for ecls, l in eventl.iteritems():
+  #    lhists[ecls].fill(l)
 
-  print(banner("Saving latency histograms"))
+  #print(banner("Saving latency histograms"))
 
-  for k, v in events.iteritems():
-    with open('latency_{}.yml'.format(k), 'w') as outfile:
-      data = {b.x.center: b.value for b in lhists[v].bins()}
-      yaml.dump(data, outfile, default_flow_style=True)
+  #for k, v in events.iteritems():
+  #  if k == "corr_done":
+  #    continue
+  #  with open('latency_{}.yml'.format(k), 'w') as outfile:
+  #    data = {b.x.center: b.value for b in lhists[v].bins()}
+  #    yaml.dump(data, outfile, default_flow_style=True)
 
-      # Interactive plot
-      graph = Pyasciigraph()
+  #    # Interactive plot
+  #    graph = Pyasciigraph()
 
-      # Simpler example
-      try:
-        for line in graph.graph('{} latency'.format(k), sorted(data.items())):
-          print(line)
-      except Exception:
-        print("Exception on {}".format(k))
+  #    # Simpler example
+  #    try:
+  #      for line in graph.graph('{} latency'.format(k), sorted(data.items())):
+  #        print(line)
+  #    except Exception as e:
+  #      print("Exception on {}".format(k))
+  #      print(e)
 
   if save_intermediate:
     # Finally, save intermediate data for now.

@@ -135,8 +135,10 @@ def create_local_file(args):
     # convert to dictionaries
     peers2 = []
     switch_index = 0
+    peer_index = 0
     for (role, port) in peers:
-        peer = {'role': wrap_role(role), 'me':address(port), 'peers':create_peers(peers)}
+        peer = {'role': wrap_role(role), 'me':address(port), 'peers':create_peers(peers), 'eventlog': 'events%d.csv' % peer_index}
+        peer_index += 1
 
         if pmap is not None:
             peer.update(pmap)
@@ -149,6 +151,8 @@ def create_local_file(args):
             if args.latency_profiling:
                 peer['mosaic_event_buffer_batch_sz'] = 1
                 peer['mosaic_event_sample_mod'] = 0
+                peer['mosaic_route_sample_mod'] = 1000000
+                peer['mosaic_sendput_sample_mod'] = 1000000
             if args.csv_path:
                 peer['switch_path'] = args.csv_path
             if args.tpch_data_path:
@@ -290,7 +294,7 @@ def main():
     parser.add_argument("--tpch_infer_inorder_path", action='store_false', default=True, help="automatic inorder file")
     parser.add_argument("--tpch_query", type=str, help="query")
     parser.add_argument("--extra-args", help="extra arguments in x=y format")
-    parser.add_argument("--latency-profiling", action='store_true', default=False, dest="latency_profiling", help="activate profiling")
+    parser.add_argument("--latency-profiling", action="store_true", default=False, dest="latency_profiling", help="activate profiling")
     args = parser.parse_args()
     if args.run_mode == "dist":
         create_dist_file(args)
