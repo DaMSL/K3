@@ -693,6 +693,9 @@ end
 
 def post_process_latencies(jobid, sw_regex, script_path)
   job_path = File.join($workdir, "job_#{jobid}")
+  if $options[:latency_dir]
+    job_path = $options[:latency_dir]
+  end
   dirs = Dir.entries(job_path).select {|entry|
     File.directory? File.join(job_path, entry) and !(entry == '.' || entry == '..')
   }
@@ -821,6 +824,7 @@ def main()
     opts.on("--wmoderate2", "Skew argument")                                   { $options[:compileargs] = "#{$options[:compileargs]} --workerfactor hm=3 --workerblocks hd=2:qp3=2:qp4=2:qp5=2:qp6=2" }
     opts.on("--wextreme",   "Skew argument")                                   { $options[:compileargs] = "#{$options[:compileargs]} --workerfactor hm=4 --workerblocks hd=1:qp3=1:qp4=1:qp5=1:qp6=1" }
     opts.on("--process-latencies [SWITCH_REGEX]", "Post-processing on latency files") { |s| $options[:process_latencies] = s }
+    opts.on("--latency-job-dir [PATH]", "Manual selection of job directory") { |s| $options[:latency_dir] = s }
 
     # Stages.
     # Ktrace is not run by default.
