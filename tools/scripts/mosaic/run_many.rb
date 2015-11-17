@@ -190,7 +190,7 @@ def main()
   log_csv(*$headers)
 
   for config in remaining
-    datanodes_per_host = node_count / $options[:num_machines]
+    datanodes_per_host = config["#nodes"].to_i / $options[:num_machines]
     run_trial(*config.values, datanodes_per_host)
   end
 end

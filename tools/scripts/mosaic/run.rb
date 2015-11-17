@@ -701,15 +701,19 @@ def post_process_latencies(jobid, sw_regex, script_path)
     files.map {|x| File.join(d, x) }
   }.flatten
 
-  node_dirs = dirs.select {|d| !(switch_dirs.include? d) }.map {|d| File.join(job_path, d) }
+  node_dirs = dirs.select {|d| !(switch_dirs.include? File.join(job_path, d)) }.map {|d| File.join(job_path, d) }
   node_files = node_dirs.map {|d|
     files = Dir.entries(d).select {|f| f =~ /eventlog_.+\.csv/}
     files.map {|x| File.join(d, x) }
   }.flatten
+  for file in node_files
+    puts file
+  end
 
   cmd = ""
   cmd << "--switches " << switch_files.join(" ") << " "
   cmd << "--nodes " << node_files.join(" ") << " "
+  print cmd
 
   run("#{File.join(script_path, "event_latencies.py")} #{cmd}", always_out:true)
 
