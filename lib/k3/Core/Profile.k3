@@ -187,7 +187,9 @@ control MosaicSendPoly[lbl:label, ce1:expr, ce2:expr, ce3:expr]
   ?e => ( $.[e] );
         (if ($[lbl]_sendpoly_sample_mod == 0 or $[ce1] % $[lbl]_sendpoly_sample_mod == 0)
          then (
-          ($[lbl]_sendpoly_buffer.insert {etag: -1, evid: $[ce1], pcomponent: $[ce2], t: $[ce3].byte_size() });
+          ($[lbl]_sendpoly_buffer.insert {etag: 17, evid: $[ce1], pcomponent: $[ce2], t: $[ce3].byte_size() });
+          ($[lbl]_sendpoly_buffer.insert {etag: 18, evid: $[ce1], pcomponent: $[ce2], t: 1 });
+
           (if $[lbl]_sendpoly_buffer.size() >= $[lbl]_sendpoly_buffer_batch_sz
             then ($[lbl]_sendpoly_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
                   $[lbl]_sendpoly_buffer.clear()
@@ -196,7 +198,7 @@ control MosaicSendPoly[lbl:label, ce1:expr, ce2:expr, ce3:expr]
   +> {}
   shared {
     declare $[lbl]_sendpoly_buffer : collection {etag:int, evid:int, pcomponent:int, t:int} @Vector
-    declare $[lbl]_sendpoly_buffer_batch_sz : mut int = 1000
+    declare $[lbl]_sendpoly_buffer_batch_sz : mut int = 2 * 1000
     declare $[lbl]_sendpoly_sample_mod      : mut int = 10
   }
 }
@@ -213,6 +215,8 @@ control MosaicSendUPoly[lbl:label, ce1:expr, ce2:expr, ce3:expr, ce4:expr]
          then (
           ($[lbl]_sendupoly_buffer.insert {etag: 14, evid: $[ce1], pcomponent: $[ce2], t: $[ce3].byte_size() });
           ($[lbl]_sendupoly_buffer.insert {etag: 15, evid: $[ce1], pcomponent: $[ce2], t: $[ce4].byte_size() });
+          ($[lbl]_sendpoly_buffer.insert  {etag: 16, evid: $[ce1], pcomponent: $[ce2], t: 1 });
+
           (if $[lbl]_sendupoly_buffer.size() >= $[lbl]_sendupoly_buffer_batch_sz
             then ($[lbl]_sendupoly_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
                   $[lbl]_sendupoly_buffer.clear()
@@ -221,7 +225,7 @@ control MosaicSendUPoly[lbl:label, ce1:expr, ce2:expr, ce3:expr, ce4:expr]
   +> {}
   shared {
     declare $[lbl]_sendupoly_buffer : collection {etag:int, evid:int, pcomponent:int, t:int} @Vector
-    declare $[lbl]_sendupoly_buffer_batch_sz : mut int = 2 * 1000
+    declare $[lbl]_sendupoly_buffer_batch_sz : mut int = 3 * 1000
     declare $[lbl]_sendupoly_sample_mod      : mut int = 10
   }
 }
