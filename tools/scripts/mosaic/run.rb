@@ -250,6 +250,12 @@ def gen_yaml(role_path, script_path)
   end
   cmd << "--dist " if $options[:run_mode] == :dist
   cmd << "--latency-profiling " if $options[:latency_profiling]
+  if $options[:message_profiling]
+    puts "MESSAGE PROFILING"
+  else
+    puts "NO PROFILING"
+  end
+  cmd << "--message-profiling " if $options[:message_profiling]
 
   extra_args = []
   extra_args << "ms_gc_interval=" + $options[:gc_epoch] if $options[:gc_epoch]
@@ -806,6 +812,10 @@ def main()
     opts.on("--latency-profiling", "Run with latency profiling options") {
       $options[:event_profile] = true
       $options[:latency_profiling] = true
+    }
+    opts.on("--message-profiling", "Run with latency profiling options") {
+      $options[:event_profile] = true
+      $options[:message_profiling] = true
     }
     opts.on("--str-trace", "Run with string tracing") { $options[:str_trace] = true }
     opts.on("--raw-yaml [FILE]", "Supply a yaml file") { |s| $options[:raw_yaml_file] = s }
