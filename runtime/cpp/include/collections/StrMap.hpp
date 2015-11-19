@@ -259,11 +259,13 @@ class StrMap {
     if (m->size == 0) {
       insert(f(unit_t{}));
     } else {
-      auto* existing = map_str_find(m, key.begin());
+      auto existing = map_str_find(m, key.begin());
       if (existing == map_str_end(m)) {
         insert(f(unit_t{}));
       } else {
-        *existing = g(std::move(*existing));
+        auto* v = static_cast<R*>(map_str_get(m, existing));
+        *v = g(std::move(*v));
+        map_str_stabilize_key(m, existing, v->key.begin());
       }
     }
     return unit_t{};

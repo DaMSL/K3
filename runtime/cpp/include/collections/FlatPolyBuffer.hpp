@@ -67,7 +67,7 @@ public:
       size_t offset = buffer_size(vcon);
       size_t len = str.raw_length() + 1;
       size_t gap = 8 - ((offset + len) % 8);
-      char filler[gap] = { 0 };
+      auto filler = std::vector<char>(gap, 0);
 
       int status = buffer_insert(vcon, offset, const_cast<char*>(str.data()), len);
       if ( status == 0 ) {
