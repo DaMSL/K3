@@ -250,6 +250,12 @@ def gen_yaml(role_path, script_path)
   end
   cmd << "--dist " if $options[:run_mode] == :dist
   cmd << "--latency-profiling " if $options[:latency_profiling]
+  if $options[:message_profiling]
+    puts "MESSAGE PROFILING"
+  else
+    puts "NO PROFILING"
+  end
+  cmd << "--message-profiling " if $options[:message_profiling]
 
   extra_args = []
   extra_args << "ms_gc_interval=" + $options[:gc_epoch] if $options[:gc_epoch]
@@ -693,6 +699,9 @@ end
 
 def post_process_latencies(jobid, sw_regex, script_path)
   job_path = File.join($workdir, "job_#{jobid}")
+  if $options[:latency_dir]
+    job_path = $options[:latency_dir]
+  end
   dirs = Dir.entries(job_path).select {|entry|
     File.directory? File.join(job_path, entry) and !(entry == '.' || entry == '..')
   }
@@ -804,6 +813,10 @@ def main()
       $options[:event_profile] = true
       $options[:latency_profiling] = true
     }
+    opts.on("--message-profiling", "Run with latency profiling options") {
+      $options[:event_profile] = true
+      $options[:message_profiling] = true
+    }
     opts.on("--str-trace", "Run with string tracing") { $options[:str_trace] = true }
     opts.on("--raw-yaml [FILE]", "Supply a yaml file") { |s| $options[:raw_yaml_file] = s }
     opts.on("--map-overlap [FLOAT]", "Adjust % overlap of maps on cluster. 100%=all maps everywhere") { |f| $options[:map_overlap] = f }
@@ -821,6 +834,7 @@ def main()
     opts.on("--wmoderate2", "Skew argument")                                   { $options[:compileargs] = "#{$options[:compileargs]} --workerfactor hm=3 --workerblocks hd=2:qp3=2:qp4=2:qp5=2:qp6=2" }
     opts.on("--wextreme",   "Skew argument")                                   { $options[:compileargs] = "#{$options[:compileargs]} --workerfactor hm=4 --workerblocks hd=1:qp3=1:qp4=1:qp5=1:qp6=1" }
     opts.on("--process-latencies [SWITCH_REGEX]", "Post-processing on latency files") { |s| $options[:process_latencies] = s }
+    opts.on("--latency-job-dir [PATH]", "Manual selection of job directory") { |s| $options[:latency_dir] = s }
 
     # Stages.
     # Ktrace is not run by default.
