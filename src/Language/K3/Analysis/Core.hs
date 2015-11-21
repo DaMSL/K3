@@ -318,6 +318,7 @@ bindingVariables :: Binder -> [Identifier]
 bindingVariables (BIndirection i) = [i]
 bindingVariables (BTuple is)      = is
 bindingVariables (BRecord ivs)    = snd (unzip ivs)
+bindingVariables (BSplice _)      = []
 
 -- | Retrieves all variables modified in an expression.
 modifiedVariables :: K3 Expression -> [Identifier]

@@ -220,6 +220,7 @@ ctrlExtension d = (text "+>" <+>) C.<$> decl d
 spliceType :: SpliceType -> SyntaxPrinter
 spliceType = \case
     STLabel    -> return $ text "label"
+    STBinder   -> return $ text "binder"
     STType     -> return $ text "type"
     STExpr     -> return $ text "expr"
     STDecl     -> return $ text "decl"
@@ -233,6 +234,7 @@ spliceValue :: SpliceValue -> SyntaxPrinter
 spliceValue = \case
     SVar     i    -> return $ text i
     SLabel   i    -> return $ brackets $ text "#" <+> text i
+    SBinder  b    -> return $ brackets $ text "!" <+> binder b
     SType    t    -> typ t >>= \td -> return $ brackets $ colon <+> td
     SExpr    e    -> expr e >>= \ed -> return $ brackets $ text "$" <+> ed
     SDecl    d    -> decl d >>= \dd -> return $ brackets $ text "$^" <+> dd
@@ -701,10 +703,12 @@ bindExpr :: Binder -> Doc -> Doc -> Doc
 bindExpr b e e' = (text "bind" </> hang 2 e </> text "as"
                                </> (hang 2 $ binder b)
                                </> text "in") <$> indent 2 e'
-  where
-    binder (BIndirection i) = text "ind" <+> text i
-    binder (BTuple ids)     = stupled $ map text ids
-    binder (BRecord idMap)  = commaBrace $ map (\(s,t) -> text s <+> colon <+> text t) idMap
+
+binder :: Binder -> Doc
+binder (BIndirection i) = text "ind" <+> text i
+binder (BTuple ids)     = stupled $ map text ids
+binder (BRecord idMap)  = commaBrace $ map (\(s,t) -> text s <+> colon <+> text t) idMap
+binder (BSplice i)      = text i
 
 branchExpr :: Doc -> Doc -> Doc -> Doc
 branchExpr p t e = text "if" <+> (align $ p <$> text "then" </> t <$> text "else" </> e)

@@ -38,6 +38,7 @@ import Language.K3.Utils.Pretty
 -}
 
 data SpliceType = STLabel
+                | STBinder
                 | STType
                 | STExpr
                 | STDecl
@@ -48,6 +49,7 @@ data SpliceType = STLabel
 
 data SpliceValue = SVar     Identifier
                  | SLabel   Identifier
+                 | SBinder  Binder
                  | SType    (K3 Type)
                  | SExpr    (K3 Expression)
                  | SDecl    (K3 Declaration)
@@ -243,6 +245,9 @@ spliceVESym  = "expr"
 
 spliceVLSym :: Identifier
 spliceVLSym  = "lit"
+
+spliceVBSym :: Identifier
+spliceVBSym  = "binder"
 
 lookupSpliceE :: Identifier -> SpliceEnv -> Maybe SpliceValue
 lookupSpliceE n senv = Map.lookup n senv

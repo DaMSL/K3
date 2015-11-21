@@ -82,6 +82,8 @@ mangleReservedNames'' (BTuple is)
     = BTuple [if i `elem` cppReservedNames then mangleName i else i | i <- is]
 mangleReservedNames'' (BRecord iis)
     = BRecord [(f, if i `elem` cppReservedNames then mangleName i else i) | (f, i) <- iis]
+mangleReservedNames'' (BSplice i)
+    = BSplice $ if i `elem` cppReservedNames then mangleName i else i
 
 mangleName :: Identifier -> Identifier
 mangleName s = s ++ "_"

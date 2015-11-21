@@ -402,7 +402,7 @@ materializationE e@(Node (t :@: as) cs)
 
       EBindAs b -> do
         let [x, y] = cs
-        let newBindings = case b of { BIndirection i -> [i]; BTuple is -> is; BRecord iis -> snd (unzip iis) }
+        let newBindings = case b of { BIndirection i -> [i]; BTuple is -> is; BRecord iis -> snd (unzip iis); _ -> [] }
         y' <- withLocalBindings newBindings (getUID e) $ materializationE y
         x' <- withLocalDS [y] (materializationE x)
 
@@ -415,6 +415,7 @@ materializationE e@(Node (t :@: as) cs)
           BIndirection i -> setDecision (getUID e) i $ referenceBind defaultDecision
           BTuple is -> mapM_ (\i -> setDecision (getUID e) i $ referenceBind defaultDecision) is
           BRecord iis -> mapM_ (\(_, i) -> setDecision (getUID e) i $ referenceBind defaultDecision) iis
+          BSplice _ -> error "Incomplete bind splice in materialization analysis"
 
         decisions <- dLookupAll (getUID e)
         return (Node (t :@: (EMaterialization decisions:as)) [x', y'])

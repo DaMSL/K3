@@ -1135,6 +1135,8 @@ inferProvenance expr = do
         BRecord ivs    -> srt td [(uidInt u, length ivs)] . (:[])
                             $ mapM_ (\(src,dest) -> freshM dest u (tisdup pti) $ precord src p) ivs
 
+        BSplice _      -> errorM $ PT.boxToString $ [T.pack "Incomplete bind splice while inferring provenance for "] %$ PT.prettyLines e
+
     sideways td _ _ (children -> ch) = tdm td >> srt td ul ml
       where (ul, ml) = unzip $ replicate (length ch - 1) ((scuid td, 0), iu)
 

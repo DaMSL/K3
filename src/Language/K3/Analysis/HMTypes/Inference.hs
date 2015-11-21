@@ -1269,6 +1269,8 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
             void $  unifyWithOverrideM ch1T (tlower $ [trec $ flip zip jtvs $ map fst ijs]) $ bindErr e "record"
             mapM_ (uncurry monoBinding) $ flip zip jtvs $ map snd ijs
 
+          BSplice _ -> errorM $ bindErr e "splice" $ T.pack "Incomplete bind splice"
+
         return [iu]
 
       where
@@ -1437,6 +1439,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
         BIndirection i -> modify $ \env -> tidele env i
         BTuple ids     -> modify $ \env -> foldl tidele env ids
         BRecord ijs    -> modify $ \env -> foldl tidele env $ map snd ijs
+        BSplice _      -> return ()
       return $ ("bind-as",) $ rebuildE n ch .+ bqt
 
     -- First child unification has already been performed in sidewaysBinding

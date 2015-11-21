@@ -296,6 +296,7 @@ evalBindings :: SpliceContext -> SpliceEnv -> GeneratorM SpliceEnv
 evalBindings sctxt senv = evalMap (generateInSpliceCtxt sctxt) senv
   where eval sv@(SVar  _)   = let csv = chase sv in if csv == sv then return sv else eval csv
         eval (SLabel   i)   = spliceIdentifier i  >>= return . SLabel
+        eval (SBinder  b)   = spliceBinder b      >>= return . SBinder
         eval (SType    t)   = spliceType t        >>= return . SType
         eval (SExpr    e)   = spliceExpression e  >>= return . SExpr
         eval (SDecl    d)   = spliceDeclaration d >>= return . SDecl
@@ -423,6 +424,7 @@ spliceExpression = mapTree doSplice
     doSplice ch e@(tag -> EProject i)            = expectIdSplicer i        >>= newAnns e >>= \(nid, nanns)  -> return $ Node (EProject nid  :@: nanns) ch
     doSplice ch e@(tag -> EAssign i)             = expectIdSplicer i        >>= newAnns e >>= \(nid, nanns)  -> return $ Node (EAssign  nid  :@: nanns) ch
     doSplice ch e@(tag -> ELambda i)             = expectIdSplicer i        >>= newAnns e >>= \(nid, nanns)  -> return $ Node (ELambda  nid  :@: nanns) ch
+    doSplice ch e@(tag -> EBindAs b)             = expectBindSplicer b      >>= newAnns e >>= \(nb, nanns)   -> return $ Node (EBindAs  nb   :@: nanns) ch
     doSplice ch e@(tag -> EConstant (CEmpty ct)) = spliceType ct            >>= newAnns e >>= \(nct, nanns)  -> return $ Node (EConstant (CEmpty nct) :@: nanns) ch
     doSplice ch e@(Node (tg :@: _) _) = newAnns e () >>= \(_,nanns) -> return $ Node (tg :@: nanns) ch
 
@@ -445,6 +447,11 @@ spliceLiteral = mapTree doSplice
 
 spliceIdentifier :: Identifier -> GeneratorM Identifier
 spliceIdentifier i = expectIdSplicer i
+
+spliceBinder :: Binder -> GeneratorM Binder
+spliceBinder (BIndirection i) = spliceIdentifier i >>= return . BIndirection
+spliceBinder (BTuple i) = mapM spliceIdentifier i >>= return . BTuple
+spliceBinder (BRecord ijs) = mapM (\(i,j) -> (,) <$> spliceIdentifier i <*> spliceIdentifier j) ijs >>= return . BRecord
 
 spliceDAnnotation :: Annotation Declaration -> DeclAnnGenerator
 spliceDAnnotation (DProperty (Left  (n, Just l))) = spliceLiteral l >>= return . DProperty . Left  . (n,) . Just
@@ -474,6 +481,9 @@ expectEmbeddingSplicer i = generatorWithSCtxt $ \sctxt -> do
     e <- liftParser i idFromParts
     either (evalSumEmbedding i sctxt) (return . SLabel) e
 
+expectBindSplicer :: Binder -> GeneratorM Binder
+expectBindSplicer (BSplice i) = generatorWithSCtxt $ \sctxt -> liftParser i bindEmbedding >>= evalBindSplice sctxt
+expectBindSplicer b = return b
 
 evalIdPartsSplice :: SpliceContext -> Either [MPEmbedding] Identifier -> GeneratorM Identifier
 evalIdPartsSplice sctxt (Left ml) = evalSumEmbedding "identifier" sctxt ml >>= \case
@@ -505,6 +515,13 @@ evalLiteralSplice sctxt (Left ml) = evalSumEmbedding "literal" sctxt ml >>= \cas
     _ -> spliceFail $ "Invalid splice literal value " ++ show ml
 
 evalLiteralSplice _ (Right l) = return l
+
+evalBindSplice :: SpliceContext -> Either [MPEmbedding] Binder -> GeneratorM Binder
+evalBindSplice sctxt (Left ml) = evalSumEmbedding "binder" sctxt ml >>= \case
+    SBinder b  -> return b
+    _ -> spliceFail $ "Invalid splice binder value " ++ show ml
+
+evalBindSplice _ (Right b) = return b
 
 evalSumEmbedding :: String -> SpliceContext -> [MPEmbedding] -> GeneratorM SpliceValue
 evalSumEmbedding tg sctxt l = maybe sumError return =<< foldM concatSpliceVal Nothing l
@@ -566,6 +583,14 @@ matchExpr e patE = matchTree matchTag e patE emptySpliceEnv
           in do
               localLog $ debugMatchPVar i
               matchTypesAndAnnotations (annotations e1) (annotations e2) nsEnv >>= return . (True,)
+
+    matchTag sEnv e1@(tag -> EBindAs b) e2@(tag -> EBindAs (BSplice i))
+      | isPatternVariable i =
+          let nrEnv = spliceRecord [(spliceVBSym, SBinder b)]
+              nsEnv = maybe sEnv (\n -> if null n then sEnv else addSpliceE n nrEnv sEnv) $ patternVariable i
+          in do
+              localLog $ debugMatchPVar i
+              matchTypesAndAnnotations (annotations e1) (annotations e2) nsEnv >>= return . (False,)
 
     matchTag sEnv e1@(tag -> EConstant (CEmpty t1)) e2@(tag -> EConstant (CEmpty t2)) =
       let (anns1, anns2) = (annotations e1, annotations e2) in

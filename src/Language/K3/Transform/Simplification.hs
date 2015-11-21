@@ -131,10 +131,10 @@ data FusionAccTClass = IdTr     -- Identity transform
 type FusionAccSpec = (FusionAccFClass, FusionAccTClass)
 
 pFusionSpec :: FusionAccSpec -> Annotation Expression
-pFusionSpec spec = inferredEProp "FusionSpec" $ Just . LC.string $ show spec
+pFusionSpec spec = persistentEProp "FusionSpec" $ Just . LC.string $ show spec
 
 pFusionLineage :: String -> Annotation Expression
-pFusionLineage s = inferredEProp "FusionLineage" $ Just $ LC.string s
+pFusionLineage s = persistentEProp "FusionLineage" $ Just $ LC.string s
 
 pHierarchicalGroupBy :: Annotation Expression
 pHierarchicalGroupBy = inferredEProp "HGroupBy" Nothing

@@ -10,6 +10,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE ViewPatterns #-}
+
 -- | K3 Parser.
 module Language.K3.Parser {-(
   K3Parser,
@@ -653,16 +654,10 @@ eBind = exprError "bind" $ EC.bindAs <$> (nsPrefix "bind")
                                      <*> (keyword "as" *> eBinder) <*> (ePrefix "in")
 
 eBinder :: BinderParser
-eBinder = exprError "binder" $ choice [bindInd, bindTup, bindRec]
-
-bindInd :: K3Parser Binder
-bindInd = BIndirection <$> iPrefix "ind"
-
-bindTup :: K3Parser Binder
-bindTup = BTuple <$> parens idList
-
-bindRec :: K3Parser Binder
-bindRec = BRecord <$> braces idPairList
+eBinder = exprError "binder" $ parserWithPMode $ \mode -> choice $ (++ [bindInd, bindTup, bindRec]) $
+            case mode of
+              Normal -> []
+              _ -> [bindSplice]
 
 eAddress :: ExpressionParser
 eAddress = exprError "address" $ EC.address <$> ipAddress <* colon <*> port
@@ -865,11 +860,12 @@ tProperties = nproperties $ TProperty . Left
 
 {- Metaprogramming -}
 stTerm :: K3Parser SpliceType
-stTerm = choice $ map try [ stLabel, stType, stExpr, stDecl, stLiteral
+stTerm = choice $ map try [ stLabel, stBinder, stType, stExpr, stDecl, stLiteral
                           , stLabelType, stLabelExpr, stLabelLit, stLTL
                           , stRecord, stList ]
   where
     stLabel     = STLabel     <$ keyword "label"
+    stBinder    = STBinder    <$ keyword "binder"
     stType      = STType      <$ keyword "type"
     stExpr      = STExpr      <$ keyword "expr"
     stDecl      = STDecl      <$ keyword "decl"
@@ -897,10 +893,11 @@ svTerm :: K3Parser SpliceValue
 svTerm = choice $ map try [ sVar
                           , svTypeDict, svExprDict, svLiteralDict, svTylitDict
                           , svNamedTypeDict, svNamedExprDict, svNamedLiteralDict, svNamedTermDict
-                          , sLabel, sType, sExpr, sDecl, sLiteral, sLabelType, sRecord, sList, sLitRange ]
+                          , sLabel, sBinder, sType, sExpr, sDecl, sLiteral, sLabelType, sRecord, sList, sLitRange ]
   where
     sVar        = SVar                  <$> identifier
     sLabel      = SLabel                <$> wrap "[#"  "]"  identifier
+    sBinder     = SBinder               <$> wrap "[~!"  "]"  eBinder
     sType       = SType . stripTUIDSpan <$> wrap "[:"  "]"  typeExpr
     sExpr       = SExpr . stripEUIDSpan <$> wrap "[$"  "]"  expr
     sLiteral    = SLiteral              <$> wrap "[$#" "]"  literal

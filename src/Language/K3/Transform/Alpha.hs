@@ -97,11 +97,13 @@ instance Alpha Expression where
         genSymB (BIndirection i) s = genSym i s
         genSymB (BTuple is) s = foldr genSym s is
         genSymB (BRecord iis) s = foldr genSym s (snd $ unzip iis)
+        genSymB (BSplice _) s = s
 
         nameOfB :: Binder -> Reader Store Binder
         nameOfB (BIndirection i) = return . BIndirection =<< nameOf i
         nameOfB (BTuple is) = return . BTuple . sequence =<< mapM nameOf is
-        nameOfB (BRecord (unzip -> (fs, is))) = return . BRecord . zip fs . sequence =<< mapM nameOf is
+        nameOfB (BRecord (unzip -> (fs, is))) = return . BRecord . zip fs . sequence =<< mapM nameOf is\
+        nameOfB b@(BSplice i) = return b
 
     -- | Usage-Point.
     alpha e@(tag -> EVariable i) =

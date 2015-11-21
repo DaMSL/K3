@@ -1,0 +1,10 @@
+control Foo {
+  bind ?v as ?b1 in ?body => bind $.[v] as $~![b1] in (bind $.[v] as $~![b1] in $.[body] + 1)
+}
+
+declare c : mut int = 0
+declare d : {a: int, b: int}
+
+trigger t : () = \_ -> (
+  c = ((bind d as {a:m, b:n} in n) @Foo)
+)

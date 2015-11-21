@@ -815,6 +815,7 @@ reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
           BIndirection i -> [i]
           BTuple is -> is
           BRecord iis -> snd (unzip iis)
+          BSplice _ -> []
 
   initKType <- getKType a
   initCType <- genCType initKType
@@ -849,6 +850,7 @@ reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
             concat [initByDecision (getInMethodFor i k) i (R.TGet initExpr n) | i <- is | n <- [0..]]
           BRecord iis ->
             concat [initByDecision (getInMethodFor i k) i (R.Project initExpr (R.Name f)) | (f, i) <- iis]
+          BSplice _ -> []
 
   let wbByDecision d old new =
         case d of
@@ -864,6 +866,7 @@ reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
             concat [wbByDecision (getExMethodFor i k) (R.TGet initExpr n) (R.Variable $ R.Name i) | i <- is | n <- [0..]]
           BRecord iis ->
             concat [wbByDecision (getExMethodFor i k) (R.Project initExpr (R.Name f)) (R.Variable $ R.Name i) | (f, i) <- iis]
+          BSplice _ -> []
 
   (bindBody, returnDecl, returnStmt) <-
     case r of

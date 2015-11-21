@@ -1022,6 +1022,7 @@ inferEffects extInfOpt expr = do
             BIndirection i -> srt [freshIndM e i u t rf]
             BTuple is      -> srt . (:[]) $ freshTupM e u t rf $ zip [0..length is -1] is
             BRecord ivs    -> srt . (:[]) $ freshRecM e u t rf ivs
+            BSplice _      -> errorM $ PT.boxToString $ [T.pack "Incomplete bind splice while inferring effects for "] %$ PT.prettyLines e
 
         _ -> tAnnErr e
 
