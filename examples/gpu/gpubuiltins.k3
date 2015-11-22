@@ -1,0 +1,30 @@
+include "Core/Builtins.k3"
+include "Core/GPUBuiltins.k3"
+
+declare devicecount : mut int = 0
+
+declare file_name : string = "saxpy.cu"
+
+declare kernel : string =
+                " __global__ "  ++                                                
+                "void saxpy(float a, float *x, float *y, float *out, size_t n)   " ++
+    		"{                                                               " ++
+    		"  size_t tid = blockIdx.x * blockDim.x + threadIdx.x;           " ++
+    		"  if (tid < n) {                                                " ++
+    		"    out[tid] = a * x[tid] + y[tid];                             " ++
+    		"  }                                                             " ++
+    		"}                                                               "
+
+declare ptx : mut string = ""
+
+trigger t : () = \_ -> (
+   devicecount = get_device_count ();
+   print ("GPU device count: " ++ (itos devicecount));
+   device_info ();
+   print ("ptx:" ++ (compile_to_ptx kernel file_name));
+   (ptx = (compile_to_ptx kernel file_name));
+   (run_ptx ptx "saxpy")
+)
+
+source s1 : () = value ()
+feed s1 |> t

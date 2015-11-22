@@ -7,36 +7,47 @@
 #include "types/BaseString.hpp"
 #include "Common.hpp"
 
+#define NUM_THREADS 128
+#define NUM_BLOCKS 32
+#define NVRTC_SAFE_CALL(x)                                        \
+  do {                                                            \
+    nvrtcResult result = x;                                       \
+    if (result != NVRTC_SUCCESS) {                                \
+      std::cerr << "\nerror: " #x " failed with error "           \
+                << nvrtcGetErrorString(result) << '\n';           \
+      exit(1);                                                    \
+    }                                                             \
+  } while(0)
+#define CUDA_SAFE_CALL(x)                                         \
+  do {                                                            \
+    CUresult result = x;                                          \
+    if (result != CUDA_SUCCESS) {                                 \
+      const char *msg;                                            \
+      cuGetErrorName(result, &msg);                               \
+      std::cerr << "\nerror: " #x " failed with error "           \
+                << msg << '\n';                                   \
+      exit(1);                                                    \
+    }                                                             \
+  } while(0)
+
 namespace K3 {
 
 class GPUBuiltins {
 
 public:
-  GPUBuiltins(){
-    /* initialize CUDA driver API here */
-    if(CUDA_SUCCESS != cuInit(0))
-      throw "CUDA Driver cannot be initialized.";
-  }
+  GPUBuiltins();
 
   /* CUDA Driver API wrapper */
-  int get_device_count(unit_t) { 
-    int *count;
-    if (cuDeviceGetCount(count) == CUDA_SUCCESS)
-      return *count;
-    else
-      return -1;
-  }
+  int          get_device_count(unit_t);
+  unit_t       device_info(unit_t);
 
-  unit_t compile_to_ptx(const string_impl& code, const string_impl& ptxname) {
-    
-    nvrtcProgram prog;              /* a program handle */
-    nvrtcResult  res;               /* an enumeration of result */
+  string_impl  compile_to_ptx(const string_impl& code, const string_impl& ptxname) ;
+  unit_t       run_ptx(const string_impl ptx, const string_impl func_name);
 
-    /* ... Runtime Compilation using NVRTC library .... */
-    return unit_t{};
-  }
-
+private:
+  class pImpl;
+  std::shared_ptr<pImpl> _impl;
 };
 } // namespace K3
- 
+
 #endif

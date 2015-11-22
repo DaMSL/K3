@@ -1,0 +1,1000 @@
+    7  vi product.sh 
+    8  sbatch product.sh
+    9  squeue -u yliu120@jhu.edu
+   10  ls
+   11  cat mdrun_3.log
+   12  squeue -u yliu120@jhu.edu
+   13  ls
+   14  cd scratch/
+   15  ls
+   16  cd nis-new/
+   17  ls
+   18  cd Na1Na2I
+   19  ls
+   20  squeue -u yliu120@jhu.edu
+   21  vi product.sh 
+   22  sbatch product.sh 
+   23  cat product.sh 
+   24  cd ..
+   25  ls
+   26  cd Na1Na2
+   27  ls
+   28  vi product.sh 
+   29  sbatch product.sh 
+   30  cd ..
+   31  ls
+   32  cd Is
+   33  ls
+   34  vi product.sh 
+   35  sbatch product.sh
+   36  squeue -u yliu120@jhu.edu
+   37  ls
+   38  cd ..
+   39  ls
+   40  nvidia-smi
+   41  cd ..
+   42  logout
+   43  cd scratch/
+   44  ls
+   45  cd nis-new/
+   46  ls
+   47  cd Na1Na2I
+   48  ls
+   49  vi product.sh 
+   50  tail mdrun_6.log
+   51  sbatch product.sh 
+   52  cd ..
+   53  ls
+   54  cd Na1Na2
+   55  ls
+   56  cat mdrun_5.log
+   57  tail mdrun_5.log
+   58  tail -200 mdrun_5.log
+   59  vi product.sh 
+   60  sbatch product.sh
+   61  cd ..
+   62  ls
+   63  cd Is
+   64  ls
+   65  vi product.sh 
+   66  sbatch product.sh
+   67  squeue -u yliu120@jhu.edu
+   68  ssh gpu028
+   69  ls
+   70  cd ..
+   71  ls
+   72  cd scratch/nis-new/
+   73  ls
+   74  cd Na1Na2I
+   75  ls
+   76  squeue -u yliu120@jhu.edu
+   77  tail mdrun_7.log
+   78  tail -200 mdrun_7.log
+   79  tail -1000 mdrun_7.log
+   80  ls
+   81  logout
+   82  ls
+   83  cd scratch/
+   84  ls
+   85  cd nis-new
+   86  ls
+   87  cd Na1Na2I
+   88  ls
+   89  vi product.sh 
+   90  sbatch product.sh 
+   91  cd ..
+   92  ls
+   93  cd Is
+   94  ls
+   95  vi product.sh 
+   96  sbatch product.sh
+   97  cd ..
+   98  ls
+   99  cd Na1I
+  100  ls
+  101  cd ..
+  102  ls
+  103  cd Na1Na2
+  104  ls
+  105  cd ..
+  106  ls
+  107  cd Is
+  108  ls
+  109  squeue -u yliu120@jhu.edu
+  110  cd ..
+  111  ls
+  112  cd Na1Na2I
+  113  ls
+  114  cd ..
+  115  ls
+  116  cd Na1Na2
+  117  ls
+  118  cat mdrun_6.log
+  119  vi product.sh 
+  120  cp product.sh product-makeup.sh
+  121  vi product-makeup.sh 
+  122  ls
+  123  vi product-makeup.sh 
+  124  sbatch product-makeup.sh 
+  125  squeue -u yliu120@jhmi.edu
+  126  squeue -u yliu120@jhu.edu
+  127  cd ..
+  128  ls
+  129  cd ~
+  130  ls
+  131  cd scratch/
+  132  l
+  133  ls
+  134  cd nis-new
+  135  ls
+  136  cd IS
+  137  cd Is
+  138  ls
+  139  head -300 mdrun_1.log
+  140  ls
+  141  cat step26b.pdb
+  142  ls
+  143  cd ..
+  144  ls
+  145  cat Is
+  146  ls
+  147  cd Is
+  148  ls
+  149  cat step26b.pdb | grep "POPC" | wc -l
+  150  cat step26b.pdb | grep "P   POPC" | wc -l
+  151  cat step26b.pdb | grep "TIP3" | wc -l
+  152  cat step26b.pdb | grep "OH2 TIP3" | wc -l
+  153  cat step26b.pdb | grep "SOD" | wc -l
+  154  cat step26b.pdb | grep "CLA" | wc -l
+  155  cat step26b.pdb | grep "IOD" | wc -l
+  156  cd ..
+  157  ls
+  158  cd Na1
+  159  ls
+  160  cd ..
+  161  cd Na1Na2
+  162  ls
+  163  cd ..
+  164  cd Is
+  165  ls
+  166  tail mdrun_4.log
+  167  tail mdrun_1.log
+  168  tail mdrun_2.log
+  169  tail mdrun_4.log
+  170  tail mdrun_5.log
+  171  python
+  172  ls
+  173  head mdrun_1.log
+  174  head -200 mdrun_1.log
+  175  head -300 mdrun_1.log
+  176  cat step26b.pdb | wc -l
+  177  cat step26b.pdb |grep "ATOM" | wc -l
+  178  ls
+  179  cd ..
+  180  ls
+  181  cd Na1Na2
+  182  ls
+  183  vi product.sh 
+  184  sbatch product.sh 
+  185  ls
+  186  squeue -u yliu120@jhu.edu
+  187  cd scratch/
+  188  ls
+  189  cd nis-new/
+  190  ls
+  191  cd Is
+  192  ls
+  193  cat mdrun_6.log
+  194  tail mdrun_6.log
+  195  ls
+  196  tail slurm-56950.out
+  197  cd ..
+  198  ls
+  199  cd Na1Na2I
+  200  ls
+  201  tail mdrun_8.log
+  202  cd ..
+  203  ls
+  204  cd Na1Na2
+  205  ls
+  206  cat mdrun_7.log
+  207  tail mdrun_7.log
+  208  tail -100 mdrun_7.log
+  209  ls
+  210  cat slurm-2648216.out
+  211  ls
+  212  squeue -u yliu120@jhu.edu
+  213  cd scratch/nis-new
+  214  ls
+  215  cd Na1Na2
+  216  ls
+  217  cd ..
+  218  ls
+  219  cd Is
+  220  ls
+  221  tail -100 slurm-2641453.out
+  222  ls
+  223  cp ../Na1Na2/product-makeup.sh .
+  224  vi product-makeup.sh 
+  225  sbatch product-makeup.sh 
+  226  squeue -u yliu120@jhu.edu
+  227  ls
+  228  vi product-makeup.sh 
+  229  sbatch product-makeup.sh 
+  230  ls
+  231  cd scratch/
+  232  ls
+  233  cd cudatest
+  234  ls
+  235  ./drivertest 
+  236  vi drivertest.c 
+  237  logout
+  238  ./drivertest
+  239  ls
+  240  cd scratch/cudatest/
+  241  ls
+  242  ./drivertest 
+  243  vi drivertest.c 
+  244  logout
+  245  ./drivertest 
+  246  cd scratch/
+  247  ls
+  248  cd cudatest
+  249  ls
+  250  ./drivertest 
+  251  vi drivertest.c 
+  252  ls
+  253  nvidia-smi
+  254  ls
+  255  ./drivertest
+  256  ml cuda/7.0
+  257  ./drivertest
+  258  vi drivertest
+  259  vi drivertest.c 
+  260  vi /cm/shared/apps/cuda/7.0/samples/1_Utilities/deviceQuery/deviceQuery.cpp 
+  261  vi drivertest.c 
+  262  logout
+  263  cd scratch/cudatest/drivertest
+  264  cd scratch/cudatest/
+  265  ./drivertest 
+  266  nvidia-smi
+  267  ls
+  268  cd ..
+  269  ls
+  270  logout
+  271  ./drivertest
+  272  cd scratch/cudatest/
+  273  ./drivertest 
+  274  vi drivertest.c 
+  275  echo $CUDA_VISIBLE_DEVICES
+  276  export CUDA_VISIBLE_DEVICES=4
+  277  ./drivertest 
+  278  vi /cm/shared/apps/cuda/7.0/samples/1_Utilities/deviceQuery/Makefile
+  279  nvidia-smi
+  280  logout
+  281  nvidia-smi
+  282  cd scratch/cudatest/
+  283  ls
+  284  ./drivertest 
+  285  vi drivertest
+  286  vi drivertest.c 
+  287  logout
+  288  cd scratch/cudatest/
+  289  ./drivertest
+  290  logout
+  291  ls
+  292  cd scratch/
+  293  ls
+  294  mkdir cudatest
+  295  cd cudatest/
+  296  vi drivertest.c
+  297  ml cuda/7.5
+  298  ml cuda/7.0
+  299  nvcc -o drivertest drivertest.c
+  300  ls
+  301  nvcc -o drivertest drivertest.c -I/cm/shared/apps/cuda/7.0/include/ -lcuda
+  302  ssh gpu001
+  303  nvcc -o drivertest drivertest.c -I/cm/shared/apps/cuda/7.0/include/ -lcuda
+  304  ssh gpu001
+  305  nvcc -o drivertest drivertest.c -I/cm/shared/apps/cuda/7.0/include/ -lcuda
+  306  ssh gpu001
+  307  nvcc -o drivertest drivertest.c -I/cm/shared/apps/cuda/7.0/include/ -lcuda
+  308  ssh gpu001
+  309  ssh gpu038
+  310  ls
+  311  vi drivertest.c 
+  312  ls
+  313  cd ..
+  314  s
+  315  ls
+  316  cd cudatest/
+  317  ls
+  318  vi drivertest.c 
+  319  cd ..
+  320  cd cudatest/
+  321  ls
+  322  nvcc -o drivertest drivertest.c -I/cm/shared/apps/cuda/7.0/include/ -lcuda
+  323  ssh gpu038
+  324  ssh gpu001
+  325  nvcc -o drivertest drivertest.c -I/cm/shared/apps/cuda/7.0/include/ -lcuda
+  326  vi drivertest.c 
+  327  nvcc -o drivertest drivertest.c -I/cm/shared/apps/cuda/7.0/include/ -lcuda
+  328  ssh gpu001
+  329  ls
+  330  logout
+  331  ssh gpu001
+  332  nvc
+  333  ml cuda
+  334  nvcc -h
+  335  nvcc --help
+  336  :q
+  337  ls
+  338  ssh gpu001
+  339  ls
+  340  cd scratch/
+  341  ls
+  342  cd nis-new/
+  343  ls
+  344  cd Na1Na2I
+  345  ls
+  346  vi product.sh 
+  347  sbatch product.sh
+  348  cd ..
+  349  ls
+  350  cd Na1Na2
+  351  ls
+  352  vi product.sh 
+  353  sbatch product.sh
+  354  cd ..
+  355  ls
+  356  cd Is
+  357  ls
+  358  vi product.sh 
+  359  sbatch product.sh
+  360  squeue -u yliu120@jhu.edu
+  361  top
+  362  logout
+  363  top
+  364  logout
+  365  ssh gpu001
+  366  ls
+  367  ssh gpu004
+  368  ls
+  369  cd K3/K3/
+  370  ls
+  371  __build/A 
+  372  ls
+  373  nvcc
+  374  pwd
+  375  ls /
+  376  exit
+  377  ls
+  378  cd K3/
+  379  ls
+  380  nvcc
+  381  lspci | grep -i nvidia
+  382  exit
+  383  ssh gpu001
+  384  ls
+  385  cd K3/
+  386  ls
+  387  nvcc
+  388  lspci | grep -i nvidia
+  389  lspci
+  390  ssh gpu002
+  391  ssh gpu001
+  392  ls /usr/local/
+  393  ls -al
+  394  cd ..
+  395  ls -al
+  396  cd ..
+  397  ls -al
+  398  ls -la .*
+  399  history
+  400  pwd
+  401  ls
+  402  cd k3
+  403  ls
+  404  cd ..
+  405  cd K3/K3/
+  406  ls
+  407  s
+  408  ls
+  409  pwd
+  410  cd test
+  411  ls
+  412  which g++
+  413  which clang
+  414  pwd
+  415  cd ~
+  416  pwd
+  417  cd /home-4/yliu120@jhu.edu/K3/K3/test
+  418  ls
+  419  export CUDA_PATH=/cm/shared/apps/cuda/7.0
+  420  echo $CUDA_PATH
+  421  cd /cm/shared/apps/cuda/7.0/lib
+  422  ls
+  423  cd /home-4/yliu120@jhu.edu/K3/K3/test
+  424  clang++ saxpy.cpp -o saxpy  -I $CUDA_PATH/include  -L $CUDA_PATH/lib  -lnvrtc -framework CUDA  -Wl,-rpath,$CUDA_PATH/lib
+  425  ls
+  426  g++ saxpy.cpp -o saxpy  -I $CUDA_PATH/include  -L $CUDA_PATH/lib  -lnvrtc -framework CUDA  -Wl,-rpath,$CUDA_PATH/lib
+  427  clang++ saxpy.cpp -o saxpy  -I $CUDA_PATH/include  -L $CUDA_PATH/lib  -lnvrtc -framework CUDA  -Wl,-rpath,$CUDA_PATH/lib -v
+  428  find $CUDA_PATH -name "nvrtc.h"
+  429  ls /cm/shared/apps/cuda/7.0/include/nvrtc.h 
+  430  echo $CUDA_PATH/include
+  431  ls $CUDA_PATH/include
+  432  find $CUDA_PATH -name "cuda.h"
+  433  ls
+  434  g++ saxpy.cpp -o saxpy -I $CUDA_PATH/include -L $CUDA_PATH/lib64 -lnvrtc -lcuda -Wl,-rpath,$CUDA_PATH/lib64
+  435  ls
+  436  ./saxpy 
+  437  ls
+  438  ssh gpu001
+  439  pwd
+  440  ls
+  441  cd ..
+  442  ls
+  443  vim .
+  444  git status -s
+  445  ls
+  446  vim .
+  447  exit
+  448  cd K3/K3/
+  449  vim .
+  450  cd runtime/cpp/include/builtins/
+  451  ls
+  452  vim GPUBuiltins.hpp
+  453  cd ..
+  454  ls
+  455  cd ..
+  456  pwd
+  457  export K3_PATH=/home-4/yliu120@jhu.edu/K3/K3
+  458  cd /home-4/yliu120\@jhu.edu/K3/K3/lib/k3/Core/
+  459  ls
+  460  vim GPUBuiltins.k3
+  461  cd /home-4/yliu120\@jhu.edu/K3/K3/examples/
+  462  mkdir gpu
+  463  vim include "Core/Builtins.k3"
+  464  ls
+  465  vim include
+  466  rm include
+  467  ls
+  468  vim gpubuildins.k3
+  469  vim gpubuildins.k3 
+  470  vim $K3_PATH/runtime/cpp/include/builtins/Builtins.hpp
+  471  vim $K3_PATH/runtime/cpp/include/builtins/GPUBuiltins.hpp
+  472  vim runtime/cpp/include/core/ProgramContext.hpp
+  473  vim /home-4/yliu120\@jhu.edu/K3/K3/runtime/cpp/include/core/ProgramContext.hpp
+  474  cd $K3_PATH 
+  475  ls
+  476  mkdir sh
+  477  ls
+  478  cp tools/scripts/run/compile.sh .
+  479  vim compile.sh 
+  480  ls examples/gpu/
+  481  find . -name "gpubuildins.k3"
+  482  mv examples/gpubuildins.k3 examples/gpu/
+  483  find . -name "gpubuildins.k3"
+  484  sh/compile.sh examples/gpu/gpubuildins.k3 
+  485  ls hs
+  486  ls sh
+  487  mv compile.sh sh/
+  488  sh/compile.sh examples/gpu/gpubuildins.k3 
+  489  cd sh
+  490  rm compile.sh 
+  491  vim compile.sh
+  492  sh/compile.sh examples/gpu/gpubuildins.k3 
+  493  cd ..
+  494  sh/compile.sh examples/gpu/gpubuildins.k3 
+  495  chmod sh/compile.sh
+  496  chmod +x sh/compile.sh 
+  497  sh/compile.sh examples/gpu/gpubuildins.k3 
+  498  find /cm/ -name "multi_index_container.hpp"
+  499  vim sh/compile_mddb-gpu.sh 
+  500  ls
+  501  cd K3/K3
+  502  ls
+  503  vim tools/scripts/run/compile.sh 
+  504  vim sh/compile.sh 
+  505  ls ~
+  506  vim sh/compile.sh 
+  507  mv sh/compile.sh compile_mddb-gpu.sh
+  508  vim sh compile.sh
+  509  vim sh/compile.sh
+  510  ls
+  511  cp tools/scripts/run/clean.sh sh/
+  512  sh/clean.sh 
+  513  ls sh
+  514  vim compile_mddb-gpu.sh 
+  515  mv compile_mddb-gpu.sh sh/
+  516  ls sh
+  517  chmod +x sh/compile.sh 
+  518  sh/compile.sh examples/gpu/gpubuildins.k3 
+  519  vim sh/compile.sh 
+  520  pwd
+  521  vim sh/compile_mddb-gpu.sh 
+  522  sh/clean.sh 
+  523  sh/compile.sh examples/gpu/gpubuildins.k3 
+  524  vim runtime/cpp/include/core/ProgramContext.hpp
+  525  sh/clean.sh 
+  526  vim runtime/cpp/include/core/ProgramContext.hpp
+  527  sh/compile.sh examples/gpu/gpubuildins.k3 
+  528  ssh gpu001
+  529  ssh gpu040
+  530  ls
+  531  ssh gpu040
+  532  sh gpu040
+  533  ssh gpu040
+  534  ls
+  535  ls /cm/shared/apps/cuda/
+  536  export CUDA_PATH=/cm/shared/apps/cuda/7.0
+  537  $CUDA_PATH/bin/nvcc
+  538  ls
+  539  vim lib/k3/Core/GPUBuiltins.k3
+  540  cd K3/K3/
+  541  vim lib/k3/Core/GPUBuiltins.k3
+  542  vim lib/k3/Core/String.k3 
+  543  vim lib/k3/Core
+  544  ls
+  545  cd K3/K3
+  546  ls
+  547  vim examples/
+  548  find . -name "types/values.cpp"
+  549  find . -name "values.cpp"
+  550  find . -name "Values.hpp"
+  551  find . -name "Value.hpp"
+  552  vim ./runtime/cpp/include/types/Value.hpp
+  553  fine . -name "Commons.hpp"
+  554  fine . -name "Common.hpp"
+  555  find . -name "Common.hpp"
+  556  vim ./runtime/cpp/include/Common.hpp
+  557  vim ./runtime/cpp/include/types/Value.hpp
+  558  vim ./runtime/cpp/include/types/BaseString.hpp 
+  559  vim ./runtime/cpp/src/builtins/
+  560  find . -name "BaseString.cpp"
+  561  grep -Ril . "substring"
+  562  grep -Ril  "substring" .
+  563  vim ./examples/language/builtins/string.k3
+  564  rm examples/gpu/gpubuildins.k3 
+  565  /cm/shared/apps/git/2.5.0.rc3/bin/git 
+  566  /cm/shared/apps/git/2.5.0.rc3/bin/git status -s
+  567  export CUDA_PATH=/cm/shared/apps/cuda/7.0
+  568  export K3_PATH=/home-4/yliu120@jhu.edu/K3/K3
+  569  cd $K3_PATH 
+  570  ls __build/
+  571  find . -name "CMakeCXXCompilerId.cpp"
+  572  vim ./runtime/cpp/CMakeFiles/3.2.1/CompilerIdCXX/CMakeCXXCompilerId.cpp
+  573  ls
+  574  vim .
+  575  sh/clean.sh 
+  576  sh/compile.sh examples/language/builtins/builtinFunctions.k3 
+  577  vim .
+  578  sh/compile.sh examples/language/builtins/builtinEndpoints.k3 
+  579  sh/compile.sh examples/language/builtins/string.k3 
+  580  vim runtime/cpp/include/builtins/StringBuiltins.hpp 
+  581  sh/compile.sh examples/language/builtins/datetime.k3 
+  582  ls
+  583  sh/compile.sh examples/language/filevar.k3 
+  584  vim examples/language/
+  585  vim lib/k3/
+  586  vim runtime/cpp/include/builtins/StringBuiltins.hpp
+  587  vim runtime/cpp/include/builtins/Builtins.hpp
+  588  vim runtime/cpp/include/builtins/StringBuiltins.hpp
+  589  git status -s
+  590  cd ..
+  591  ls
+  592  git status -s
+  593  ls .
+  594  ls -al
+  595  pwd
+  596  cd K3
+  597  ls
+  598  ls -al
+  599  cd K3
+  600  ls -al
+  601  git status -s
+  602  ls
+  603  find /cm/shared/apps name "git*"
+  604  which g++
+  605  ls /cm/shared/apps/git
+  606  ls /cm/shared/apps/git/2.5.0.rc3/bin/git
+  607  /cm/shared/apps/git/2.5.0.rc3/bin/git status -s
+  608  /cm/shared/apps/git/2.5.0.rc3/bin/git branch
+  609  git checkout gpu
+  610  /cm/shared/apps/git/2.5.0.rc3/bin/git checkout gpu
+  611  /cm/shared/apps/git/2.5.0.rc3/bin/git checkout development
+  612  ls
+  613  rm -r __build/
+  614  /cm/shared/apps/git/2.5.0.rc3/bin/git status -s
+  615  vim sh/compile.sh 
+  616  ls
+  617  pwd
+  618  cd K3/K3/
+  619  ls
+  620  vim runtime/cpp/include/
+  621  grep -Ril "substring" runtime/cpp/
+  622  ls
+  623  pwd
+  624  #! /bin/sh
+  625  # Command for compiling cpp file in k3
+  626  # Since it's a little tricky to come up with the full command line, you can just use this
+  627  # You might need to adjust it to suit your system
+  628  export SNDPATH=`find .cabal-sandbox -name "*packages.conf.d"`
+  629  # Set a default c++ compiler
+  630  if [ -z "$CXX" ]; then   CXX="--gcc"; fi
+  631  echo "K3_CXXFLAGS: ${K3_CXXFLAGS}"
+  632  THRUSTINCLUDE="-I/cm/shared/apps/cuda/7.0/include -L /cm/shared/apps/cuda/7.0/lib64 -lnvrtc -lcuda -Wl,-rpath,/cm/shared/apps/cuda/7.0/lib64"
+  633  dist/build/k3/k3   -I lib/k3 -I examples/sql   --mpargs package-db=$SNDPATH --mpsearch src   compile     $CXX -l cpp     --cpp-flags="-DK3DEBUG -DBOOST_LOG_DYN_LINK -DYAS_SERIALIZE_BOOST_TYPES=1 -Iruntime/cpp/include/ -Iruntime/cpp/include/external -I/home-4/yliu120@jhu.edu/boost/include -I/home-4/yliu120@jhu.edu/include ${K3_CXXFLAGS} ${THRUSTINCLUDE} -L/home-4/yliu120@jhu.edu/lib -L/home-4/yliu120@jhu.edu/boost/lib -Lruntime/cpp/lib -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lk3 -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp -ftemplate-depth-1024 -O4"     -r runtime $@
+  634  /cm/shared/apps/git/2.5.0.rc3/bin/git 
+  635  /cm/shared/apps/git/2.5.0.rc3/bin/git status -s
+  636  /cm/shared/apps/git/2.5.0.rc3/bin/git stash
+  637  /cm/shared/apps/git/2.5.0.rc3/bin/git stash list
+  638  /cm/shared/apps/git/2.5.0.rc3/bin/git status -s
+  639  /cm/shared/apps/git/2.5.0.rc3/bin/git checkout gpu
+  640  /cm/shared/apps/git/2.5.0.rc3/bin/git branch
+  641  /cm/shared/apps/git/2.5.0.rc3/bin/git checkout development
+  642  /cm/shared/apps/git/2.5.0.rc3/bin/git checkout materialization
+  643  /cm/shared/apps/git/2.5.0.rc3/bin/git status -s
+  644  /cm/shared/apps/git/2.5.0.rc3/bin/git fetch 
+  645  /cm/shared/apps/git/2.5.0.rc3/bin/git checkout gpu
+  646  rm graph.dot 
+  647  rm lib/k3/Core/GPUBuiltins.k3
+  648  rm runtime/cpp/include/builtins/GPUBuiltins.hpp
+  649  /cm/shared/apps/git/2.5.0.rc3/bin/git checkout gpu
+  650  /cm/shared/apps/git/2.5.0.rc3/bin/git branch 
+  651  /cm/shared/apps/git/2.5.0.rc3/bin/git status -s
+  652  /cm/shared/apps/git/2.5.0.rc3/bin/git pull
+  653  ls
+  654  /cm/shared/apps/git/2.5.0.rc3/bin/git pull origin gpu
+  655  cabal build 
+  656  sh/compile.sh examples/gpu/gpubuiltins.k3 
+  657  git pull
+  658  /cm/shared/apps/git/2.5.0.rc3/bin/git 
+  659  /cm/shared/apps/git/2.5.0.rc3/bin/git pull
+  660  /cm/shared/apps/git/2.5.0.rc3/bin/git status -s
+  661  /cm/shared/apps/git/2.5.0.rc3/bin/git checkout cd1a3e06c5d6bdd9f5f829c35c9df77ae3b41531
+  662  git reset --hard cd1a3e06c5d6bdd9f5f829c35c9df77ae3b41531
+  663  /cm/shared/apps/git/2.5.0.rc3/bin/git reset --hard cd1a3e06c5d6bdd9f5f829c35c9df77ae3b41531
+  664  /cm/shared/apps/git/2.5.0.rc3/bin/git status -s
+  665  sh/clean.sh 
+  666  sh/compile.sh examples/gpu/gpubuildins.k3 
+  667  grep -Ril "runInteractiveProcess" .
+  668  ls
+  669  cd K3/K3/
+  670  ls
+  671  __build/A -l 1 -p gpu.yaml 
+  672  module load boost/1.5.8
+  673  __build/A -l 1 -p gpu.yaml 
+  674  nvidia-smi
+  675  __build/A -l 1 -p gpu.yaml 
+  676  logout
+  677  module load cuda
+  678  module load cuda/7.0
+  679  module load boost/1.5.8
+  680  cd K3/K3/
+  681  ls
+  682  __build/A -l 1 -p gpu.yaml 
+  683  cd test/
+  684  ls
+  685  cd ..
+  686  ls
+  687  nvidia-smi
+  688  ls
+  689  cd ..
+  690  ls
+  691  mkdir test
+  692  cd test
+  693  ls
+  694  vi
+  695  ls
+  696  ls /cm/shared/apps/cuda/7.0/include/
+  697  vi drivertest.c 
+  698  nvcc -o drivertest drivertest.c 
+  699  vi drivertest.c 
+  700  nvcc -o drivertest drivertest.c 
+  701  nvcc -o drivertest drivertest.c -I/cm/shared/apps/cuda/7.0/include
+  702  nvcc -o drivertest drivertest.c -I/cm/shared/apps/cuda/7.0/include -lcud
+  703  nvcc -o drivertest drivertest.c -I/cm/shared/apps/cuda/7.0/include -lcuda
+  704  ls
+  705  ./drivertest
+  706  vi drivertest.c 
+  707  cd ..
+  708  ls
+  709  cd ..
+  710  ls
+  711  logout
+  712  cd K3/K3/
+  713  tools/scripts/run/compile-marcc.sh examples/gpu/gpubuiltins.k3 
+  714  nvcc -ccbin g++ -o __build/A  __build/runtime/cpp/src/Common.cpp.o __build/runtime/cpp/src/Options.cpp.o __build/runtime/cpp/src/Prettify.cpp.o __build/runtime/cpp/src/builtins/ProfilingBuiltins.cpp.o __build/runtime/cpp/src/builtins/StandardBuiltins.cpp.o __build/runtime/cpp/src/builtins/StringBuiltins.cpp.o __build/runtime/cpp/src/builtins/TimeBuiltins.cpp.o __build/runtime/cpp/src/builtins/VectorBuiltins.cpp.o __build/runtime/cpp/src/collections/MultiIndex.cpp.o __build/runtime/cpp/src/core/Engine.cpp.o __build/runtime/cpp/src/core/Peer.cpp.o __build/runtime/cpp/src/core/ProgramContext.cpp.o __build/runtime/cpp/src/network/IncomingConnection.cpp.o __build/runtime/cpp/src/network/Listener.cpp.o __build/runtime/cpp/src/network/NetworkManager.cpp.o __build/runtime/cpp/src/network/OutgoingConnection.cpp.o __build/runtime/cpp/src/serialization/Codec.cpp.o __build/runtime/cpp/src/storage/FileHandle.cpp.o __build/runtime/cpp/src/storage/StorageManager.cpp.o __build/runtime/cpp/src/types/BaseString.cpp.o __build/runtime/cpp/src/types/Dispatcher.cpp.o __build/runtime/cpp/src/types/Message.cpp.o __build/runtime/cpp/src/types/Queue.cpp.o __build/runtime/cpp/src/types/Value.cpp.o __build/__build/gpubuiltins.cpp.o -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp -lcuda -O4 -L/cm/shared/apps/boost/1.5.8/lib -L/home-4/yliu120@jhu.edu/lib
+  715  module load cuda/7.0
+  716  nvcc -ccbin g++ -o __build/A  __build/runtime/cpp/src/Common.cpp.o __build/runtime/cpp/src/Options.cpp.o __build/runtime/cpp/src/Prettify.cpp.o __build/runtime/cpp/src/builtins/ProfilingBuiltins.cpp.o __build/runtime/cpp/src/builtins/StandardBuiltins.cpp.o __build/runtime/cpp/src/builtins/StringBuiltins.cpp.o __build/runtime/cpp/src/builtins/TimeBuiltins.cpp.o __build/runtime/cpp/src/builtins/VectorBuiltins.cpp.o __build/runtime/cpp/src/collections/MultiIndex.cpp.o __build/runtime/cpp/src/core/Engine.cpp.o __build/runtime/cpp/src/core/Peer.cpp.o __build/runtime/cpp/src/core/ProgramContext.cpp.o __build/runtime/cpp/src/network/IncomingConnection.cpp.o __build/runtime/cpp/src/network/Listener.cpp.o __build/runtime/cpp/src/network/NetworkManager.cpp.o __build/runtime/cpp/src/network/OutgoingConnection.cpp.o __build/runtime/cpp/src/serialization/Codec.cpp.o __build/runtime/cpp/src/storage/FileHandle.cpp.o __build/runtime/cpp/src/storage/StorageManager.cpp.o __build/runtime/cpp/src/types/BaseString.cpp.o __build/runtime/cpp/src/types/Dispatcher.cpp.o __build/runtime/cpp/src/types/Message.cpp.o __build/runtime/cpp/src/types/Queue.cpp.o __build/runtime/cpp/src/types/Value.cpp.o __build/__build/gpubuiltins.cpp.o -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp -lcuda -O4 -L/cm/shared/apps/boost/1.5.8/lib -L/home-4/yliu120@jhu.edu/lib
+  717  module load boost/1.5.8
+  718  nvcc -ccbin g++ -o __build/A  __build/runtime/cpp/src/Common.cpp.o __build/runtime/cpp/src/Options.cpp.o __build/runtime/cpp/src/Prettify.cpp.o __build/runtime/cpp/src/builtins/ProfilingBuiltins.cpp.o __build/runtime/cpp/src/builtins/StandardBuiltins.cpp.o __build/runtime/cpp/src/builtins/StringBuiltins.cpp.o __build/runtime/cpp/src/builtins/TimeBuiltins.cpp.o __build/runtime/cpp/src/builtins/VectorBuiltins.cpp.o __build/runtime/cpp/src/collections/MultiIndex.cpp.o __build/runtime/cpp/src/core/Engine.cpp.o __build/runtime/cpp/src/core/Peer.cpp.o __build/runtime/cpp/src/core/ProgramContext.cpp.o __build/runtime/cpp/src/network/IncomingConnection.cpp.o __build/runtime/cpp/src/network/Listener.cpp.o __build/runtime/cpp/src/network/NetworkManager.cpp.o __build/runtime/cpp/src/network/OutgoingConnection.cpp.o __build/runtime/cpp/src/serialization/Codec.cpp.o __build/runtime/cpp/src/storage/FileHandle.cpp.o __build/runtime/cpp/src/storage/StorageManager.cpp.o __build/runtime/cpp/src/types/BaseString.cpp.o __build/runtime/cpp/src/types/Dispatcher.cpp.o __build/runtime/cpp/src/types/Message.cpp.o __build/runtime/cpp/src/types/Queue.cpp.o __build/runtime/cpp/src/types/Value.cpp.o __build/__build/gpubuiltins.cpp.o -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp -lcuda -O4 -L/cm/shared/apps/boost/1.5.8/lib -L/home-4/yliu120@jhu.edu/lib
+  719  __build/A -l 0 -p gpu.yaml 
+  720  ls
+  721  vi __build/
+  722  cd __build/
+  723  ls
+  724  kwrite gpubuiltins.cpp 
+  725  vi gpubuiltins.cpp 
+  726  nvcc  -o __build/A  __build/runtime/cpp/src/Common.cpp.o __build/runtime/cpp/src/Options.cpp.o __build/runtime/cpp/src/Prettify.cpp.o __build/runtime/cpp/src/builtins/ProfilingBuiltins.cpp.o __build/runtime/cpp/src/builtins/StandardBuiltins.cpp.o __build/runtime/cpp/src/builtins/StringBuiltins.cpp.o __build/runtime/cpp/src/builtins/TimeBuiltins.cpp.o __build/runtime/cpp/src/builtins/VectorBuiltins.cpp.o __build/runtime/cpp/src/collections/MultiIndex.cpp.o __build/runtime/cpp/src/core/Engine.cpp.o __build/runtime/cpp/src/core/Peer.cpp.o __build/runtime/cpp/src/core/ProgramContext.cpp.o __build/runtime/cpp/src/network/IncomingConnection.cpp.o __build/runtime/cpp/src/network/Listener.cpp.o __build/runtime/cpp/src/network/NetworkManager.cpp.o __build/runtime/cpp/src/network/OutgoingConnection.cpp.o __build/runtime/cpp/src/serialization/Codec.cpp.o __build/runtime/cpp/src/storage/FileHandle.cpp.o __build/runtime/cpp/src/storage/StorageManager.cpp.o __build/runtime/cpp/src/types/BaseString.cpp.o __build/runtime/cpp/src/types/Dispatcher.cpp.o __build/runtime/cpp/src/types/Message.cpp.o __build/runtime/cpp/src/types/Queue.cpp.o __build/runtime/cpp/src/types/Value.cpp.o __build/__build/gpubuiltins.cpp.o -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp -lcuda -O4 -L/cm/shared/apps/boost/1.5.8/lib -L/home-4/yliu120@jhu.edu/lib
+  727  cd ..
+  728  cd K3
+  729  nvcc  -o __build/A  __build/runtime/cpp/src/Common.cpp.o __build/runtime/cpp/src/Options.cpp.o __build/runtime/cpp/src/Prettify.cpp.o __build/runtime/cpp/src/builtins/ProfilingBuiltins.cpp.o __build/runtime/cpp/src/builtins/StandardBuiltins.cpp.o __build/runtime/cpp/src/builtins/StringBuiltins.cpp.o __build/runtime/cpp/src/builtins/TimeBuiltins.cpp.o __build/runtime/cpp/src/builtins/VectorBuiltins.cpp.o __build/runtime/cpp/src/collections/MultiIndex.cpp.o __build/runtime/cpp/src/core/Engine.cpp.o __build/runtime/cpp/src/core/Peer.cpp.o __build/runtime/cpp/src/core/ProgramContext.cpp.o __build/runtime/cpp/src/network/IncomingConnection.cpp.o __build/runtime/cpp/src/network/Listener.cpp.o __build/runtime/cpp/src/network/NetworkManager.cpp.o __build/runtime/cpp/src/network/OutgoingConnection.cpp.o __build/runtime/cpp/src/serialization/Codec.cpp.o __build/runtime/cpp/src/storage/FileHandle.cpp.o __build/runtime/cpp/src/storage/StorageManager.cpp.o __build/runtime/cpp/src/types/BaseString.cpp.o __build/runtime/cpp/src/types/Dispatcher.cpp.o __build/runtime/cpp/src/types/Message.cpp.o __build/runtime/cpp/src/types/Queue.cpp.o __build/runtime/cpp/src/types/Value.cpp.o __build/__build/gpubuiltins.cpp.o -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp -lcuda -O4 -L/cm/shared/apps/boost/1.5.8/lib -L/home-4/yliu120@jhu.edu/lib
+  730  __build/A -l 0 -p gpu.yaml 
+  731  logout
+  732  module load boost/1.5.8
+  733  module load cuda/7.0
+  734  cd K3/K3
+  735  __build/A -l 0 -p gpu.yaml 
+  736  logout
+  737  cd K3/K3
+  738  module load boost/1.5.8
+  739  module load cuda/7.0
+  740  __build/A -l 0 -p gpu.yaml 
+  741  logout
+  742  cd K3/test/
+  743  drivertest
+  744  ./drivertest
+  745  nvidia-smi
+  746  nvcc --version
+  747  module load cuda/7.0
+  748  version
+  749  nvcc --version
+  750  ./drivertest
+  751  module load cuda/6.5
+  752  module avail
+  753  module load cuda/6.0
+  754  module load cuda
+  755  nvcc
+  756  nvcc --version
+  757  module load cuda/6.5
+  758  module spider cuda
+  759  logoug
+  760  logout
+  761  module load boost/1.5.8
+  762  module load cuda/7.0
+  763  ls
+  764  cd K3/K3
+  765  ls
+  766  __build/A -l 0 -p gpu.yaml 
+  767  logout
+  768  nvidia-smi
+  769  logout
+  770  ls
+  771  squeue -u yliu120@jhu.edu
+  772  ls
+  773  cd K3/K3/
+  774  git
+  775  module load git
+  776  git
+  777  ls
+  778  pwd
+  779  k3
+  780  cabal build
+  781  git pull origin gpu
+  782  git log
+  783  ls
+  784  cabal build
+  785  tools/scripts/run/compile.sh examples/gpu/gpubuiltins.k3
+  786  module load boost/1.5.8
+  787  tools/scripts/run/compile.sh examples/gpu/gpubuiltins.k3
+  788  vi examples/gpu/gpubuiltins.k3
+  789  vi examples/gpu/gpubuildins.k3 
+  790  vi tools/scripts/run/compile.sh
+  791  cp tools/scripts/run/compile.sh tools/scripts/run/compile-marcc.sh
+  792  vi tools/scripts/run/compile-marcc.sh 
+  793  vi tools/scripts/run/compile-marcc.sh
+  794  tools/scripts/run/compile-marcc.sh examples/gpu/gpubuiltins.k3
+  795  ls
+  796  ls ~/include/
+  797  vi tools/scripts/run/compile-marcc.sh
+  798  echo $HOME
+  799  tools/scripts/run/compile-marcc.sh examples/gpu/gpubuiltins.k3
+  800  module load cuda/7.0
+  801  tools/scripts/run/compile-marcc.sh examples/gpu/gpubuiltins.k3
+  802  vi tools/scripts/run/compile-marcc.sh
+  803  tools/scripts/run/compile-marcc.sh examples/gpu/gpubuiltins.k3
+  804  nvcc -ccbin g++ -o __build/A __build/runtime/cpp/CMakeFiles/3.2.1/CompilerIdCXX/CMakeCXXCompilerId.cpp.o __build/runtime/cpp/src/Common.cpp.o __build/runtime/cpp/src/Options.cpp.o __build/runtime/cpp/src/Prettify.cpp.o __build/runtime/cpp/src/builtins/ProfilingBuiltins.cpp.o __build/runtime/cpp/src/builtins/StandardBuiltins.cpp.o __build/runtime/cpp/src/builtins/StringBuiltins.cpp.o __build/runtime/cpp/src/builtins/TimeBuiltins.cpp.o __build/runtime/cpp/src/builtins/VectorBuiltins.cpp.o __build/runtime/cpp/src/collections/MultiIndex.cpp.o __build/runtime/cpp/src/core/Engine.cpp.o __build/runtime/cpp/src/core/Peer.cpp.o __build/runtime/cpp/src/core/ProgramContext.cpp.o __build/runtime/cpp/src/network/IncomingConnection.cpp.o __build/runtime/cpp/src/network/Listener.cpp.o __build/runtime/cpp/src/network/NetworkManager.cpp.o __build/runtime/cpp/src/network/OutgoingConnection.cpp.o __build/runtime/cpp/src/serialization/Codec.cpp.o __build/runtime/cpp/src/storage/FileHandle.cpp.o __build/runtime/cpp/src/storage/StorageManager.cpp.o __build/runtime/cpp/src/types/BaseString.cpp.o __build/runtime/cpp/src/types/Dispatcher.cpp.o __build/runtime/cpp/src/types/Message.cpp.o __build/runtime/cpp/src/types/Queue.cpp.o __build/runtime/cpp/src/types/Value.cpp.o __build/__build/gpubuiltins.cpp.o -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp -ldynamic -lbsl -lbdl -lcudart -O4
+  805  rm -rf __build/
+  806  tools/scripts/run/compile-marcc.sh examples/gpu/gpubuiltins.k3
+  807  nvcc -ccbin g++ -o __build/A __build/runtime/cpp/CMakeFiles/3.2.1/CompilerIdCXX/CMakeCXXCompilerId.cpp.o __build/runtime/cpp/src/Common.cpp.o __build/runtime/cpp/src/Options.cpp.o __build/runtime/cpp/src/Prettify.cpp.o __build/runtime/cpp/src/builtins/ProfilingBuiltins.cpp.o __build/runtime/cpp/src/builtins/StandardBuiltins.cpp.o __build/runtime/cpp/src/builtins/StringBuiltins.cpp.o __build/runtime/cpp/src/builtins/TimeBuiltins.cpp.o __build/runtime/cpp/src/builtins/VectorBuiltins.cpp.o __build/runtime/cpp/src/collections/MultiIndex.cpp.o __build/runtime/cpp/src/core/Engine.cpp.o __build/runtime/cpp/src/core/Peer.cpp.o __build/runtime/cpp/src/core/ProgramContext.cpp.o __build/runtime/cpp/src/network/IncomingConnection.cpp.o __build/runtime/cpp/src/network/Listener.cpp.o __build/runtime/cpp/src/network/NetworkManager.cpp.o __build/runtime/cpp/src/network/OutgoingConnection.cpp.o __build/runtime/cpp/src/serialization/Codec.cpp.o __build/runtime/cpp/src/storage/FileHandle.cpp.o __build/runtime/cpp/src/storage/StorageManager.cpp.o __build/runtime/cpp/src/types/BaseString.cpp.o __build/runtime/cpp/src/types/Dispatcher.cpp.o __build/runtime/cpp/src/types/Message.cpp.o __build/runtime/cpp/src/types/Queue.cpp.o __build/runtime/cpp/src/types/Value.cpp.o __build/__build/gpubuiltins.cpp.o -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp -ldynamic -lbsl -lbdl -ftemplate-depth-1024 -lcudart -O4
+  808  g++ -o __build/A __build/runtime/cpp/CMakeFiles/3.2.1/CompilerIdCXX/CMakeCXXCompilerId.cpp.o __build/runtime/cpp/src/Common.cpp.o __build/runtime/cpp/src/Options.cpp.o __build/runtime/cpp/src/Prettify.cpp.o __build/runtime/cpp/src/builtins/ProfilingBuiltins.cpp.o __build/runtime/cpp/src/builtins/StandardBuiltins.cpp.o __build/runtime/cpp/src/builtins/StringBuiltins.cpp.o __build/runtime/cpp/src/builtins/TimeBuiltins.cpp.o __build/runtime/cpp/src/builtins/VectorBuiltins.cpp.o __build/runtime/cpp/src/collections/MultiIndex.cpp.o __build/runtime/cpp/src/core/Engine.cpp.o __build/runtime/cpp/src/core/Peer.cpp.o __build/runtime/cpp/src/core/ProgramContext.cpp.o __build/runtime/cpp/src/network/IncomingConnection.cpp.o __build/runtime/cpp/src/network/Listener.cpp.o __build/runtime/cpp/src/network/NetworkManager.cpp.o __build/runtime/cpp/src/network/OutgoingConnection.cpp.o __build/runtime/cpp/src/serialization/Codec.cpp.o __build/runtime/cpp/src/storage/FileHandle.cpp.o __build/runtime/cpp/src/storage/StorageManager.cpp.o __build/runtime/cpp/src/types/BaseString.cpp.o __build/runtime/cpp/src/types/Dispatcher.cpp.o __build/runtime/cpp/src/types/Message.cpp.o __build/runtime/cpp/src/types/Queue.cpp.o __build/runtime/cpp/src/types/Value.cpp.o __build/__build/gpubuiltins.cpp.o -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp -ldynamic -lbsl -lbdl -ftemplate-depth-1024 -lcudart -O4
+  809  g++ -o __build/A  __build/runtime/cpp/src/Common.cpp.o __build/runtime/cpp/src/Options.cpp.o __build/runtime/cpp/src/Prettify.cpp.o __build/runtime/cpp/src/builtins/ProfilingBuiltins.cpp.o __build/runtime/cpp/src/builtins/StandardBuiltins.cpp.o __build/runtime/cpp/src/builtins/StringBuiltins.cpp.o __build/runtime/cpp/src/builtins/TimeBuiltins.cpp.o __build/runtime/cpp/src/builtins/VectorBuiltins.cpp.o __build/runtime/cpp/src/collections/MultiIndex.cpp.o __build/runtime/cpp/src/core/Engine.cpp.o __build/runtime/cpp/src/core/Peer.cpp.o __build/runtime/cpp/src/core/ProgramContext.cpp.o __build/runtime/cpp/src/network/IncomingConnection.cpp.o __build/runtime/cpp/src/network/Listener.cpp.o __build/runtime/cpp/src/network/NetworkManager.cpp.o __build/runtime/cpp/src/network/OutgoingConnection.cpp.o __build/runtime/cpp/src/serialization/Codec.cpp.o __build/runtime/cpp/src/storage/FileHandle.cpp.o __build/runtime/cpp/src/storage/StorageManager.cpp.o __build/runtime/cpp/src/types/BaseString.cpp.o __build/runtime/cpp/src/types/Dispatcher.cpp.o __build/runtime/cpp/src/types/Message.cpp.o __build/runtime/cpp/src/types/Queue.cpp.o __build/runtime/cpp/src/types/Value.cpp.o __build/__build/gpubuiltins.cpp.o -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp -ldynamic -lbsl -lbdl -ftemplate-depth-1024 -lcudart -O4
+  810  g++ -o __build/A  __build/runtime/cpp/src/Common.cpp.o __build/runtime/cpp/src/Options.cpp.o __build/runtime/cpp/src/Prettify.cpp.o __build/runtime/cpp/src/builtins/ProfilingBuiltins.cpp.o __build/runtime/cpp/src/builtins/StandardBuiltins.cpp.o __build/runtime/cpp/src/builtins/StringBuiltins.cpp.o __build/runtime/cpp/src/builtins/TimeBuiltins.cpp.o __build/runtime/cpp/src/builtins/VectorBuiltins.cpp.o __build/runtime/cpp/src/collections/MultiIndex.cpp.o __build/runtime/cpp/src/core/Engine.cpp.o __build/runtime/cpp/src/core/Peer.cpp.o __build/runtime/cpp/src/core/ProgramContext.cpp.o __build/runtime/cpp/src/network/IncomingConnection.cpp.o __build/runtime/cpp/src/network/Listener.cpp.o __build/runtime/cpp/src/network/NetworkManager.cpp.o __build/runtime/cpp/src/network/OutgoingConnection.cpp.o __build/runtime/cpp/src/serialization/Codec.cpp.o __build/runtime/cpp/src/storage/FileHandle.cpp.o __build/runtime/cpp/src/storage/StorageManager.cpp.o __build/runtime/cpp/src/types/BaseString.cpp.o __build/runtime/cpp/src/types/Dispatcher.cpp.o __build/runtime/cpp/src/types/Message.cpp.o __build/runtime/cpp/src/types/Queue.cpp.o __build/runtime/cpp/src/types/Value.cpp.o __build/__build/gpubuiltins.cpp.o -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp -ldynamic -lbsl -lbdl -ftemplate-depth-1024 -lcudart -O4 -L/cm/shared/apps/boost/1.5.8/lib
+  811  g++ -o __build/A  __build/runtime/cpp/src/Common.cpp.o __build/runtime/cpp/src/Options.cpp.o __build/runtime/cpp/src/Prettify.cpp.o __build/runtime/cpp/src/builtins/ProfilingBuiltins.cpp.o __build/runtime/cpp/src/builtins/StandardBuiltins.cpp.o __build/runtime/cpp/src/builtins/StringBuiltins.cpp.o __build/runtime/cpp/src/builtins/TimeBuiltins.cpp.o __build/runtime/cpp/src/builtins/VectorBuiltins.cpp.o __build/runtime/cpp/src/collections/MultiIndex.cpp.o __build/runtime/cpp/src/core/Engine.cpp.o __build/runtime/cpp/src/core/Peer.cpp.o __build/runtime/cpp/src/core/ProgramContext.cpp.o __build/runtime/cpp/src/network/IncomingConnection.cpp.o __build/runtime/cpp/src/network/Listener.cpp.o __build/runtime/cpp/src/network/NetworkManager.cpp.o __build/runtime/cpp/src/network/OutgoingConnection.cpp.o __build/runtime/cpp/src/serialization/Codec.cpp.o __build/runtime/cpp/src/storage/FileHandle.cpp.o __build/runtime/cpp/src/storage/StorageManager.cpp.o __build/runtime/cpp/src/types/BaseString.cpp.o __build/runtime/cpp/src/types/Dispatcher.cpp.o __build/runtime/cpp/src/types/Message.cpp.o __build/runtime/cpp/src/types/Queue.cpp.o __build/runtime/cpp/src/types/Value.cpp.o __build/__build/gpubuiltins.cpp.o -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp -ldynamic -lbsl -lbdl -ftemplate-depth-1024 -lcudart -O4 -L/cm/shared/apps/boost/1.5.8/lib -L$HOME/lib
+  812  g++ -o __build/A  __build/runtime/cpp/src/Common.cpp.o __build/runtime/cpp/src/Options.cpp.o __build/runtime/cpp/src/Prettify.cpp.o __build/runtime/cpp/src/builtins/ProfilingBuiltins.cpp.o __build/runtime/cpp/src/builtins/StandardBuiltins.cpp.o __build/runtime/cpp/src/builtins/StringBuiltins.cpp.o __build/runtime/cpp/src/builtins/TimeBuiltins.cpp.o __build/runtime/cpp/src/builtins/VectorBuiltins.cpp.o __build/runtime/cpp/src/collections/MultiIndex.cpp.o __build/runtime/cpp/src/core/Engine.cpp.o __build/runtime/cpp/src/core/Peer.cpp.o __build/runtime/cpp/src/core/ProgramContext.cpp.o __build/runtime/cpp/src/network/IncomingConnection.cpp.o __build/runtime/cpp/src/network/Listener.cpp.o __build/runtime/cpp/src/network/NetworkManager.cpp.o __build/runtime/cpp/src/network/OutgoingConnection.cpp.o __build/runtime/cpp/src/serialization/Codec.cpp.o __build/runtime/cpp/src/storage/FileHandle.cpp.o __build/runtime/cpp/src/storage/StorageManager.cpp.o __build/runtime/cpp/src/types/BaseString.cpp.o __build/runtime/cpp/src/types/Dispatcher.cpp.o __build/runtime/cpp/src/types/Message.cpp.o __build/runtime/cpp/src/types/Queue.cpp.o __build/runtime/cpp/src/types/Value.cpp.o __build/__build/gpubuiltins.cpp.o -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp -ldynamic -lbsl -lbdl -ftemplate-depth-1024 -lcudart -O4 -L/cm/shared/apps/boost/1.5.8/lib -L$HOME/lib -L/cm/shared/apps/cuda/7.0/lib
+  813  ls /cm/shared/apps/cuda/7.0/lib
+  814  g++ -o __build/A  __build/runtime/cpp/src/Common.cpp.o __build/runtime/cpp/src/Options.cpp.o __build/runtime/cpp/src/Prettify.cpp.o __build/runtime/cpp/src/builtins/ProfilingBuiltins.cpp.o __build/runtime/cpp/src/builtins/StandardBuiltins.cpp.o __build/runtime/cpp/src/builtins/StringBuiltins.cpp.o __build/runtime/cpp/src/builtins/TimeBuiltins.cpp.o __build/runtime/cpp/src/builtins/VectorBuiltins.cpp.o __build/runtime/cpp/src/collections/MultiIndex.cpp.o __build/runtime/cpp/src/core/Engine.cpp.o __build/runtime/cpp/src/core/Peer.cpp.o __build/runtime/cpp/src/core/ProgramContext.cpp.o __build/runtime/cpp/src/network/IncomingConnection.cpp.o __build/runtime/cpp/src/network/Listener.cpp.o __build/runtime/cpp/src/network/NetworkManager.cpp.o __build/runtime/cpp/src/network/OutgoingConnection.cpp.o __build/runtime/cpp/src/serialization/Codec.cpp.o __build/runtime/cpp/src/storage/FileHandle.cpp.o __build/runtime/cpp/src/storage/StorageManager.cpp.o __build/runtime/cpp/src/types/BaseString.cpp.o __build/runtime/cpp/src/types/Dispatcher.cpp.o __build/runtime/cpp/src/types/Message.cpp.o __build/runtime/cpp/src/types/Queue.cpp.o __build/runtime/cpp/src/types/Value.cpp.o __build/__build/gpubuiltins.cpp.o -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsv -lbdl -ftemplate-depth-1024 -lcudart -O4 -L/cm/shared/apps/boost/1.5.8/lib -L$HOME/lib -L/cm/shared/apps/cuda/7.0/lib
+  815  g++ -o __build/A  __build/runtime/cpp/src/Common.cpp.o __build/runtime/cpp/src/Options.cpp.o __build/runtime/cpp/src/Prettify.cpp.o __build/runtime/cpp/src/builtins/ProfilingBuiltins.cpp.o __build/runtime/cpp/src/builtins/StandardBuiltins.cpp.o __build/runtime/cpp/src/builtins/StringBuiltins.cpp.o __build/runtime/cpp/src/builtins/TimeBuiltins.cpp.o __build/runtime/cpp/src/builtins/VectorBuiltins.cpp.o __build/runtime/cpp/src/collections/MultiIndex.cpp.o __build/runtime/cpp/src/core/Engine.cpp.o __build/runtime/cpp/src/core/Peer.cpp.o __build/runtime/cpp/src/core/ProgramContext.cpp.o __build/runtime/cpp/src/network/IncomingConnection.cpp.o __build/runtime/cpp/src/network/Listener.cpp.o __build/runtime/cpp/src/network/NetworkManager.cpp.o __build/runtime/cpp/src/network/OutgoingConnection.cpp.o __build/runtime/cpp/src/serialization/Codec.cpp.o __build/runtime/cpp/src/storage/FileHandle.cpp.o __build/runtime/cpp/src/storage/StorageManager.cpp.o __build/runtime/cpp/src/types/BaseString.cpp.o __build/runtime/cpp/src/types/Dispatcher.cpp.o __build/runtime/cpp/src/types/Message.cpp.o __build/runtime/cpp/src/types/Queue.cpp.o __build/runtime/cpp/src/types/Value.cpp.o __build/__build/gpubuiltins.cpp.o -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp -ftemplate-depth-1024 -lcudart -O4 -L/cm/shared/apps/boost/1.5.8/lib -L$HOME/lib -L/cm/shared/apps/cuda/7.0/lib
+  816  module lis
+  817  module list
+  818  nvcc -o __build/A  __build/runtime/cpp/src/Common.cpp.o __build/runtime/cpp/src/Options.cpp.o __build/runtime/cpp/src/Prettify.cpp.o __build/runtime/cpp/src/builtins/ProfilingBuiltins.cpp.o __build/runtime/cpp/src/builtins/StandardBuiltins.cpp.o __build/runtime/cpp/src/builtins/StringBuiltins.cpp.o __build/runtime/cpp/src/builtins/TimeBuiltins.cpp.o __build/runtime/cpp/src/builtins/VectorBuiltins.cpp.o __build/runtime/cpp/src/collections/MultiIndex.cpp.o __build/runtime/cpp/src/core/Engine.cpp.o __build/runtime/cpp/src/core/Peer.cpp.o __build/runtime/cpp/src/core/ProgramContext.cpp.o __build/runtime/cpp/src/network/IncomingConnection.cpp.o __build/runtime/cpp/src/network/Listener.cpp.o __build/runtime/cpp/src/network/NetworkManager.cpp.o __build/runtime/cpp/src/network/OutgoingConnection.cpp.o __build/runtime/cpp/src/serialization/Codec.cpp.o __build/runtime/cpp/src/storage/FileHandle.cpp.o __build/runtime/cpp/src/storage/StorageManager.cpp.o __build/runtime/cpp/src/types/BaseString.cpp.o __build/runtime/cpp/src/types/Dispatcher.cpp.o __build/runtime/cpp/src/types/Message.cpp.o __build/runtime/cpp/src/types/Queue.cpp.o __build/runtime/cpp/src/types/Value.cpp.o __build/__build/gpubuiltins.cpp.o -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp -ftemplate-depth-1024 -lcudart -O4 -L/cm/shared/apps/boost/1.5.8/lib -L$HOME/lib -L/cm/shared/apps/cuda/7.0/lib
+  819  nvcc -o __build/A  __build/runtime/cpp/src/Common.cpp.o __build/runtime/cpp/src/Options.cpp.o __build/runtime/cpp/src/Prettify.cpp.o __build/runtime/cpp/src/builtins/ProfilingBuiltins.cpp.o __build/runtime/cpp/src/builtins/StandardBuiltins.cpp.o __build/runtime/cpp/src/builtins/StringBuiltins.cpp.o __build/runtime/cpp/src/builtins/TimeBuiltins.cpp.o __build/runtime/cpp/src/builtins/VectorBuiltins.cpp.o __build/runtime/cpp/src/collections/MultiIndex.cpp.o __build/runtime/cpp/src/core/Engine.cpp.o __build/runtime/cpp/src/core/Peer.cpp.o __build/runtime/cpp/src/core/ProgramContext.cpp.o __build/runtime/cpp/src/network/IncomingConnection.cpp.o __build/runtime/cpp/src/network/Listener.cpp.o __build/runtime/cpp/src/network/NetworkManager.cpp.o __build/runtime/cpp/src/network/OutgoingConnection.cpp.o __build/runtime/cpp/src/serialization/Codec.cpp.o __build/runtime/cpp/src/storage/FileHandle.cpp.o __build/runtime/cpp/src/storage/StorageManager.cpp.o __build/runtime/cpp/src/types/BaseString.cpp.o __build/runtime/cpp/src/types/Dispatcher.cpp.o __build/runtime/cpp/src/types/Message.cpp.o __build/runtime/cpp/src/types/Queue.cpp.o __build/runtime/cpp/src/types/Value.cpp.o __build/__build/gpubuiltins.cpp.o -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp  -lcudart -O4 -L/cm/shared/apps/boost/1.5.8/lib -L$HOME/lib -L/cm/shared/apps/cuda/7.0/lib
+  820  nvcc -o __build/A  __build/runtime/cpp/src/Common.cpp.o __build/runtime/cpp/src/Options.cpp.o __build/runtime/cpp/src/Prettify.cpp.o __build/runtime/cpp/src/builtins/ProfilingBuiltins.cpp.o __build/runtime/cpp/src/builtins/StandardBuiltins.cpp.o __build/runtime/cpp/src/builtins/StringBuiltins.cpp.o __build/runtime/cpp/src/builtins/TimeBuiltins.cpp.o __build/runtime/cpp/src/builtins/VectorBuiltins.cpp.o __build/runtime/cpp/src/collections/MultiIndex.cpp.o __build/runtime/cpp/src/core/Engine.cpp.o __build/runtime/cpp/src/core/Peer.cpp.o __build/runtime/cpp/src/core/ProgramContext.cpp.o __build/runtime/cpp/src/network/IncomingConnection.cpp.o __build/runtime/cpp/src/network/Listener.cpp.o __build/runtime/cpp/src/network/NetworkManager.cpp.o __build/runtime/cpp/src/network/OutgoingConnection.cpp.o __build/runtime/cpp/src/serialization/Codec.cpp.o __build/runtime/cpp/src/storage/FileHandle.cpp.o __build/runtime/cpp/src/storage/StorageManager.cpp.o __build/runtime/cpp/src/types/BaseString.cpp.o __build/runtime/cpp/src/types/Dispatcher.cpp.o __build/runtime/cpp/src/types/Message.cpp.o __build/runtime/cpp/src/types/Queue.cpp.o __build/runtime/cpp/src/types/Value.cpp.o __build/__build/gpubuiltins.cpp.o -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp  -lcudart -O4 -L/cm/shared/apps/boost/1.5.8/lib -L$HOME/lib
+  821  vi tools/scripts/run/compile-marcc.sh 
+  822  vi runtime/cpp/include/builtins/GPUBuiltins.hpp 
+  823  tools/scripts/run/compile-marcc.sh examples/gpu/gpubuiltins.k3 
+  824  vi runtime/cpp/include/builtins/GPUBuiltins.hpp 
+  825  vitools/scripts/run/compile-marcc.sh
+  826  vi tools/scripts/run/compile-marcc.sh
+  827  tools/scripts/run/compile-marcc.sh examples/gpu/gpubuiltins.k3 
+  828  nvcc -ccbin g++ -o __build/A  __build/runtime/cpp/src/Common.cpp.o __build/runtime/cpp/src/Options.cpp.o __build/runtime/cpp/src/Prettify.cpp.o __build/runtime/cpp/src/builtins/ProfilingBuiltins.cpp.o __build/runtime/cpp/src/builtins/StandardBuiltins.cpp.o __build/runtime/cpp/src/builtins/StringBuiltins.cpp.o __build/runtime/cpp/src/builtins/TimeBuiltins.cpp.o __build/runtime/cpp/src/builtins/VectorBuiltins.cpp.o __build/runtime/cpp/src/collections/MultiIndex.cpp.o __build/runtime/cpp/src/core/Engine.cpp.o __build/runtime/cpp/src/core/Peer.cpp.o __build/runtime/cpp/src/core/ProgramContext.cpp.o __build/runtime/cpp/src/network/IncomingConnection.cpp.o __build/runtime/cpp/src/network/Listener.cpp.o __build/runtime/cpp/src/network/NetworkManager.cpp.o __build/runtime/cpp/src/network/OutgoingConnection.cpp.o __build/runtime/cpp/src/serialization/Codec.cpp.o __build/runtime/cpp/src/storage/FileHandle.cpp.o __build/runtime/cpp/src/storage/StorageManager.cpp.o __build/runtime/cpp/src/types/BaseString.cpp.o __build/runtime/cpp/src/types/Dispatcher.cpp.o __build/runtime/cpp/src/types/Message.cpp.o __build/runtime/cpp/src/types/Queue.cpp.o __build/runtime/cpp/src/types/Value.cpp.o __build/__build/gpubuiltins.cpp.o -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp -ldynamic -lcuda -O4 -L/cm/shared/apps/boost/1.5.8/lib -L/home-4/yliu120@jhu.edu/lib
+  829  nvcc -ccbin g++ -o __build/A  __build/runtime/cpp/src/Common.cpp.o __build/runtime/cpp/src/Options.cpp.o __build/runtime/cpp/src/Prettify.cpp.o __build/runtime/cpp/src/builtins/ProfilingBuiltins.cpp.o __build/runtime/cpp/src/builtins/StandardBuiltins.cpp.o __build/runtime/cpp/src/builtins/StringBuiltins.cpp.o __build/runtime/cpp/src/builtins/TimeBuiltins.cpp.o __build/runtime/cpp/src/builtins/VectorBuiltins.cpp.o __build/runtime/cpp/src/collections/MultiIndex.cpp.o __build/runtime/cpp/src/core/Engine.cpp.o __build/runtime/cpp/src/core/Peer.cpp.o __build/runtime/cpp/src/core/ProgramContext.cpp.o __build/runtime/cpp/src/network/IncomingConnection.cpp.o __build/runtime/cpp/src/network/Listener.cpp.o __build/runtime/cpp/src/network/NetworkManager.cpp.o __build/runtime/cpp/src/network/OutgoingConnection.cpp.o __build/runtime/cpp/src/serialization/Codec.cpp.o __build/runtime/cpp/src/storage/FileHandle.cpp.o __build/runtime/cpp/src/storage/StorageManager.cpp.o __build/runtime/cpp/src/types/BaseString.cpp.o __build/runtime/cpp/src/types/Dispatcher.cpp.o __build/runtime/cpp/src/types/Message.cpp.o __build/runtime/cpp/src/types/Queue.cpp.o __build/runtime/cpp/src/types/Value.cpp.o __build/__build/gpubuiltins.cpp.o -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp -lcuda -O4 -L/cm/shared/apps/boost/1.5.8/lib -L/home-4/yliu120@jhu.edu/lib
+  830  vi tools/scripts/run/compile-marcc.sh 
+  831  ssh gpu001
+  832  ls
+  833  cd K3/K3
+  834  ls
+  835  vi runtime/cpp/include/builtins/GPUBuiltins.hpp 
+  836  tools/scripts/run/compile-marcc.sh examples/gpu/gpubuiltins.k3 
+  837  nvcc -ccbin g++ -o __build/A  __build/runtime/cpp/src/Common.cpp.o __build/runtime/cpp/src/Options.cpp.o __build/runtime/cpp/src/Prettify.cpp.o __build/runtime/cpp/src/builtins/ProfilingBuiltins.cpp.o __build/runtime/cpp/src/builtins/StandardBuiltins.cpp.o __build/runtime/cpp/src/builtins/StringBuiltins.cpp.o __build/runtime/cpp/src/builtins/TimeBuiltins.cpp.o __build/runtime/cpp/src/builtins/VectorBuiltins.cpp.o __build/runtime/cpp/src/collections/MultiIndex.cpp.o __build/runtime/cpp/src/core/Engine.cpp.o __build/runtime/cpp/src/core/Peer.cpp.o __build/runtime/cpp/src/core/ProgramContext.cpp.o __build/runtime/cpp/src/network/IncomingConnection.cpp.o __build/runtime/cpp/src/network/Listener.cpp.o __build/runtime/cpp/src/network/NetworkManager.cpp.o __build/runtime/cpp/src/network/OutgoingConnection.cpp.o __build/runtime/cpp/src/serialization/Codec.cpp.o __build/runtime/cpp/src/storage/FileHandle.cpp.o __build/runtime/cpp/src/storage/StorageManager.cpp.o __build/runtime/cpp/src/types/BaseString.cpp.o __build/runtime/cpp/src/types/Dispatcher.cpp.o __build/runtime/cpp/src/types/Message.cpp.o __build/runtime/cpp/src/types/Queue.cpp.o __build/runtime/cpp/src/types/Value.cpp.o __build/__build/gpubuiltins.cpp.o -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp -lcuda -O4 -L/cm/shared/apps/boost/1.5.8/lib -L/home-4/yliu120@jhu.edu/lib
+  838  ssh gpu001
+  839  ls
+  840  ssh gpu001
+  841  ls
+  842  vi runtime/cpp/include/builtins/GPUBuiltins.hpp 
+  843  tools/scripts/run/compile-marcc.sh examples/gpu/gpubuilti
+  844  tools/scripts/run/compile-marcc.sh examples/gpu/gpubuiltins.k3 
+  845  vi runtime/cpp/include/builtins/GPUBuiltins.hpp 
+  846  tools/scripts/run/compile-marcc.sh examples/gpu/gpubuiltins.k3 
+  847  nvcc -ccbin g++ -o __build/A  __build/runtime/cpp/src/Common.cpp.o __build/runtime/cpp/src/Options.cpp.o __build/runtime/cpp/src/Prettify.cpp.o __build/runtime/cpp/src/builtins/ProfilingBuiltins.cpp.o __build/runtime/cpp/src/builtins/StandardBuiltins.cpp.o __build/runtime/cpp/src/builtins/StringBuiltins.cpp.o __build/runtime/cpp/src/builtins/TimeBuiltins.cpp.o __build/runtime/cpp/src/builtins/VectorBuiltins.cpp.o __build/runtime/cpp/src/collections/MultiIndex.cpp.o __build/runtime/cpp/src/core/Engine.cpp.o __build/runtime/cpp/src/core/Peer.cpp.o __build/runtime/cpp/src/core/ProgramContext.cpp.o __build/runtime/cpp/src/network/IncomingConnection.cpp.o __build/runtime/cpp/src/network/Listener.cpp.o __build/runtime/cpp/src/network/NetworkManager.cpp.o __build/runtime/cpp/src/network/OutgoingConnection.cpp.o __build/runtime/cpp/src/serialization/Codec.cpp.o __build/runtime/cpp/src/storage/FileHandle.cpp.o __build/runtime/cpp/src/storage/StorageManager.cpp.o __build/runtime/cpp/src/types/BaseString.cpp.o __build/runtime/cpp/src/types/Dispatcher.cpp.o __build/runtime/cpp/src/types/Message.cpp.o __build/runtime/cpp/src/types/Queue.cpp.o __build/runtime/cpp/src/types/Value.cpp.o __build/__build/gpubuiltins.cpp.o -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp -lcuda -O4 -L/cm/shared/apps/boost/1.5.8/lib -L/home-4/yliu120@jhu.edu/lib
+  848  __build/A -l -0 -p gpu.yaml 
+  849  ssh gpu001
+  850  ls
+  851  vi runtime/cpp/include/builtins/GPUBuiltins.hpp 
+  852  tools/scripts/run/compile-marcc.sh examples/gpu/gpubuiltins.k3 
+  853  vi runtime/cpp/include/builtins/GPUBuiltins.hpp 
+  854  tools/scripts/run/compile-marcc.sh examples/gpu/gpubuiltins.k3 
+  855  nvcc -ccbin g++ -o __build/A  __build/runtime/cpp/src/Common.cpp.o __build/runtime/cpp/src/Options.cpp.o __build/runtime/cpp/src/Prettify.cpp.o __build/runtime/cpp/src/builtins/ProfilingBuiltins.cpp.o __build/runtime/cpp/src/builtins/StandardBuiltins.cpp.o __build/runtime/cpp/src/builtins/StringBuiltins.cpp.o __build/runtime/cpp/src/builtins/TimeBuiltins.cpp.o __build/runtime/cpp/src/builtins/VectorBuiltins.cpp.o __build/runtime/cpp/src/collections/MultiIndex.cpp.o __build/runtime/cpp/src/core/Engine.cpp.o __build/runtime/cpp/src/core/Peer.cpp.o __build/runtime/cpp/src/core/ProgramContext.cpp.o __build/runtime/cpp/src/network/IncomingConnection.cpp.o __build/runtime/cpp/src/network/Listener.cpp.o __build/runtime/cpp/src/network/NetworkManager.cpp.o __build/runtime/cpp/src/network/OutgoingConnection.cpp.o __build/runtime/cpp/src/serialization/Codec.cpp.o __build/runtime/cpp/src/storage/FileHandle.cpp.o __build/runtime/cpp/src/storage/StorageManager.cpp.o __build/runtime/cpp/src/types/BaseString.cpp.o __build/runtime/cpp/src/types/Dispatcher.cpp.o __build/runtime/cpp/src/types/Message.cpp.o __build/runtime/cpp/src/types/Queue.cpp.o __build/runtime/cpp/src/types/Value.cpp.o __build/__build/gpubuiltins.cpp.o -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp -lcuda -O4 -L/cm/shared/apps/boost/1.5.8/lib -L/home-4/yliu120@jhu.edu/lib
+  856  ssh gpu001
+  857  ls
+  858  vi runtime/cpp/include/builtins/
+  859  vi runtime/cpp/include/builtins/GPUBuiltins.hpp 
+  860  cd ..
+  861  ls
+  862  cd test
+  863  ls
+  864  cd drivertest.c 
+  865  vi drivertest.c 
+  866  nvcc -o drivertest drivertest.c 
+  867  nvcc -o drivertest drivertest.c -lcuda
+  868  ssh gpu001
+  869  module avail
+  870  ls
+  871  cd ..
+  872  ls
+  873  cd ..
+  874  ls
+  875  cd K3/K3/
+  876  ls
+  877  vi ../test/drivertest.c 
+  878  vi runtime/cpp/include/builtins/GPUBuiltins.hpp 
+  879  tools/scripts/run/compile-marcc.sh examples/gpu/gpubuiltins.k3 
+  880  nvcc -ccbin g++ -o __build/A  __build/runtime/cpp/src/Common.cpp.o __build/runtime/cpp/src/Options.cpp.o __build/runtime/cpp/src/Prettify.cpp.o __build/runtime/cpp/src/builtins/ProfilingBuiltins.cpp.o __build/runtime/cpp/src/builtins/StandardBuiltins.cpp.o __build/runtime/cpp/src/builtins/StringBuiltins.cpp.o __build/runtime/cpp/src/builtins/TimeBuiltins.cpp.o __build/runtime/cpp/src/builtins/VectorBuiltins.cpp.o __build/runtime/cpp/src/collections/MultiIndex.cpp.o __build/runtime/cpp/src/core/Engine.cpp.o __build/runtime/cpp/src/core/Peer.cpp.o __build/runtime/cpp/src/core/ProgramContext.cpp.o __build/runtime/cpp/src/network/IncomingConnection.cpp.o __build/runtime/cpp/src/network/Listener.cpp.o __build/runtime/cpp/src/network/NetworkManager.cpp.o __build/runtime/cpp/src/network/OutgoingConnection.cpp.o __build/runtime/cpp/src/serialization/Codec.cpp.o __build/runtime/cpp/src/storage/FileHandle.cpp.o __build/runtime/cpp/src/storage/StorageManager.cpp.o __build/runtime/cpp/src/types/BaseString.cpp.o __build/runtime/cpp/src/types/Dispatcher.cpp.o __build/runtime/cpp/src/types/Message.cpp.o __build/runtime/cpp/src/types/Queue.cpp.o __build/runtime/cpp/src/types/Value.cpp.o __build/__build/gpubuiltins.cpp.o -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp -lcuda -O4 -L/cm/shared/apps/boost/1.5.8/lib -L/home-4/yliu120@jhu.edu/lib
+  881  ssh gpu001
+  882  ls
+  883  vi runtime/cpp/include/builtins/GPUBuiltins.hpp 
+  884  cd runtime/cpp/
+  885  ls
+  886  rm -rf CMakeFiles/
+  887  tools/scripts/run/c examples/gpu/gpubuiltins.k3 
+  888  cd ../..
+  889  tools/scripts/run/compile-marcc.sh examples/gpu/gpubuiltins.k3 
+  890  vi runtime/cpp/include/builtins/GPUBuiltins.hpp 
+  891  tools/scripts/run/compile-marcc.sh examples/gpu/gpubuiltins.k3 
+  892  ssh gpu001
+  893  ssh gpu045
+  894  logout
+  895  cd K3.K3
+  896  cd K3/K3
+  897  vim tools/scripts/run/compile-marcc.sh 
+  898  echo $HOME
+  899  tools/scripts/run/compile-marcc.sh examples/gpu/gpubuildins.k3 
+  900  sh/compile.sh examples/gpu/gpubuildins.k3 
+  901  git
+  902  ssh gpu001
+  903  module load cuda/7.0
+  904  nvcc
+  905  ls
+  906  cd __build/
+  907  ls
+  908  __build/A -p examples/algorithms/simple.yaml 
+  909  cd ..
+  910  __build/A -p examples/algorithms/simple.yaml 
+  911  ssh gpu001
+  912  vim runtime/cpp/include/builtins/GPUBuiltins.hpp
+  913  vim runtime/cpp/include/builtins/StringBuiltins.hpp 
+  914  vim runtime/cpp/src/builtins/StringBuiltins.cpp 
+  915  vim runtime/cpp/src/types/BaseString.cpp 
+  916  cd K3/K3/test
+  917  ./saxpy 
+  918  g++ saxpy.cpp -o saxpy -I $CUDA_PATH/include -L $CUDA_PATH/lib64 -lnvrtc -lcuda -Wl,-rpath,$CUDA_PATH/lib64
+  919  echo $CUDA_PATH
+  920  nvcc saxpy.cpp -o saxpy -I /cm/shared/apps/cuda/7.0/include -L /cm/shared/apps/cuda/7.0/lib64 -lnvrtc -lcuda
+  921  module load cuda/7.0
+  922  nvcc saxpy.cpp -o saxpy -I /cm/shared/apps/cuda/7.0/include -L /cm/shared/apps/cuda/7.0/lib64 -lnvrtc -lcuda
+  923  ./saxpy 
+  924  exit
+  925  pwd
+  926  cd K3/K3
+  927  ls
+  928  vim tools/scripts/run/compile-marcc.sh tools/scripts/run/compile-marcc.sh examples/gpu/gpubuiltins
+  929  vim tools/scripts/run/compile-marcc.sh 
+  930  tools/scripts/run/compile-marcc.sh examples/gpu/gpubuiltins
+  931  tools/scripts/run/compile-marcc.sh examples/gpu/gpubuiltins.k3 
+  932  sh/clean.sh 
+  933  cp tools/scripts/run/compile-marcc.sh sh/
+  934  ls sh
+  935  sh/compile-marcc.sh examples/gpu/gpubuiltins.k3
+  936  time/cpp/src/types/BaseString.cpp
+  937  vim vim ./runtime/cpp/src/types/BaseString.cpp
+  938  time/cpp/src/types/BaseString.cpp
+  939  vim vim ./runtime/cpp/src/types/BaseString.cpp
+  940  time/cpp/src/types/BaseString.cpp
+  941  vvim ./runtime/cpp/src/types/BaseString.cpp
+  942  vim ./runtime/cpp/src/types/BaseString.cpp
+  943  vim ./runtime/cpp/include/types/BaseString.hpp
+  944  vim runtime/cpp
+  945  grep -Ril "print" runtime/cpp/
+  946  vim runtime/cpp/src/builtins/StandardBuiltins.cpp
+  947  grep -Ril "itos" runtime/cpp/
+  948  vim runtime/cpp/include/builtins/StringBuiltins.hpp
+  949  vim runtime/cpp/lib/libk3.a
+  950  vim lib/k3/Core/String.k3 
+  951  vim lib/k3/Core/Builtins.k3 
+  952  vim runtime/cpp/include/builtins/StringBuiltins.hpp
+  953  vim runtime/cpp/src/builtins/StringBuiltins.cpp 
+  954  vim runtime/cpp/include/builtins/GPUBuiltins.hpp 
+  955  mv runtime/cpp/include/builtins/GPUBuiltins.hpp runtime/cpp/include/builtins/GPUBuiltins_old.hpp
+  956  ls runtime/cpp/include/builtins/
+  957  mv runtime/cpp/include/builtins/GPUBuiltins.hpp runtime/cpp/include/builtins/GPUBuiltins_old.hpp
+  958  vim runtime/cpp/include/builtins/GPUBuiltins.hpp 
+  959  vim runtime/cpp/include/builtins/GPUBuiltins_old.hpp 
+  960  vim runtime/cpp/include/builtins/GPUBuiltins_old.hpp runtime/cpp/include/builtins/GPUBuiltins.hpp 
+  961  mv runtime/cpp/include/builtins/GPUBuiltins_old.hpp runtime/cpp/include/builtins/GPUBuiltins.hpp 
+  962  ls runtime/cpp/include/builtins/
+  963  vim vim lib/k3
+  964  vim lib/k3
+  965  vim lib/k3/Core/GPUBuiltins.k3 
+  966  vim examples/gpu/gpubuiltins.k3 
+  967  vim lib/k3/Core/GPUBuiltins.k3 
+  968  tools/scripts/run/compile-marcc.sh examples/gpu/gpubuiltins.k3
+  969  vim lib/k3/Core/GPUBuiltins.k3 
+  970  vim runtime/cpp/include/builtins/GPUBuiltins.hpp 
+  971  vim examples/gpu/gpubuiltins.k3 
+  972  vim runtime/cpp/include/builtins/GPUBuiltins.hpp 
+  973  vim lib/k3/Core/GPUBuiltins.k3 
+  974  tools/scripts/run/compile-marcc.sh examples/gpu/gpubuiltins.k3
+  975  vim lib/k3/Core/GPUBuiltins.k3 
+  976  vim examples/gpu/gpubuiltins.k3 
+  977  vim runtime/cpp/include/builtins/GPUBuiltins.hpp 
+  978  tools/scripts/run/compile-marcc.sh examples/gpu/gpubuiltins.k3
+  979  vim lib/k3/Core/GPUBuiltins.k3 
+  980  vim examples/gpu/gpubuiltins.k3 
+  981* 
+  982  vim examples/gpu/gpubuiltins.k3 
+  983  tools/scripts/run/compile-marcc.sh examples/gpu/gpubuiltins.k3
+  984  vim sh/compile_mddb-gpu.sh 
+  985  sh/compile-marcc.sh examples/gpu/gpubuiltins.k3
+  986  vim runtime/cpp/include/builtins/GPUBuiltins.hpp 
+  987  sh/compile-marcc.sh examples/gpu/gpubuiltins.k3
+  988  ls
+  989  cd test/
+  990  ls
+  991  nvcc saxpy.cpp -o saxpy -I $CUDA_PATH/include -L $CUDA_PATH/lib64 -lnvrtc -lcuda -Wl,-rpath,$CUDA_PATH/lib64
+  992  module cuda/7.0
+  993  module load cuda/7.0
+  994  saxpy.cpp -o saxpy -I $CUDA_PATH/include -L $CUDA_PATH/lib64 -lnvrtc -lcuda -Wl,-rpath,$CUDA_PATH/lib64
+  995  nvcc saxpy.cpp -o saxpy -I $CUDA_PATH/include -L $CUDA_PATH/lib64 -lnvrtc -lcuda -Wl,-rpath,$CUDA_PATH/lib64
+  996  nvcc saxpy.cpp -o saxpy -I $CUDA_PATH/include -L $CUDA_PATH/lib64 -lnvrtc -lcuda 
+  997  ls -al
+  998  ssh gpu004
+  999  exit
+ 1000  cd K3/K3/
+ 1001  __build/A -p examples/algorithms/simple.yaml
+ 1002  module load cuda/7.0
+ 1003  module load boost/1.5.8
+ 1004  __build/A -p examples/algorithms/simple.yaml
+ 1005  __build/A -p examples/algorithms/simple.yaml -l 0
+ 1006  history>test/his

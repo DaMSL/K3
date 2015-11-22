@@ -1,0 +1,16 @@
+.SUFFIXES: .y .hs .exe
+
+OPT=
+GHC=ghc -rtsopts -I../common -i../common  ${OPT}
+# -dshow-passes
+HAPPY=happy
+
+FILTER = --filter
+FILTER =
+
+DECODE = 
+H_OPT = 
+
+.y.hs :
+	${HAPPY} -i -l ${DECODE} ${FILTER} ${H_OPT} $*.y 
+

@@ -1,0 +1,2 @@
+/cm/shared/apps/binutils/2.25/src/bin/ar cq lib/libgtest_main.a  CMakeFiles/gtest_main.dir/src/gtest_main.cc.o
+/cm/shared/apps/binutils/2.25/src/bin/ranlib lib/libgtest_main.a
