@@ -76,18 +76,25 @@ public:
     }
     std::cout << "=============================================" << std::endl;
   }
-
-  void get_compile_opts(int dev, const char *opts[]) {
+  
+  // Return compiler options for compute capability
+  String& get_compile_cc_opts(int dev) {
     std::string cc("--gpu-architecture=compute_");
-    cc.push_back(static_cast<char>(_dattributes[dev].cc_major));
-    cc.push_back(static_cast<char>(_dattributes[dev].cc_minor));
-    std::string c11("--std=c++11");
-    std::string mf("--builtin-move-forward=true");
-    std::string il("--builtin-initializer-list=true");
-    std::string rdc("--device-c");
-  }  
+    switch (_dattributes[dev].cc_major) {
+      case 2:
+        return cc.append("20");
+      case 3:
+        if(_dattributes[dev].cc_minor < 5)
+          return cc.append("30");
+        else
+          return cc.append("35");
+      case 5:
+        return cc.append("50");
+      default:
+        return cc.append("20");
+    }
+  }
 
-private: 
   /* device parameters */
   int              _dcount;
   attribute_vec    _dattributes;
