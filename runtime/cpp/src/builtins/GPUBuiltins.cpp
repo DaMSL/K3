@@ -101,25 +101,6 @@ public:
     }
     std::cout << "=============================================" << std::endl;
   }
-  
-  // Return compiler options for compute capability
-  std::string& get_compile_cc_opts(int dev) 
-  {
-    std::string cc("--gpu-architecture=compute_");
-    switch (_dattributes[dev].cc_major) {
-      case 2:
-        return cc.append("20");
-      case 3:
-        if(_dattributes[dev].cc_minor < 5)
-          return cc.append("30");
-        else
-          return cc.append("35");
-      case 5:
-        return cc.append("50");
-      default:
-        return cc.append("20");
-    }
-  }
  
   void compile_ptx(const char* src, 
                    const char* name,
@@ -133,16 +114,33 @@ public:
   {
    
     nvrtcProgram prog;
-    const char  *opts[NUMOPTIONS];
 
-    opts[0] = get_compile_cc_opts(dev).c_str();
+    // Build CC option
+    std::string cc("--gpu-architecture=compute_");
+    switch (_dattributes[dev].cc_major) {
+      case 2:
+        cc.append("20"); break;
+      case 3:
+        if(_dattributes[dev].cc_minor < 5)
+          cc.append("30");
+        else
+          cc.append("35");
+        break;
+      case 5:
+        cc.append("50"); break;
+      default:
+        cc.append("20"); break;
+    }
+ 
+    const char* opts[NUMOPTIONS]; 
+    opts[0] = cc.c_str();
     opts[1] = "--std=c++11";
     opts[2] = "--builtin-move-forward=true";
     opts[3] = "--builtin-initializer-list=true";
     opts[4] = "--device-c";
-    
+      
     NVRTC_SAFE_CALL(nvrtcCreateProgram(&prog, src, name, nh, headers, includeNames));
-    NVRTC_SAFE_CALL(nvrtcCompileProgram(prog, NUMOPTIONS, opts));
+    NVRTC_SAFE_CALL(nvrtcCompileProgram(prog, 5, opts));
     
     size_t ptxsize;
     NVRTC_SAFE_CALL(nvrtcGetPTXSize(prog, &ptxsize));
@@ -276,7 +274,9 @@ GPUBuiltins::device_info(unit_t) {
 string_impl  
 GPUBuiltins::compile_to_ptx_str(const string_impl& code, 
                                 const string_impl& ptxname){
-  return string_impl("");
+  std::string ptx;
+  _impl->compile_ptx(code.c_str(), code.c_str(), ptx);
+  return string_impl(ptx);
 }
   
 int
