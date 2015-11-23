@@ -1,5 +1,5 @@
 include "Annotation/Collection.k3"
-include "Annotation/Seq.k3"
+include "Annotation/Vector.k3"
 
 // CUDA Driver API Wrapper
 declare get_device_count : () -> int
@@ -16,7 +16,7 @@ declare compile_to_ptx_str : string -> string -> string
 declare compile_to_ptx_file : string -> string -> int
   with effects \x -> \y -> [R[x]; R[y]]
 
-@:CArgs 4
-declare transformer_gpu : collection {elem: int} @Seq -> string -> string -> string 
-                       -> collection {elem: int} @Seq
-  with effects \x -> \y -> \z -> \p -> [R[x]; R[y]; R[z]; R[p]]
+@:CArgs 5
+declare transformer_gpu : collection {elem: int} @Vector -> string -> string -> string -> int
+                       -> collection {elem: int} @Vector
+  with effects \x -> \y -> \z -> \d -> \p -> [R[x]; R[y]; R[z]; R[d]; R[p]]

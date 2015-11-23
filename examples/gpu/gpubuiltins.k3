@@ -26,13 +26,20 @@ declare transformer : string =
 
 declare  ptx : mut string = ""
 
+declare c  : collection {elem:int} @Vector
+declare re : mut collection {elem:int} @Vector
+
 trigger t : () = \_ -> (
    devicecount = get_device_count ();
    print ("GPU device count: " ++ (itos devicecount));
    device_info ();
 
-   (ptx = (compile_to_ptx_str kernel modname))
+   (ptx = (compile_to_ptx_str transformer modname));
    
+   // build a vector
+   ((range 10000).iterate (\r -> c.insert {elem: r.elem}));
+   re = (transformer_gpu c modname "transformer" ptx 0)
+   //print re  
 )
 
 source s1 : () = value ()
