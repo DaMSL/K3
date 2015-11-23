@@ -6,8 +6,30 @@
 #include "Common.hpp"
 #include "builtins/GPUBuiltins.hpp"
 
+#define NVRTC_SAFE_CALL(x)                                        \
+  do {                                                            \
+    nvrtcResult result = x;                                       \
+    if (result != NVRTC_SUCCESS) {                                \
+      std::cerr << "\nerror: " #x " failed with error "           \
+                << nvrtcGetErrorString(result) << '\n';           \
+      exit(1);                                                    \
+    }                                                             \
+  } while(0)
+#define CUDA_SAFE_CALL(x)                                         \
+  do {                                                            \
+    CUresult result = x;                                          \
+    if (result != CUDA_SUCCESS) {                                 \
+      const char *msg;                                            \
+      cuGetErrorName(result, &msg);                               \
+      std::cerr << "\nerror: " #x " failed with error "           \
+                << msg << '\n';                                   \
+      exit(1);                                                    \
+    }                                                             \
+  } while(0)
+
 #define FETCH(loc, attr) \
   CUDA_SAFE_CALL(cuDeviceGetAttribute((loc), (attr), device));
+#define NUMOPTIONS 5
 
 namespace K3 {
 
@@ -55,16 +77,19 @@ public:
     }
   }
  
-  ~pImpl() {
+  ~pImpl() 
+  {
     _dattributes.clear();
   }
 
-  int  get_dev_count() {
+  int  get_dev_count() 
+  {
     return _dcount;
   }
 
   /* summary */
-  void dev_info() {
+  void dev_info() 
+  {
     // TODO: all prints
     std::cout << "=============================================" << "\n";
     std::cout << "CUDA Driver Version: " << _version << "\n";
@@ -78,7 +103,8 @@ public:
   }
   
   // Return compiler options for compute capability
-  String& get_compile_cc_opts(int dev) {
+  std::string& get_compile_cc_opts(int dev) 
+  {
     std::string cc("--gpu-architecture=compute_");
     switch (_dattributes[dev].cc_major) {
       case 2:
@@ -94,7 +120,139 @@ public:
         return cc.append("20");
     }
   }
+ 
+  void compile_ptx(const char* src, 
+                   const char* name,
+                   std::string& ptxstr,
+                   int nh = 0, 
+                   const char** headers = NULL,
+                   const char** includeNames = NULL,
+                   int dev = 0,
+                   bool materialize = 0
+                   ) 
+  {
+   
+    nvrtcProgram prog;
+    const char  *opts[NUMOPTIONS];
 
+    opts[0] = get_compile_cc_opts(dev).c_str();
+    opts[1] = "--std=c++11";
+    opts[2] = "--builtin-move-forward=true";
+    opts[3] = "--builtin-initializer-list=true";
+    opts[4] = "--device-c";
+    
+    NVRTC_SAFE_CALL(nvrtcCreateProgram(&prog, src, name, nh, headers, includeNames));
+    NVRTC_SAFE_CALL(nvrtcCompileProgram(prog, NUMOPTIONS, opts));
+    
+    size_t ptxsize;
+    NVRTC_SAFE_CALL(nvrtcGetPTXSize(prog, &ptxsize));
+    char* ptx = new char[ptxsize]; 
+    NVRTC_SAFE_CALL(nvrtcGetPTX(prog, ptx));
+    NVRTC_SAFE_CALL(nvrtcDestroyProgram(&prog));
+
+    // return value
+    if(materialize) {
+    } else {
+      if (ptxstr.empty())
+        ptxstr.append(ptx);
+      else
+        throw "Invalid String Reference: Not Empty";
+    }
+  }
+  
+  template <typename T>
+  int transfer_to_device(T* hdata, CUdeviceptr ddata, size_t buffersize) 
+  {
+    if(cuMemAlloc(&ddata, buffersize) != CUDA_SUCCESS)
+      return -1;  
+    if (cuMemcpyHtoD(ddata, hdata, buffersize) != CUDA_SUCCESS) {
+      CUDA_SAFE_CALL(cuMemFree(ddata));
+      return -1;
+    }
+    return 0;
+  }
+
+  template <typename T>
+  int transfer_to_host(T* hdata, CUdeviceptr ddata, size_t buffersize) 
+  {
+    if (!hdata || cuMemcpyDtoH(hdata, ddata, buffersize) != CUDA_SUCCESS)
+      return -1;
+    CUDA_SAFE_CALL(cuMemFree(ddata));
+    return 0; 
+  }
+
+  /*! \brief  Load a kernel function from a precompiled ptx file or 
+   *          runtime-compile ptx string
+   *  \param  modname The name of the module file/string
+   *  \param  funname The name of the function to load
+   *  \param  is_file Boolean value, from a precompiled file or rt-compiled string
+   *  \param  kfunc   The CUfunction that loads.
+   */
+  void load_kernel(const std::string& modname,
+                   const std::string& funname,
+                   CUfunction* kfunc,
+                   bool  is_file = 0
+                   ) 
+  {
+    if (modname.empty() || funname.empty())
+      return;
+
+    CUmodule   module;
+    CUfunction kernel;
+
+    if (is_file)
+      CUDA_SAFE_CALL(cuModuleLoad(&module, modname.c_str()));
+    else
+      // TODO: We set jit options to 0 temporarily
+      CUDA_SAFE_CALL(cuModuleLoadDataEx(&module, modname.c_str(), 0, 0, 0));
+    CUDA_SAFE_CALL(cuModuleGetFunction(&kernel, module, funname.c_str()));
+    CUDA_SAFE_CALL(cuModuleUnload(module));
+  }
+  
+  /*! \brief  run a kernel func with args. 
+   *  \param  dev  The device id user gave.
+   *  \param  fun  The cufunction object
+   *  \param  args The arg array
+   *  \param  sync The boolean that tells whether we synchronize here.
+   */
+  int run_kernel(CUfunction*  fun,
+                 CUcontext*   context,
+                 void**       args,
+                 bool         sync = true,
+                 int          dev = 0,
+                 uint         gridx = 1,
+                 uint         gridy = 1,
+                 uint         gridz = 1,
+                 uint         blockx = 1,
+                 uint         blocky = 1,
+                 uint         blockz = 1
+                 ) 
+  {
+    if (dev >= _dcount || !fun)
+      return -1;
+
+    //TODO: Sanity checks on grid block dimensions
+
+    CUdevice    cuDevice;
+    CUDA_SAFE_CALL(cuDeviceGet(&cuDevice, dev));
+    CUDA_SAFE_CALL(cuCtxCreate(context, dev, cuDevice));
+    
+    CUDA_SAFE_CALL(cuLaunchKernel(*fun,
+                                  gridx, gridy, gridz,
+                                  blockx, blocky, blockz, 
+                                  0, NULL, 
+                                  args, 0));
+    if(sync)
+      CUDA_SAFE_CALL(cuCtxSynchronize());
+    return 0;
+  }
+
+  void cleanup(CUcontext* context)
+  {
+    if(context)
+      CUDA_SAFE_CALL(cuCtxDestroy(*context));
+  }
+  
   /* device parameters */
   int              _dcount;
   attribute_vec    _dattributes;
@@ -114,68 +272,20 @@ GPUBuiltins::device_info(unit_t) {
   _impl->dev_info();
   return unit_t{};
 }
+
+string_impl  
+GPUBuiltins::compile_to_ptx_str(const string_impl& code, 
+                                const string_impl& ptxname){
+  return string_impl("");
+}
   
-string_impl 
-GPUBuiltins::compile_to_ptx(const string_impl& code, const string_impl& ptxname) {
+int
+GPUBuiltins::compile_to_ptx_file(const string_impl& code, 
+                                 const string_impl& fname){
+  return 0;
+}
 
-		nvrtcProgram prog;              /* a program handle */
-		nvrtcResult  result;               /* an enumeration of result */
-
-		/* ... Runtime Compilation using NVRTC library .... */
-		//const char *kernel = code.c_str();
-		//ptxname(""kernel.cu");
-
-		const char *kernel = "                                                  \n\
-				extern \"C\" __global__                                         \n\
-				void saxpy(float a, float *x, float *y, float *out, size_t n)   \n\
-				{                                                               \n\
-				  size_t tid = blockIdx.x * blockDim.x + threadIdx.x;           \n\
-				  if (tid < n) {                                                \n\
-					out[tid] = a * x[tid] + y[tid];                             \n\
-				  }                                                             \n\
-				}                                                               \n";
-
-		//create program:
-		result =
-		   nvrtcCreateProgram(&prog,         // prog
-				   (string_impl("extern \"C\" ") + code).c_str() ,         // buffer
-				   ptxname.c_str(),    // name         // buffer
-					0,             // numHeaders
-					NULL,          // headers
-					NULL);        // includeNames
-		if (result !=  NVRTC_SUCCESS){
-			throw "nvtrcCreateProgram failed";
-		}
-
-		//compile program:
-		const char *opts[] = {"--gpu-architecture=compute_20",
-							  "--fmad=false"};
-		result = nvrtcCompileProgram(prog,  // prog
-										2,     // numOptions
-									 opts); // options
-		if (result != NVRTC_SUCCESS) {
-			throw "nvrtcCompileProgram failed";
-		}
-
-		// Obtain PTX from the program
-		size_t ptxSize;
-		result = nvrtcGetPTXSize(prog, &ptxSize);
-		if (result != NVRTC_SUCCESS) {
-			throw "fail to get PTX size";
-		}
-		char *ptx = new char[ptxSize];
-		if (nvrtcGetPTX(prog, ptx) !=  NVRTC_SUCCESS){
-			throw "fail to get PTX";
-		}
-
-		if (nvrtcDestroyProgram(&prog) != NVRTC_SUCCESS){
-			throw "fail to destroy program ";
-		}
-
-		return string_impl(ptx);
-		//return unit_t{};
-	  }
-
+/*
 unit_t 
 GPUBuiltins::run_ptx(const string_impl ptx, const string_impl func_name){
 		// Load the generated PTX and get a handle to the SAXPY kernel.
@@ -230,5 +340,5 @@ GPUBuiltins::run_ptx(const string_impl ptx, const string_impl func_name){
 
 		return unit_t{};
 	}
-
-}
+*/
+} // namespace K3

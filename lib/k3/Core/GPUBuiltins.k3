@@ -6,9 +6,12 @@ declare device_info      : () -> ()
 
 // A Simple function, send a GPU code string and
 // compile it in runtime with no headers
-// Usage: compile_to_ptx <code string> <ptx filename>
-@:CArgs 1
-declare compile_to_ptx : string -> string -> string
-  with effects \x -> [R[x]]
+// Usage: compile_to_ptx_str <code string> <ptx name>
+@:CArgs 2
+declare compile_to_ptx_str : string -> string -> string
+  with effects \x -> \y -> [R[x]; R[y]]
 
-declare run_ptx : string -> string -> ()
+@:CArgs 2
+declare compile_to_ptx_file : string -> string -> int
+  with effects \x -> \y -> [R[x]; R[y]]
+

@@ -21,9 +21,9 @@ trigger t : () = \_ -> (
    devicecount = get_device_count ();
    print ("GPU device count: " ++ (itos devicecount));
    device_info ();
-   print ("ptx:" ++ (compile_to_ptx kernel file_name));
-   (ptx = (compile_to_ptx kernel file_name));
-   (run_ptx ptx "saxpy")
+
+   (ptx = (compile_to_ptx_str kernel file_name));
+   print ("ptx:" ++ ptx)
 )
 
 source s1 : () = value ()
