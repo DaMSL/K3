@@ -285,6 +285,12 @@ GPUBuiltins::compile_to_ptx_file(const string_impl& code,
   return 0;
 }
 
+template <class T>
+T GPUBuiltins::transformer_gpu(T in, const string_impl& modname,
+                                     const string_impl& funname,
+                                     const string_impl& ptx) {
+  return in;
+}
 /*
 unit_t 
 GPUBuiltins::run_ptx(const string_impl ptx, const string_impl func_name){

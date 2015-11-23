@@ -3,7 +3,7 @@ include "Core/GPUBuiltins.k3"
 
 declare devicecount : mut int = 0
 
-declare file_name : string = "saxpy.cu"
+declare modname : string = "test"
 
 declare kernel : string =
                 " __global__ "  ++                                                
@@ -15,15 +15,24 @@ declare kernel : string =
     		"  }                                                             " ++
     		"}                                                               "
 
-declare ptx : mut string = ""
+declare transformer : string =
+              " __global__ void " ++
+              "transformer(const float *A, float *C, int numElements) " ++
+              "{                                                      " ++
+              "  int i = blockDim.x * blockIdx.x + threadIdx.x;       " ++
+              "  if (i < numElements)                                 " ++
+              "    C[i] = A[i] + 5.0;                                 " ++
+              "}                                                      "
+
+declare  ptx : mut string = ""
 
 trigger t : () = \_ -> (
    devicecount = get_device_count ();
    print ("GPU device count: " ++ (itos devicecount));
    device_info ();
 
-   (ptx = (compile_to_ptx_str kernel file_name));
-   print ("ptx:" ++ ptx)
+   (ptx = (compile_to_ptx_str kernel modname))
+   
 )
 
 source s1 : () = value ()

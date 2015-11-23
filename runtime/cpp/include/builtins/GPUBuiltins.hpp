@@ -23,6 +23,10 @@ public:
   int          compile_to_ptx_file(const string_impl& code, const string_impl& fname);
   
   /* Run kernels */
+  template <class T>
+  T            transformer_gpu(T in, const string_impl& modname, 
+                                     const string_impl& funname,
+                                     const string_impl& ptx);
   
   /* Builtins    */
 private:
