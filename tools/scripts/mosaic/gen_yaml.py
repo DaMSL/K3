@@ -146,6 +146,16 @@ def create_local_file(args):
         if role == 'node':
             if opt_route:
                 peer.update(opt_route)
+            if args.message_profiling:
+                peer['do_profile'] = True
+                peer['mosaic_sendupoly_buffer_batch_sz'] = 1
+                peer['mosaic_sendupoly_sample_mod'] = 5
+                peer['mosaic_sendpoly_buffer_batch_sz'] = 1
+                peer['mosaic_sendpoly_sample_mod'] = 5
+                peer['mosaic_event_sample_mod'] = 1000000
+                peer['mosaic_route_sample_mod'] = 1000000
+                peer['mosaic_sendput_sample_mod'] = 1000000
+                peer['mosaic_push_sample_mod'] = 1000000
 
         if role == 'switch' or role == 'switch_old':
             if args.latency_profiling:
@@ -153,6 +163,16 @@ def create_local_file(args):
                 peer['mosaic_event_sample_mod'] = 0
                 peer['mosaic_route_sample_mod'] = 1000000
                 peer['mosaic_sendput_sample_mod'] = 1000000
+            if args.message_profiling:
+                peer['do_profile'] = True
+                peer['mosaic_sendupoly_buffer_batch_sz'] = 1
+                peer['mosaic_sendupoly_sample_mod'] = 5
+                peer['mosaic_sendpoly_buffer_batch_sz'] = 1
+                peer['mosaic_sendpoly_sample_mod'] = 5
+                peer['mosaic_event_sample_mod'] = 1000000
+                peer['mosaic_route_sample_mod'] = 1000000
+                peer['mosaic_sendput_sample_mod'] = 1000000
+                peer['mosaic_push_sample_mod'] = 1000000
             if args.csv_path:
                 peer['switch_path'] = args.csv_path
             if args.tpch_data_path:
