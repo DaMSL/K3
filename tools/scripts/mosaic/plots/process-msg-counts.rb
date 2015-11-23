@@ -32,20 +32,27 @@ def find_peer_index(h)
   end
 end
 
+$tags = { '14' => 'poly_bytes',
+          '15' => 'upoly_bytes',
+          '16' => 'mixed_msgs',
+          '17' => 'poly_only_bytes',
+          '18' => 'poly_msgs'
+        }
+
 # Given an event log from a particular sender
 # Produce a dict mapping each destination to a dict of sum(event_val) group by event_tag
 def process_csv(path)
   res = {}
   CSV.foreach(path) do |row|
-    (tag, _, dest_str, val) = row
-    dest = dest_str.to_i
+    (tag_str, _, dest_str, val_str) = row
+    tag, dest, val = $tags[tag_str], dest_str.to_i, val_str.to_i
     if not res.has_key?(dest)
       res[dest] = {}
     end
     if not res[dest].has_key?(tag)
       res[dest][tag] = 0
     end
-    res[dest][tag] += val.to_i
+    res[dest][tag] += val
   end
   return res
 end
