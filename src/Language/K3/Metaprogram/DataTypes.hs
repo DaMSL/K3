@@ -45,7 +45,8 @@ data MPEvalOptions = MPEvalOptions { mpInterpArgs   :: [String]
                                    , mpSearchPaths  :: [String]
                                    , mpLoadPaths    :: [String]
                                    , mpImportPaths  :: [String]
-                                   , mpQImportPaths :: [(String, Maybe String)] }
+                                   , mpQImportPaths :: [(String, Maybe String)]
+                                   , mpSerial       :: Bool }
 
 -- | Annotation generation is performed per name-parameter combination.
 type MPGeneratorKey = (Identifier, SpliceEnv, Maybe (K3 Type))
@@ -259,7 +260,7 @@ generatorDeclsToList (GeneratorDecls dd cd) =
 {- Haskell-K3 metaprogram evaluation options -}
 
 defaultMPEvalOptions :: MPEvalOptions
-defaultMPEvalOptions = MPEvalOptions dInterpArgs dSearchPaths dLoadPaths dImportPaths dQImportPaths
+defaultMPEvalOptions = MPEvalOptions dInterpArgs dSearchPaths dLoadPaths dImportPaths dQImportPaths False
   where
     dInterpArgs   = ["-package-db", ".cabal-sandbox/x86_64-windows-ghc-7.8.3-packages.conf.d"]
     dSearchPaths  = [".", "../K3/src"]
@@ -275,12 +276,14 @@ defaultMPEvalOptions = MPEvalOptions dInterpArgs dSearchPaths dLoadPaths dImport
                     , "Data.Maybe"
                     , "Data.Tree"
                     , "Language.K3.Core.Annotation"
+                    , "Language.K3.Core.Annotation.Syntax"
                     , "Language.K3.Core.Common"
                     , "Language.K3.Core.Type"
                     , "Language.K3.Core.Expression"
                     , "Language.K3.Core.Declaration"
                     , "Language.K3.Core.Literal"
                     , "Language.K3.Core.Metaprogram"
+                    , "Language.K3.Core.Utils"
                     , "Language.K3.Metaprogram.Primitives.Values"
                     , "Language.K3.Metaprogram.Primitives.Distributed" ]
     dQImportPaths = [ ("Language.K3.Core.Constructor.Type",        Just "TC")

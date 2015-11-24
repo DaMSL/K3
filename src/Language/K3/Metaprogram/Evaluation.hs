@@ -73,7 +73,7 @@ evalMetaprogram evalOpts analyzeFOpt repairFOpt prog =
       pWithDADecls   <- modifyGDeclsF $ \gd -> addDecls gd pWithMDataAnns
       analyzedP      <- analyzeF pWithDADecls
       localLog $ debugAnalysis analyzedP
-      pWithMCtrlAnns <- applyCAnnGens analyzedP
+      pWithMCtrlAnns <- generatorWithEvalOptions (flip applyCAnnGens analyzedP)
       pWithCADecls   <- modifyGDeclsF $ \gd -> addDecls gd pWithMCtrlAnns
       pRepaired      <- repairF pWithCADecls
       if pRepaired == mp then return pRepaired
@@ -243,16 +243,24 @@ applyDAnnGens mp = mapProgram applyDAnnDecl applyDAnnMemDecl applyDAnnExprTree (
         spliceLookupErr n = throwG $ unwords ["Could not find data macro", n]
 
 
-applyCAnnGens :: K3 Declaration -> GeneratorM (K3 Declaration)
-applyCAnnGens mp = mapExpression applyCAnnExprTree mp
+applyCAnnGens :: MPEvalOptions -> K3 Declaration -> GeneratorM (K3 Declaration)
+applyCAnnGens opts mp = foldExpression applyCAnnExprTree False mp >>= return . snd
   where
-    applyCAnnExprTree e = mapTree applyCAnnExpr e
+    applyCAnnExprTree changed e = foldMapRebuildTree (applyCAnnExpr $ mpSerial opts) changed e
 
     -- TODO: think about propagation of annotations between rewrites.
     -- Currently we do not preserve any annotations.
-    applyCAnnExpr ch (Node (t :@: anns) _) =
+    applyCAnnExpr True chChanged ch (Node (t :@: anns) _) =
+      if or chChanged
+        then return (True, Node (t :@: anns) ch)
+        else let (appAnns, rest) = partition isEApplyGen anns in
+             case appAnns of
+               h:tl -> eApplyAnn (Node (t :@: (tl ++ rest)) ch) h >>= return . (True,)
+               [] -> return (False, Node (t :@: rest) ch)
+
+    applyCAnnExpr False _ ch (Node (t :@: anns) _) =
       let (appAnns, rest) = partition isEApplyGen anns
-      in foldM eApplyAnn (Node (t :@: rest) ch) appAnns
+      in foldM eApplyAnn (Node (t :@: rest) ch) appAnns >>= return . (False,)
 
     eApplyAnn e (EApplyGen True n senv) = applyCAnnotation e n senv
     eApplyAnn e _ = return e
@@ -342,7 +350,7 @@ annotationSplicer :: Identifier -> [TypedSpliceVar] -> [TypeVarDecl] -> [Either 
 annotationSplicer n spliceParams typeParams mems = Splicer $ \spliceEnv -> SRGenDecl $ do
   let vspliceEnv = validateSplice spliceParams spliceEnv
   nmems <- generateInSpliceEnv vspliceEnv $ mapM (either spliceMPAnnMem (\m -> spliceAnnMem m >>= return . (:[]))) mems
-  if isContentDependent n
+  if isContentDependent
     then return $ SGContentDependent $ \t -> withGUID n vspliceEnv (Just t) $ onGenerated nmems
     else withGUID n vspliceEnv Nothing $ onGenerated nmems
 
@@ -350,7 +358,7 @@ annotationSplicer n spliceParams typeParams mems = Splicer $ \spliceEnv -> SRGen
   onGenerated _     (Left i)  = SGNamed $ concat [n, "_", show i]
   onGenerated nmems (Right i) = SGDecl $ DC.dataAnnotation (concat [n, "_", show i]) typeParams $ concat nmems
 
-  isContentDependent n' = any (`isInfixOf` n) ["VMapIndex", "MapE", "SortedMapE", "MapCE"]
+  isContentDependent = any (`isInfixOf` n) ["VMapIndex", "MapE", "SortedMapE", "MapCE"]
 
 
 exprSplicer :: K3 Expression -> K3Generator
@@ -383,7 +391,7 @@ spliceDecl d = case d of
   (Node (tg :@: _) ch) ->
     newAnns d () >>= \(_,nanns) -> return $ Node (tg :@: nanns) ch
  where
-  newAnns d v = mapM spliceDAnnotation (annotations d) >>= return . (v,)
+  newAnns d' v = mapM spliceDAnnotation (annotations d') >>= return . (v,)
 
 spliceMPAnnMem :: MPAnnMemDecl -> GeneratorM [AnnMemDecl]
 spliceMPAnnMem (MPAnnMemDecl i c mems) = spliceWithValue c
@@ -452,6 +460,7 @@ spliceBinder :: Binder -> GeneratorM Binder
 spliceBinder (BIndirection i) = spliceIdentifier i >>= return . BIndirection
 spliceBinder (BTuple i) = mapM spliceIdentifier i >>= return . BTuple
 spliceBinder (BRecord ijs) = mapM (\(i,j) -> (,) <$> spliceIdentifier i <*> spliceIdentifier j) ijs >>= return . BRecord
+spliceBinder (BSplice i) = spliceIdentifier i >>= return . BSplice
 
 spliceDAnnotation :: Annotation Declaration -> DeclAnnGenerator
 spliceDAnnotation (DProperty (Left  (n, Just l))) = spliceLiteral l >>= return . DProperty . Left  . (n,) . Just

@@ -180,8 +180,9 @@ metaprogram opts p = if noMP $ input opts
 
     mkOpts Nothing = Just $ defaultMPEvalOptions
     mkOpts (Just mpo) =
-      Just $ defaultMPEvalOptions { mpInterpArgs  = (unpair $ interpreterArgs mpo)
-                                  , mpSearchPaths = (moduleSearchPath mpo) }
+      Just $ defaultMPEvalOptions { mpInterpArgs  = unpair $ interpreterArgs mpo
+                                  , mpSearchPaths = moduleSearchPath mpo
+                                  , mpSerial      = serialMetaprogram mpo }
 
     unpair = concatMap (\(x,y) -> [x,y])
     spliceError = "Could not process metaprogram: "

@@ -1,3 +1,5 @@
+include "Annotation/Maps/MapE.k3"
+
 control ManualFusion {
 
   ((((((( ?e ).filter   ?filterF)
@@ -88,4 +90,138 @@ control ManualFusion {
                    )
                   (empty $::[t] @Map)
       )
+}
+
+// For use with Mosaic's fold encoding.
+control MosaicFusion {
+
+  // Filter-filter
+  ((?e).filter ?filterF1).filter ?filterF2 => ($.[e].filter (\x -> ($.[filterF1] x) and ($.[filterF2] x))) @MosaicFusion
+
+  // Map-maps encoded as folds.
+  ((?e).fold (\_accmap -> (\?bvi1 -> (bind ?bv1 as ?bind1 in ((_accmap.insert ?v1); _accmap))))
+             (?acc1 : collection ?t1 @Collection))
+       .fold (\_accmap -> (\?bvi2 -> (bind ?bv2 as ?bind2 in ((_accmap.insert ?v2); _accmap))))
+             (?acc2 : collection ?t2 @Collection)
+  =>
+  (($.[e] @MosaicFusion)
+        .fold (\_accmap ->
+                  \$#[bvi1] -> bind $.[bv1] as $~![bind1] in
+                  (_accmap.insert ((\$#[bvi2] -> bind $.[bv2] as $~![bind2] in ($.[v2] @MosaicFusion))
+                                  ($.[v1] @MosaicFusion));
+                   _accmap))
+              $.[acc2]
+  ) @MosaicFusion
+
+  // Map-filter, with map encoded as fold.
+  ((?e).fold   (\_accmap -> (\?bvi1 -> (bind ?bv1 as ?bind1 in ((_accmap.insert ?v1); _accmap))))
+               (?acc1 : collection ?t1 @Collection))
+       .filter ?filterF
+  =>
+  (($.[e] @MosaicFusion)
+        .fold (\_accmap -> \$#[bvi1] -> bind $.[bv1] as $~![bind1] in
+                let r = $.[v1] @MosaicFusion in
+                if $.[filterF] r then (_accmap.insert r; _accmap) else _accmap)
+              $.[acc1]
+  ) @MosaicFusion
+
+  // Filter-map, with map encoded as fold.
+  ((?e).filter ?filterF)
+       .fold   (\_accmap -> (\?bvi1 -> (bind ?bv1 as ?bind1 in ((_accmap.insert ?v1); _accmap))))
+               (?acc1 : collection ?t1 @Collection)
+  =>
+  (($.[e] @MosaicFusion)
+       .fold (\_accmap -> \$#[bvi1] ->
+                if $.[filterF] $#[bvi1]
+                  then bind $.[bv1] as $~![bind1] in ((_accmap.insert ($.[v1] @MosaicFusion)); _accmap)
+                  else _accmap)
+             $.[acc1]
+  ) @MosaicFusion
+
+  // Map-sum encoded as folds.
+  ((?e).fold (\_accmap -> (\?bvi1 -> (bind ?bv1 as ?bind1 in ((_accmap.insert ?v1); _accmap))))
+             (?acc1 : collection ?t1 @Collection))
+       .fold (\?acc2i -> (\?bvi2 -> (bind ?bv2 as ?bind2 in (?acc2v + ?v2))))
+             ?acc2
+  =>
+  (($.[e] @MosaicFusion)
+        .fold (\$#[acc2i] -> \$#[bvi1] ->
+                bind $.[bv1] as $~![bind1] in
+                $.[acc2v] + ((\$#[bvi2] -> bind $.[bv2] as $~![bind2] in ($.[v2] @MosaicFusion)) ($.[v1] @MosaicFusion)))
+              $.[acc2]
+  ) @MosaicFusion
+
+  // TODO: chained fusion rules for filter-map/map-filter and map.
+
+  // Fold search descent
+  (?e).fold ?accF ?z => (($.[e] @MosaicFusion).fold $.[accF] $.[z])
+
+  // Group-by search descent
+  (?e).group_by ?groupF ?accF ?z => ($.[e] @MosaicFusion).group_by $.[groupF] $.[accF] $.[z]
+
+  // Children descent.
+  ?E => $[| rewriteChildren 'E.expr ["MosaicFusion"] |]
+}
+
+// Create base relation indexes for Mosaic warmup map accesses.
+control MosaicIndex[ lbl          : label
+                   , key_type     : type
+                   , lookup_probe : expr
+                   , index_probe  : expr
+                   , missing_fn   : expr
+                   , present_fn   : expr
+                   , index_key    : [labeltype]
+                   , index_value  : [labeltype]]
+{
+
+  // Slice materialization
+  ((?e.filter ?filterF)
+      .fold   ?foldF (?acc1 : ?t1)
+  )
+  => $[lbl]_index.lookup $[lookup_probe] (\_ -> $.[acc1]) (\r -> r.value)
+  +> {
+    declare $[lbl]_index : mut collection {key: $[key_type], value: $::[t1]} @MapE(key:=index_key, value:=index_value)
+
+    trigger $[lbl]_init_index : () = \_ -> (
+      $.[e].iterate (\t -> $[lbl]_index.upsert_with $[index_probe] $[missing_fn] $[present_fn])
+    )
+  }
+}
+
+// Create stages and materialized intermediates for Mosaic warmup expressions.
+control MosaicMaterialization[lbl : label, cnt : expr]
+{
+  ?v = ((?e.fold ?accF ?z) @MosaicFusion)
+  => ($#[v] = (($.[e].fold $.[accF] $.[z]) @MosaicFusion)) @MosaicMaterialization(lbl=lbl, cnt=cnt)
+
+  ?v = ((?e.group_by ?groupF ?accF ?z) @MosaicFusion)
+  => ($#[v] = (($.[e].group_by $.[groupF] $.[accF] $.[z]) @MosaicFusion)) @MosaicMaterialization(lbl=lbl, cnt=cnt)
+
+  ?v = ((?e @:BaseRelation).fold ?accF ?z)
+  => $#[v] = $.[e].fold $.[accF] $.[z]
+
+  ?v = ((?e @:BaseRelation).group_by ?groupF ?accF ?z)
+  => $#[v] = $.[e].group_by $.[groupF] $.[accF] $.[z]
+
+  ?v = ((?e : ?t).fold ?accF ?z)
+  => $#[v] = $[lbl]_$[| labelExpr 'cnt |].fold $.[accF] $.[z]
+  +> {
+    declare $[lbl]_$[| labelExpr 'cnt |] : mut $::[t]
+
+    trigger $[lbl]_stage$[| labelExpr 'cnt|] : () = \_ -> (
+      ((($[lbl]_$[| labelExpr 'cnt |] = $.[e]) @MosaicMaterialization(lbl=lbl, cnt=[$ $[|incrExpr 'cnt|] ]));
+        $[| sendStage 'lbl 'cnt |])
+    )
+  }
+
+  ?v = ((?e : ?t).group_by ?groupF ?accF ?z)
+  => $#[v] = $[lbl]_$[| labelExpr 'cnt |].group_by $.[groupF] $.[accF] $.[z]
+  +> {
+    declare $[lbl]_$[| labelExpr 'cnt |] : mut $::[t]
+
+    trigger $[lbl]_stage$[| labelExpr 'cnt|] : () = \_ -> (
+      ((($[lbl]_$[| labelExpr 'cnt |] = $.[e]) @MosaicMaterialization(lbl=lbl, cnt=[$ $[|incrExpr 'cnt|] ]));
+        $[| sendStage 'lbl 'cnt |])
+    )
+  }
 }

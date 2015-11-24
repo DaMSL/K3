@@ -1,14 +1,17 @@
 {-# LANGUAGE ViewPatterns #-}
+
 module Language.K3.Metaprogram.Primitives.Values where
 import Control.Monad.Identity
 import Control.Arrow ( (&&&) )
 
+import Data.Tree
 import Data.List
 import Data.Maybe
 import qualified Data.Map as Map
 
 import Language.K3.Core.Common
 import Language.K3.Core.Annotation
+import Language.K3.Core.Annotation.Syntax
 import Language.K3.Core.Expression
 import Language.K3.Core.Type
 import Language.K3.Core.Literal
@@ -19,6 +22,12 @@ import Language.K3.Core.Constructor.Literal    as LC
 import Language.K3.Core.Constructor.Expression as EC
 
 import Language.K3.Core.Metaprogram
+
+{- Annotation propagation. -}
+rewriteChildren :: SpliceValue -> [String] -> SpliceValue
+rewriteChildren (SExpr (Node tg ch)) ns = SExpr $ Node tg $ map (\c -> foldl (\c' i -> c' @+ (EApplyGen True i emptySpliceEnv)) c ns) ch
+rewriteChildren _ _ = error "Invalid expression for annotateChildren"
+
 
 {- Splice value extractors -}
 idOfSLabel :: SpliceValue -> Maybe Identifier
@@ -95,13 +104,13 @@ labelExpr (SExpr (tag -> EConstant (CString i))) = SLabel i
 labelExpr (SExpr (tag -> EConstant (CInt i)))    = SLabel $ show i
 labelExpr (SExpr (tag -> EConstant (CReal r)))   = SLabel $ show r
 labelExpr (SExpr (tag -> EConstant (CBool b)))   = SLabel $ show b
-labelExpr _ = error "Invalid splice expression for labelExpr"
+labelExpr x = error $ "Invalid splice expression for labelExpr: " ++ show x
 
 labelLiteral :: SpliceValue -> SpliceValue
 labelLiteral (SLiteral (tag -> LString i)) = SLabel i
 labelLiteral (SLiteral (tag -> LInt i))    = SLabel $ show i
 labelLiteral (SLiteral (tag -> LBool b))   = SLabel $ show b
-labelLiteral _ = error "Invalid splice literal for labelLiteral"
+labelLiteral _ = error $ "Invalid splice literal for labelLiteral"
 
 literalLabel :: SpliceValue -> SpliceValue
 literalLabel (SLabel i) = SLiteral $ LC.string i
@@ -125,6 +134,23 @@ exprLabel _ = error "Invalid splice label for exprLabel"
 exprType :: SpliceValue -> SpliceValue
 exprType (SType t) = SExpr  $ EC.constant $ CString $ show t
 exprType _ =  error "Invalid splice type for exprType"
+
+
+{- Compile-time arithmetic -}
+incrLiteral :: SpliceValue -> SpliceValue
+incrLiteral (SLiteral (tag -> LInt i)) = SLiteral $ LC.int $ i+1
+incrLiteral (SLiteral (tag -> LReal i)) = SLiteral $ LC.real $ i + 1.0
+incrLiteral _ = error "Invalid splice value for incrLiteral"
+
+incrExpr :: SpliceValue -> SpliceValue
+incrExpr (SExpr (tag -> EConstant (CInt i)))  = SExpr $ EC.constant $ CInt  $ i+1
+incrExpr (SExpr (tag -> EConstant (CReal i))) = SExpr $ EC.constant $ CReal $ i + 1.0
+incrExpr _ = error "Invalid splice value for incrExpr"
+
+decrExpr :: SpliceValue -> SpliceValue
+decrExpr (SExpr (tag -> EConstant (CInt i)))  = SExpr $ EC.constant $ CInt  $ i-1
+decrExpr (SExpr (tag -> EConstant (CReal i))) = SExpr $ EC.constant $ CReal $ i - 1.0
+decrExpr _ = error "Invalid splice value for decrExpr"
 
 {- Map specialization helpers. -}
 specializeMapTypeByKV :: SpliceValue -> SpliceValue
@@ -236,3 +262,11 @@ extractPathBFC _ = error "Invalid expression in extractPathBFC"
 collectionContentType :: SpliceValue -> SpliceValue
 collectionContentType (SType (tag &&& children -> (TCollection , (t:_) ))) = SType t
 collectionContentType _ = error "Invalid type in collectionContentType"
+
+{- Mosaic helpers -}
+sendStage :: SpliceValue -> SpliceValue -> SpliceValue
+sendStage _ (SExpr (tag -> EConstant (CInt 0))) = SExpr EC.unit
+sendStage (SLabel l) (SExpr (tag -> EConstant (CInt i))) =
+  let dest_trig = l ++ "_stage" ++ show (i-1)
+  in SExpr $ EC.binop OSnd (EC.tuple [EC.variable dest_trig, EC.variable "me"]) EC.unit
+sendStage _ _ = error "Invalid splice arguments for sendStage"

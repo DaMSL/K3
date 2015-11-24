@@ -897,7 +897,7 @@ svTerm = choice $ map try [ sVar
   where
     sVar        = SVar                  <$> identifier
     sLabel      = SLabel                <$> wrap "[#"  "]"  identifier
-    sBinder     = SBinder               <$> wrap "[~!"  "]"  eBinder
+    sBinder     = SBinder               <$> wrap "[~!" "]"  eBinder
     sType       = SType . stripTUIDSpan <$> wrap "[:"  "]"  typeExpr
     sExpr       = SExpr . stripEUIDSpan <$> wrap "[$"  "]"  expr
     sLiteral    = SLiteral              <$> wrap "[$#" "]"  literal
@@ -974,11 +974,11 @@ spliceParameter :: K3Parser (Maybe (Identifier, SpliceValue))
 spliceParameter = try ((\a b -> Just (a,b)) <$> identifier <* symbol "=" <*> parseInMode Splice svTerm)
 
 contextualizedSpliceParameter :: Maybe SpliceEnv -> K3Parser (Maybe (Identifier, SpliceValue))
-contextualizedSpliceParameter sEnvOpt = choice [try fromContext, spliceParameter]
+contextualizedSpliceParameter sEnvOpt = choice [try fromContextVar, try fromContext, spliceParameter]
   where
-    fromContext = mkCtxtVal sEnvOpt <$> identifier <*> optional (symbol "=" *> contextParams)
-    contextParams = try (Left <$> identifier) <|> try (Right <$> (brackets $ commaSep1 identifier))
-      -- ^ TODO: this prevents us from matching against an SVar. Generalize.
+    fromContextVar = (\a b -> Just (a,b)) <$> identifier <*> (symbol ":=" *> parseInMode Splice svTerm)
+    fromContext    = mkCtxtVal sEnvOpt <$> identifier <*> optional (symbol "=" *> contextParams)
+    contextParams  = try (Left <$> identifier) <|> try (Right <$> (brackets $ commaSep1 identifier))
 
     mkCtxtVal Nothing _ _                     = Nothing
     mkCtxtVal (Just sEnv) a Nothing           = mkCtxtLt sEnv a >>= return . (a,)

@@ -75,8 +75,9 @@ data ParseOptions = ParseOptions { parsePrintMode :: PrintMode
 
 -- | Metaprogramming options
 data MetaprogramOptions
-    = MetaprogramOptions { interpreterArgs  :: [(String, String)]
-                         , moduleSearchPath :: [String] }
+    = MetaprogramOptions { interpreterArgs   :: [(String, String)]
+                         , moduleSearchPath  :: [String]
+                         , serialMetaprogram :: Bool}
     deriving (Eq, Read, Show)
 
 -- | Typechecking options
@@ -904,7 +905,7 @@ verbosityOptions = toEnum . roundVerbosity <$> option auto (
 
 -- | Metaprogram option parsing.
 metaprogramOptions :: Parser (Maybe MetaprogramOptions)
-metaprogramOptions = optional (MetaprogramOptions <$> mpinterpretArgOpt <*> mpModuleSearchPathOpt)
+metaprogramOptions = optional (MetaprogramOptions <$> mpinterpretArgOpt <*> mpModuleSearchPathOpt <*> mpSerialOpt)
 
 mpinterpretArgOpt :: Parser [(String, String)]
 mpinterpretArgOpt = keyValList "-" <$> strOption (   long    "mpargs"
@@ -917,6 +918,10 @@ mpModuleSearchPathOpt = pathList <$> strOption (   long    "mpsearch"
                                                 <> value   ""
                                                 <> help    "Metaprogram module search path"
                                                 <> metavar "MPSEARCHPATH" )
+
+mpSerialOpt :: Parser Bool
+mpSerialOpt = switch (   long "serialmp"
+                      <> help "Use serial metaprogramming." )
 
 -- | Program Options Parsing.
 programOptions :: Parser Options
