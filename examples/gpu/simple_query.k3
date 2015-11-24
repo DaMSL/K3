@@ -37,7 +37,7 @@ trigger q1 : () = \_ -> (
    (range 10000).iterate (\r -> input.insert {s_id   : (r.elem + 10000),
                                               s_name : "Peter",
                                               s_age  : 40,
-                                              s_wage " 35.0
+                                              s_wage : 35.0
                                              });
    
    print "Synthetic data loaded";
