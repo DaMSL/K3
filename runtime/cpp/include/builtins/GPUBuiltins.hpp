@@ -138,8 +138,9 @@ public:
   int          compile_to_ptx_file(const string_impl& code, const string_impl& fname);
   
   /* Run kernels */
-  template <class T>
-  T            transformer_gpu(T in, const string_impl& modname, 
+  template <typename V, typename R>
+  Vector<R_elem<R>>  transformer_gpu(Vector<R_elem<V>>& in, 
+                                     const string_impl& modname, 
                                      const string_impl& funname,
                                      const string_impl& ptx,
                                      int   dev) {
@@ -157,11 +158,11 @@ public:
     CUDA_SAFE_CALL(cuCtxCreate(&cont, dev, cdev));
     
     size_t size = in.getConstContainer().size();
-    int* res = new int[size];
-    CUDA_SAFE_CALL(cuMemAlloc(&dres, size*sizeof(int)));
+    V* res = new V[size];
+    CUDA_SAFE_CALL(cuMemAlloc(&dres, size*sizeof(R)));
  
-    cuMemAlloc(&cptr, size * sizeof(int));
-    cuMemcpyHtoD(cptr, &in.getConstContainer()[0], size * sizeof(int));    
+    cuMemAlloc(&cptr, size * sizeof(V));
+    cuMemcpyHtoD(cptr, &in.getConstContainer()[0], size * sizeof(V));    
     
     void* param[] = { &cptr, &dres, &size };
     CUfunction fun;
@@ -169,21 +170,36 @@ public:
     CUDA_SAFE_CALL(cuModuleGetFunction(&fun, module, funname.c_str()));
     _impl->run_kernel(fun, &cdev, param, true, 256, 1, 1, 256, 1, 1);    
     
-    if(_impl->transfer_to_host(res, dres, sizeof(int) * size) == -1) {
+    if(_impl->transfer_to_host(res, dres, sizeof(R) * size) == -1) {
       CUDA_SAFE_CALL(cuMemFree(cptr));    
       throw "transfer data back to host failed.";
     }
     
     CUDA_SAFE_CALL(cuMemFree(cptr));
-    CUDA_SAFE_CALL(cuMemFree(dres));
     CUDA_SAFE_CALL(cuModuleUnload(module)); 
     CUDA_SAFE_CALL(cuCtxDestroy(cont));  
-    T result;
+    Vector<R_elem<R>> result;
     for(int i = 0; i < size; i++)
       result.insert(res[i]);
 
     delete[] res;
     return result;
+  }
+
+  Vector<R_elem<int>>         transformer_gpu_int(Vector<R_elem<int>>& in,
+                                                  const string_impl& modname,
+                                                  const string_impl& funname,
+                                                  const string_impl& ptx,
+                                                  int   dev) {
+    return this->transformer_gpu<int, int>(in, modname, funname, ptx, dev);
+  }
+
+  Vector<R_elem<float>>       transformer_gpu_real(Vector<R_elem<float>>& in,
+                                                   const string_impl& modname,
+                                                   const string_impl& funname,
+                                                   const string_impl& ptx,
+                                                   int   dev) {
+    return this->transformer_gpu<float, float>(in, modname, funname, ptx, dev);
   }
   
   /* Builtins    */

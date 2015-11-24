@@ -1,0 +1,55 @@
+include "Core/Builtins.k3"
+include "Core/GPUBuiltins.k3"
+
+// A Simple synthetic query for testing
+
+// A Simple synthetic schema that covers all primitives 
+typedef simple = {
+    s_id     : int,
+    s_name   : string,
+    s_age    : int,
+    s_wage   : real
+}
+
+// A Simple result schema
+typedef simple_result = {
+    s_name   : string,
+    s_wage   : real
+}
+
+// table of simple
+typedef s_table = collection simple        @Vector
+typedef r_table = collection simple_result @Vector
+
+declare input  : s_table
+declare output : mut r_table
+
+declare device_code : string = ""
+declare ptx         : mut string = ""
+
+trigger q1 : () = \_ -> (
+   // building synthetic data
+   (range 10000).iterate (\r -> input.insert {s_id   : r.elem, 
+                                              s_name : "John",
+                                              s_age  : 30,
+                                              s_wage : 45.0
+                                             });
+   (range 10000).iterate (\r -> input.insert {s_id   : (r.elem + 10000),
+                                              s_name : "Peter",
+                                              s_age  : 40,
+                                              s_wage " 35.0
+                                             });
+   
+   print "Synthetic data loaded";
+   
+   //ptx = (compile_to_ptx_str "query" "simple");
+   
+   //print "ptx compiled in runtime";
+   
+   //output = (transformer_gpu_simple input "simple" "query" ptx 0);
+
+   print "query done"
+)  
+
+source s1 : () = value ()
+feed s1 |> q1                                                       

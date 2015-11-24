@@ -40,8 +40,8 @@ trigger t : () = \_ -> (
    print ptx; 
    // build a vector
    ((range 10000).iterate (\r -> c.insert {elem:1}));
-   re = (transformer_gpu c modname fn ptx 0);
-   //print re
+   re = (transformer_gpu_int c modname fn ptx 0);
+   // print re;
    (re.iterate (\r -> print (itos (r.elem))))  
 )
 
