@@ -7,18 +7,16 @@ import argparse
 
 def make_png(max_node, variant, file, data):
     # Build the heatmap manually
-    arr = []
-    for i in range(max_node):
-      arr.append([])
-      for j in range(max_node):
-        d = 0
-        if i in data and j in data[i] and variant in data[i][j]:
-          d += int(data[i][j][variant])
-        arr[-1].append(d)
+    size = max_node + 1
+    arr = [[0 for x in range(size)] for x in range(size)]
+    for i in data:
+      for j in data[i]:
+        if variant in data[i][j]:
+          arr[i][j] += int(data[i][j][variant])
 
     # Plot
-    xs = range(max_node)
-    ys = range(max_node)
+    xs = np.arange(size)
+    ys = np.arange(size)
     x, y = np.meshgrid(xs, ys)
     intensity = np.array(arr)
 
