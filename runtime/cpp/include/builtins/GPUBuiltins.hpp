@@ -68,9 +68,9 @@ public:
    *  \param  is_file Boolean value, from a precompiled file or rt-compiled string
    *  \param  kfunc   The CUfunction that loads.
    */
-  void          load_kernel(const std::string& modname,
-                            const std::string& funname,
-                            CUfunction* kfunc,
+  void          load_kernel(const string_impl& modname,
+                            const string_impl& funname,
+                            CUfunction kfunc,
                             bool  is_file = 0
                            );
   
@@ -80,18 +80,17 @@ public:
    *  \param  args The arg array
    *  \param  sync The boolean that tells whether we synchronize here.
    */ 
-  int           run_kernel(CUfunction*  fun,
-                           CUcontext*   context,
+  int           run_kernel(CUfunction   fun,
                            CUdevice*    device,
                            void**       args,
                            bool         sync = true,
                            uint         gridx = 1,
                            uint         gridy = 1,
                            uint         gridz = 1,
-                           uint         blockx = 1,
+                           uint         blockx = 256,
                            uint         blocky = 1,
                            uint         blockz = 1
-                          ) 
+                          ); 
 
   void          cleanup(CUcontext* context);
 
@@ -105,14 +104,14 @@ public:
       CUDA_SAFE_CALL(cuMemFree(ddata));
       return -1;
     }
+    std::cout << "transfer to device succeed" << std::endl;
     return 0;
   }
 
   template <typename T>
   int transfer_to_host(T* hdata, CUdeviceptr ddata, size_t buffersize)
   {
-    if (!hdata || cuMemcpyDtoH(hdata, ddata, buffersize) != CUDA_SUCCESS)
-      return -1;
+    CUDA_SAFE_CALL(cuMemcpyDtoH(hdata, ddata, buffersize));
     CUDA_SAFE_CALL(cuMemFree(ddata));
     return 0;
   }
@@ -144,24 +143,47 @@ public:
                                      const string_impl& funname,
                                      const string_impl& ptx,
                                      int   dev) {
-    if(dev >= _impl->_dcount)
-    throw "invalid dev id";
+    if(dev >= _impl->get_dev_count())
+      throw "invalid dev id";
 
     CUdevice    cdev;
     CUdeviceptr cptr;
+    CUdeviceptr dres;
+
     CUcontext   cont;
+    CUmodule    module;
 
     CUDA_SAFE_CALL(cuDeviceGet(&cdev, dev));
     CUDA_SAFE_CALL(cuCtxCreate(&cont, dev, cdev));
-    std::vector<int> result;
-
-    // We throw exceptions at temp.
-    if(_impl->transfer_to_device(&in.getConstContainer()[0], cptr, sizeof(int) * in.size()) == -1)
-      throw "transfer data to device failed.";
-    // Launching kernel in between.
-    if(_impl->transfer_to_host(&result[0], cptr, sizeof(int) * in.size()) == -1)
+    
+    size_t size = in.getConstContainer().size();
+    int* res = new int[size];
+    CUDA_SAFE_CALL(cuMemAlloc(&dres, size*sizeof(int)));
+ 
+    cuMemAlloc(&cptr, size * sizeof(int));
+    cuMemcpyHtoD(cptr, &in.getConstContainer()[0], size * sizeof(int));    
+    
+    void* param[] = { &cptr, &dres, &size };
+    CUfunction fun;
+    CUDA_SAFE_CALL(cuModuleLoadDataEx(&module, ptx.c_str(), 0, 0, 0));
+    CUDA_SAFE_CALL(cuModuleGetFunction(&fun, module, funname.c_str()));
+    _impl->run_kernel(fun, &cdev, param, true, 256, 1, 1, 256, 1, 1);    
+    
+    if(_impl->transfer_to_host(res, dres, sizeof(int) * size) == -1) {
+      CUDA_SAFE_CALL(cuMemFree(cptr));    
       throw "transfer data back to host failed.";
-    return T(result);
+    }
+    
+    CUDA_SAFE_CALL(cuMemFree(cptr));
+    CUDA_SAFE_CALL(cuMemFree(dres));
+    CUDA_SAFE_CALL(cuModuleUnload(module)); 
+    CUDA_SAFE_CALL(cuCtxDestroy(cont));  
+    T result;
+    for(int i = 0; i < size; i++)
+      result.insert(res[i]);
+
+    delete[] res;
+    return result;
   }
   
   /* Builtins    */

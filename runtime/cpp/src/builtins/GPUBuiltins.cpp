@@ -20,6 +20,8 @@
 
 namespace K3 {
 
+const string_impl extern_C("extern \"C\" ");
+
 GPUimpl::GPUimpl() {
   CUDA_SAFE_CALL(cuInit(0));
   CUDA_SAFE_CALL(cuDeviceGetCount(&_dcount));
@@ -75,11 +77,11 @@ void
 GPUimpl::compile_ptx(const char* src, 
                      const char* name,
                      std::string& ptxstr,
-                     int nh = 0, 
-                     const char** headers = NULL,
-                     const char** includeNames = NULL,
-                     int dev = 0,
-                     bool materialize = 0
+                     int nh, 
+                     const char** headers,
+                     const char** includeNames,
+                     int dev,
+                     bool materialize
                     ) 
 {
    
@@ -129,46 +131,43 @@ GPUimpl::compile_ptx(const char* src,
 }
   
 void 
-GPUimpl::load_kernel(const std::string& modname,
-                     const std::string& funname,
-                     CUfunction* kfunc,
-                     bool  is_file = 0
+GPUimpl::load_kernel(const string_impl& modname,
+                     const string_impl& funname,
+                     CUfunction kfunc,
+                     bool  is_file
                     ) 
 {
-  if (modname.empty() || funname.empty())
+  if (modname.length() == 0 || funname.length() == 0)
      return;
 
-  CUmodule   module;
-  CUfunction kernel;
-
+  CUmodule module;
   if (is_file)
     CUDA_SAFE_CALL(cuModuleLoad(&module, modname.c_str()));
   else
     // TODO: We set jit options to 0 temporarily
     CUDA_SAFE_CALL(cuModuleLoadDataEx(&module, modname.c_str(), 0, 0, 0));
-  CUDA_SAFE_CALL(cuModuleGetFunction(&kernel, module, funname.c_str()));
+  CUDA_SAFE_CALL(cuModuleGetFunction(&kfunc, module, funname.c_str()));
   CUDA_SAFE_CALL(cuModuleUnload(module));
 }
   
 int 
-GPUimpl::run_kernel(CUfunction*  fun,
-                    CUcontext*   context,
+GPUimpl::run_kernel(CUfunction   fun,
                     CUdevice*    device,
                     void**       args,
-                    bool         sync = true,
-                    uint         gridx = 1,
-                    uint         gridy = 1,
-                    uint         gridz = 1,
-                    uint         blockx = 1,
-                    uint         blocky = 1,
-                    uint         blockz = 1
+                    bool         sync,
+                    uint         gridx,
+                    uint         gridy,
+                    uint         gridz,
+                    uint         blockx,
+                    uint         blocky,
+                    uint         blockz
                    ) 
 {
-  if (!context || !device || !fun)
+  if (!device)
     return -1;
-
+  std::cout << "launching" << std::endl;
   //TODO: Sanity checks on grid block dimensions
-  CUDA_SAFE_CALL(cuLaunchKernel(*fun,
+  CUDA_SAFE_CALL(cuLaunchKernel(fun,
                                 gridx, gridy, gridz,
                                 blockx, blocky, blockz, 
                                 0, NULL, 
@@ -186,7 +185,7 @@ GPUimpl::cleanup(CUcontext* context)
 }
 
 GPUBuiltins::GPUBuiltins()
-: _impl(new pImpl()) {}
+: _impl(new GPUimpl()) {}
 
 int 
 GPUBuiltins::get_device_count(unit_t) {
@@ -203,7 +202,7 @@ string_impl
 GPUBuiltins::compile_to_ptx_str(const string_impl& code, 
                                 const string_impl& ptxname){
   std::string ptx;
-  _impl->compile_ptx(code.c_str(), code.c_str(), ptx);
+  _impl->compile_ptx((extern_C + code).c_str(), code.c_str(), ptx);
   return string_impl(ptx);
 }
   

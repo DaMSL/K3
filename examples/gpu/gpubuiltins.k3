@@ -17,14 +17,15 @@ declare kernel : string =
 
 declare transformer : string =
               " __global__ void " ++
-              "transformer(const float *A, float *C, int numElements) " ++
-              "{                                                      " ++
-              "  int i = blockDim.x * blockIdx.x + threadIdx.x;       " ++
-              "  if (i < numElements)                                 " ++
-              "    C[i] = A[i] + 5.0;                                 " ++
+              "transformer(const int *A, int *C, size_t numElements) "     ++
+              "{                                                      "    ++
+              "  size_t i = blockDim.x * blockIdx.x + threadIdx.x;       " ++
+              "  if (i < numElements)                                 "    ++
+              "    C[i] = A[i] + 5;                                 "      ++
               "}                                                      "
 
 declare  ptx : mut string = ""
+declare  fn  : string = "transformer"
 
 declare c  : collection {elem:int} @Vector
 declare re : mut collection {elem:int} @Vector
@@ -36,10 +37,12 @@ trigger t : () = \_ -> (
 
    (ptx = (compile_to_ptx_str transformer modname));
    
+   print ptx; 
    // build a vector
-   ((range 10000).iterate (\r -> c.insert {elem: r.elem}));
-   re = (transformer_gpu c modname "transformer" ptx 0)
-   //print re  
+   ((range 10000).iterate (\r -> c.insert {elem:1}));
+   re = (transformer_gpu c modname fn ptx 0);
+   //print re
+   (re.iterate (\r -> print (itos (r.elem))))  
 )
 
 source s1 : () = value ()
