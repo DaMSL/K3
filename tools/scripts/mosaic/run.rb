@@ -729,6 +729,15 @@ def post_process_latencies(jobid, sw_regex, script_path)
 
 end
 
+# create heat maps for messages
+def plot_messages(jobid, script_path)
+  job_path = File.join($workdir, "job_#{jobid}")
+  plots_path = File.join(script_path, "plots")
+  yaml_path = File.join(job_path, "#{jobid}_msgs.yaml")
+  run("#{File.join(plots_path, "process-msg-counts.rb")} #{job_path} > #{yaml_path}", always_out:true)
+  run("#{File.join(plots_path, "plot-msg-counts.py")} #{yaml_path} --out-prefix #{File.join(job_path, "heat")}", always_out:true)
+end
+
 def check_param(p, nm)
   if p.nil?
     puts "Please provide #{nm} param"
@@ -813,7 +822,7 @@ def main()
       $options[:event_profile] = true
       $options[:latency_profiling] = true
     }
-    opts.on("--message-profiling", "Run with latency profiling options") {
+    opts.on("--message-profiling", "Run with message profiling options") {
       $options[:event_profile] = true
       $options[:message_profiling] = true
     }
@@ -835,6 +844,7 @@ def main()
     opts.on("--wextreme",   "Skew argument")                                   { $options[:compileargs] = "#{$options[:compileargs]} --workerfactor hm=4 --workerblocks hd=1:qp3=1:qp4=1:qp5=1:qp6=1" }
     opts.on("--process-latencies [SWITCH_REGEX]", "Post-processing on latency files") { |s| $options[:process_latencies] = s }
     opts.on("--latency-job-dir [PATH]", "Manual selection of job directory") { |s| $options[:latency_dir] = s }
+    opts.on("--plot-messages", "Create message heat maps") { $options[:plot_messages] = true }
 
     # Stages.
     # Ktrace is not run by default.
@@ -1029,6 +1039,11 @@ def main()
   # post-process latency files
   if $options[:process_latencies]
     post_process_latencies(jobid, $options[:process_latencies], script_path)
+  end
+
+  #plot messages
+  if $options[:plot_messages]
+    plot_messages(jobid, script_path)
   end
 
   if $options[:compare]
