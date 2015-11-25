@@ -1,13 +1,20 @@
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE PatternGuards #-}
+{-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Language.K3.Metaprogram.Primitives.Values where
 import Control.Monad.Identity
-import Control.Arrow ( (&&&) )
+import Control.Arrow ( (&&&), (***), first )
 
 import Data.Tree
 import Data.List
 import Data.Maybe
 import qualified Data.Map as Map
+
+import Debug.Trace
 
 import Language.K3.Core.Common
 import Language.K3.Core.Annotation
@@ -22,6 +29,8 @@ import Language.K3.Core.Constructor.Literal    as LC
 import Language.K3.Core.Constructor.Expression as EC
 
 import Language.K3.Core.Metaprogram
+
+import Language.K3.Utils.Pretty
 
 {- Annotation propagation. -}
 rewriteChildren :: SpliceValue -> [String] -> SpliceValue
@@ -101,14 +110,14 @@ listTypes _ = error "Invalid splice value container for listTypes"
 {- Conversions -}
 labelExpr :: SpliceValue -> SpliceValue
 labelExpr (SExpr (tag -> EConstant (CString i))) = SLabel i
-labelExpr (SExpr (tag -> EConstant (CInt i)))    = SLabel $ show i
-labelExpr (SExpr (tag -> EConstant (CReal r)))   = SLabel $ show r
+labelExpr (SExpr (tag -> EConstant (CInt i)))    = SLabel $ show $ abs i
+labelExpr (SExpr (tag -> EConstant (CReal r)))   = SLabel $ show $ abs r
 labelExpr (SExpr (tag -> EConstant (CBool b)))   = SLabel $ show b
 labelExpr x = error $ "Invalid splice expression for labelExpr: " ++ show x
 
 labelLiteral :: SpliceValue -> SpliceValue
 labelLiteral (SLiteral (tag -> LString i)) = SLabel i
-labelLiteral (SLiteral (tag -> LInt i))    = SLabel $ show i
+labelLiteral (SLiteral (tag -> LInt i))    = SLabel $ show $ abs i
 labelLiteral (SLiteral (tag -> LBool b))   = SLabel $ show b
 labelLiteral _ = error $ "Invalid splice literal for labelLiteral"
 
@@ -264,9 +273,42 @@ collectionContentType (SType (tag &&& children -> (TCollection , (t:_) ))) = STy
 collectionContentType _ = error "Invalid type in collectionContentType"
 
 {- Mosaic helpers -}
-sendStage :: SpliceValue -> SpliceValue -> SpliceValue
-sendStage _ (SExpr (tag -> EConstant (CInt 0))) = SExpr EC.unit
-sendStage (SLabel l) (SExpr (tag -> EConstant (CInt i))) =
-  let dest_trig = l ++ "_stage" ++ show (i-1)
-  in SExpr $ EC.binop OSnd (EC.tuple [EC.variable dest_trig, EC.variable "me"]) EC.unit
-sendStage _ _ = error "Invalid splice arguments for sendStage"
+propagatePartition :: SpliceValue -> SpliceValue
+propagatePartition (SExpr e) = SExpr $ runIdentity $ mapTree propagate e
+  where
+    propagate ch n@(flip replaceCh ch -> PPrjApp2 cE "fold" fAs accF zE accAs zAs)
+      | not $ null $ filter isPartitionProperty $ annotations accF
+      = debugExchangeProp $ return $ PPrjApp2 (exchangeProp cE) "fold" fAs accF zE (filter (not . isPartitionProperty) accAs) zAs
+
+      where debugExchangeProp r = if True then r else flip trace r $ boxToString $ ["Exchange on: "] ++
+              (indent 2 $ concatMap (prettyLines . strip) ch)
+
+    propagate ch n =
+      return $ if not $ null chpp
+        then debugPartProp $ partProp $ replaceCh n nch
+        else replaceCh n ch
+      where (chpp, nch) = first concat $ unzip $ map rebuildCh ch
+            debugPartProp r = if True then r else flip trace r $ boxToString $ ["Partition on: "] ++
+              (indent 2 $ concatMap (prettyLines . strip) ch)
+
+    rebuildCh c =
+      let (pp, rest) = partition isPartitionProperty $ annotations c
+      in (pp, replaceAnnos c (pp++rest))
+
+    partProp c     = c @+ (EProperty (Left ("Partition", Nothing)))
+    exchangeProp c = c @+ (EProperty (Left ("Exchange", Nothing)))
+
+    isPartitionProperty (EProperty (ePropertyName -> "Partition")) = True
+    isPartitionProperty _ = False
+
+    strip = stripExprAnnotations cleanExpr cleanType
+      where cleanExpr a = not (isEQualified a || isEUserProperty a || isEAnnotation a || isEApplyGen a)
+            cleanType a = not (isTAnnotation a || isTUserProperty a)
+
+propagatePartition _ = error "Invalid expr arg for propagatePartition"
+
+pattern PApp     fE  argE    appAs = Node (EOperate OApp :@: appAs) [fE, argE]
+pattern PPrj     cE  fId     fAs   = Node (EProject fId  :@: fAs)   [cE]
+
+pattern PPrjApp2 cE fId fAs fArg1 fArg2 app1As app2As
+  = PApp (PApp (PPrj cE fId fAs) fArg1 app1As) fArg2 app2As

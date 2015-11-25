@@ -669,6 +669,7 @@ declTransforms stSpec extInfOpt n = topLevel
                                                                 , ("Decl-Fuse",     True)
                                                                 , ("Decl-Simplify", True) ]
 
+      , mkW (transformE mosaicWarmupMapRewrites) "Mosaic" False True False False Nothing
       ]) `Map.union` highLevel
 
     highLevel = (Map.fromList $ fPf fst $ [
@@ -788,8 +789,17 @@ runDeclPreparePassesM = runPasses [refreshProgram]
 runDeclOptPassesM :: CompilerSpec -> Maybe (SEffects.ExtInferF a, a) -> ProgramTransform
 runDeclOptPassesM cSpec extInfOpt prog = do
   ensureParallelStSyms $ blockSize cSpec
-  runPasses [blockMapProgramDecls (blockSize cSpec) [refreshProgram] passes] prog
-  where passes = declOptPasses (stageSpec cSpec) extInfOpt
+  runPasses passes prog
+  where passes    = [blockMapProgramDecls (blockSize cSpec) [refreshProgram] optPasses] ++ extraPasses wp
+        optPasses = declOptPasses nsSpec extInfOpt
+
+        sSpec = stageSpec cSpec
+        (wp, declp) = maybe ([],[]) (partition (`elem` wholeProgramPasses)) $ passesToRun sSpec
+        nsSpec = sSpec {passesToRun = maybe Nothing (const $ Just declp) $ passesToRun sSpec}
+
+        extraPasses l = map (flip getTransform $ declTransforms sSpec extInfOpt "") l
+        wholeProgramPasses = ["Mosaic"]
+
 
 runDeclOptPassesBLM :: CompilerSpec -> Maybe (SEffects.ExtInferF a, a)
                     -> [K3 Declaration] -> TransformM [K3 Declaration]

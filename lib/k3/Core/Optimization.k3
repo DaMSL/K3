@@ -100,9 +100,9 @@ control MosaicFusion {
 
   // Map-maps encoded as folds.
   ((?e).fold (\_accmap -> (\?bvi1 -> (bind ?bv1 as ?bind1 in ((_accmap.insert ?v1); _accmap))))
-             (?acc1 : collection ?t1 @Collection))
+             (?acc1 : collection ?t1))
        .fold (\_accmap -> (\?bvi2 -> (bind ?bv2 as ?bind2 in ((_accmap.insert ?v2); _accmap))))
-             (?acc2 : collection ?t2 @Collection)
+             (?acc2 : collection ?t2)
   =>
   (($.[e] @MosaicFusion)
         .fold (\_accmap ->
@@ -115,7 +115,7 @@ control MosaicFusion {
 
   // Map-filter, with map encoded as fold.
   ((?e).fold   (\_accmap -> (\?bvi1 -> (bind ?bv1 as ?bind1 in ((_accmap.insert ?v1); _accmap))))
-               (?acc1 : collection ?t1 @Collection))
+               (?acc1 : collection ?t1))
        .filter ?filterF
   =>
   (($.[e] @MosaicFusion)
@@ -128,7 +128,7 @@ control MosaicFusion {
   // Filter-map, with map encoded as fold.
   ((?e).filter ?filterF)
        .fold   (\_accmap -> (\?bvi1 -> (bind ?bv1 as ?bind1 in ((_accmap.insert ?v1); _accmap))))
-               (?acc1 : collection ?t1 @Collection)
+               (?acc1 : collection ?t1)
   =>
   (($.[e] @MosaicFusion)
        .fold (\_accmap -> \$#[bvi1] ->
@@ -140,7 +140,7 @@ control MosaicFusion {
 
   // Map-sum encoded as folds.
   ((?e).fold (\_accmap -> (\?bvi1 -> (bind ?bv1 as ?bind1 in ((_accmap.insert ?v1); _accmap))))
-             (?acc1 : collection ?t1 @Collection))
+             (?acc1 : collection ?t1))
        .fold (\?acc2i -> (\?bvi2 -> (bind ?bv2 as ?bind2 in (?acc2v + ?v2))))
              ?acc2
   =>
@@ -163,6 +163,10 @@ control MosaicFusion {
   ?E => $[| rewriteChildren 'E.expr ["MosaicFusion"] |]
 }
 
+control MosaicPartition {
+  ?E => $[|propagatePartition 'E.expr|]
+}
+
 // Create base relation indexes for Mosaic warmup map accesses.
 control MosaicIndex[ lbl          : label
                    , key_type     : type
@@ -173,55 +177,84 @@ control MosaicIndex[ lbl          : label
                    , index_key    : [labeltype]
                    , index_value  : [labeltype]]
 {
-
   // Slice materialization
   ((?e.filter ?filterF)
       .fold   ?foldF (?acc1 : ?t1)
   )
-  => $[lbl]_index.lookup $[lookup_probe] (\_ -> $.[acc1]) (\r -> r.value)
+  => ($[lbl]_index.lookup $[lookup_probe] (\_ -> $.[acc1]) (\r -> r.value)) @:Partition
   +> {
     declare $[lbl]_index : mut collection {key: $[key_type], value: $::[t1]} @MapE(key:=index_key, value:=index_value)
 
-    trigger $[lbl]_init_index : () = \_ -> (
+    declare $[lbl]_init_index : () -> () = \_ -> (
       $.[e].iterate (\t -> $[lbl]_index.upsert_with $[index_probe] $[missing_fn] $[present_fn])
     )
   }
 }
 
 // Create stages and materialized intermediates for Mosaic warmup expressions.
-control MosaicMaterialization[lbl : label, cnt : expr]
+control MosaicMaterialization[lbl : label, cnt : expr, finaltrg : expr]
 {
   ?v = ((?e.fold ?accF ?z) @MosaicFusion)
-  => ($#[v] = (($.[e].fold $.[accF] $.[z]) @MosaicFusion)) @MosaicMaterialization(lbl=lbl, cnt=cnt)
+  => ($#[v] = (($.[e].fold $.[accF] $.[z]) @MosaicFusion)) @MosaicMaterialization(lbl=lbl, cnt=cnt, finaltrg=finaltrg)
 
   ?v = ((?e.group_by ?groupF ?accF ?z) @MosaicFusion)
-  => ($#[v] = (($.[e].group_by $.[groupF] $.[accF] $.[z]) @MosaicFusion)) @MosaicMaterialization(lbl=lbl, cnt=cnt)
+  => ($#[v] = (($.[e].group_by $.[groupF] $.[accF] $.[z]) @MosaicFusion)) @MosaicMaterialization(lbl=lbl, cnt=cnt, finaltrg=finaltrg)
 
-  ?v = ((?e @:BaseRelation).fold ?accF ?z)
-  => $#[v] = $.[e].fold $.[accF] $.[z]
+  (?v = ((?e @:BaseRelation).fold ?accF ?z)); (?dest, me) <- ()
+  => (($#[v] = $.[e].fold $.[accF] $.[z]) @MosaicPartition); ($.[dest], me) <- ()
 
-  ?v = ((?e @:BaseRelation).group_by ?groupF ?accF ?z)
-  => $#[v] = $.[e].group_by $.[groupF] $.[accF] $.[z]
+  (?v = ((?e @:BaseRelation).group_by ?groupF ?accF ?z)); (?dest, me) <- ()
+  => (($#[v] = $.[e].group_by $.[groupF] $.[accF] $.[z]) @MosaicPartition); ($.[dest], me) <- ()
 
   ?v = ((?e : ?t).fold ?accF ?z)
-  => $#[v] = $[lbl]_$[| labelExpr 'cnt |].fold $.[accF] $.[z]
+  => ((($[lbl]_$[| labelExpr 'cnt |] = $.[e]);
+        ($[lbl]_stage$[| labelExpr 'cnt |], me) <- ())
+          @MosaicMaterialization(lbl=lbl, cnt=[$ $[|incrExpr 'cnt|] ], finaltrg=finaltrg))
   +> {
     declare $[lbl]_$[| labelExpr 'cnt |] : mut $::[t]
 
     trigger $[lbl]_stage$[| labelExpr 'cnt|] : () = \_ -> (
-      ((($[lbl]_$[| labelExpr 'cnt |] = $.[e]) @MosaicMaterialization(lbl=lbl, cnt=[$ $[|incrExpr 'cnt|] ]));
-        $[| sendStage 'lbl 'cnt |])
+      (($#[v] = $[lbl]_$[| labelExpr 'cnt |].fold $.[accF] $.[z]) @MosaicPartition);
+      ($[finaltrg], me) <- ()
+    )
+  }
+
+  (?v = ((?e : ?t).fold ?accF ?z)); (?dest, me) <- ()
+  => ((($[lbl]_$[| labelExpr 'cnt |] = $.[e]);
+        ($[lbl]_stage$[| labelExpr 'cnt |], me) <- ())
+          @MosaicMaterialization(lbl=lbl, cnt=[$ $[|incrExpr 'cnt|] ], finaltrg=finaltrg))
+  +> {
+    declare $[lbl]_$[| labelExpr 'cnt |] : mut $::[t]
+
+    trigger $[lbl]_stage$[| labelExpr 'cnt|] : () = \_ -> (
+      (($#[v] = $[lbl]_$[| labelExpr 'cnt |].fold $.[accF] $.[z]) @MosaicPartition);
+      ($.[dest], me) <- ()
     )
   }
 
   ?v = ((?e : ?t).group_by ?groupF ?accF ?z)
-  => $#[v] = $[lbl]_$[| labelExpr 'cnt |].group_by $.[groupF] $.[accF] $.[z]
+  => ((($[lbl]_$[| labelExpr 'cnt |] = $.[e]);
+        ($[lbl]_stage$[| labelExpr 'cnt |], me) <- ())
+          @MosaicMaterialization(lbl=lbl, cnt=[$ $[|incrExpr 'cnt|] ], finaltrg=finaltrg))
   +> {
     declare $[lbl]_$[| labelExpr 'cnt |] : mut $::[t]
 
     trigger $[lbl]_stage$[| labelExpr 'cnt|] : () = \_ -> (
-      ((($[lbl]_$[| labelExpr 'cnt |] = $.[e]) @MosaicMaterialization(lbl=lbl, cnt=[$ $[|incrExpr 'cnt|] ]));
-        $[| sendStage 'lbl 'cnt |])
+      (($#[v] = $[lbl]_$[| labelExpr 'cnt |].group_by $.[groupF] $.[accF] $.[z]) @MosaicPartition);
+      ($[finaltrg], me) <- ()
+    )
+  }
+
+  (?v = ((?e : ?t).group_by ?groupF ?accF ?z)); (?dest, me) <- ()
+  => ((($[lbl]_$[| labelExpr 'cnt |] = $.[e]);
+        ($[lbl]_stage$[| labelExpr 'cnt |], me) <- ())
+          @MosaicMaterialization(lbl=lbl, cnt=[$ $[|incrExpr 'cnt|] ], finaltrg=finaltrg))
+  +> {
+    declare $[lbl]_$[| labelExpr 'cnt |] : mut $::[t]
+
+    trigger $[lbl]_stage$[| labelExpr 'cnt|] : () = \_ -> (
+      (($#[v] = $[lbl]_$[| labelExpr 'cnt |].group_by $.[groupF] $.[accF] $.[z]) @MosaicPartition);
+      ($.[dest], me) <- ()
     )
   }
 }

@@ -2306,6 +2306,35 @@ inferThreadReturns i expr = mapThreadReturns annotateFoldE i expr
   where annotateFoldE e = e @+ (inferredEProp "ThreadFoldReturn" Nothing)
 
 
+{- Mosaic compilation passes -}
+mosaicWarmupMapRewrites :: K3 Declaration -> Either String (K3 Declaration)
+mosaicWarmupMapRewrites prog = rewriteIndexConstruction prog
+  where
+    rewriteIndexConstruction p = do
+      (init_exprs, np) <- foldProgram extractIndexCtor idF idF Nothing [] p
+      mapNamedDeclExpression "compute_warmup_maps" (injectIndexCtor init_exprs) np
+
+    extractIndexCtor acc d@(tag -> DGlobal n@(isSuffixOf "_init_index" -> True) t eOpt) =
+      debugExtract n (acc ++ [EC.applyMany (EC.variable n) [EC.unit]], d)
+
+    extractIndexCtor acc d = return (acc, d)
+
+    injectIndexCtor exprs e@(PLam i bodyE as) = debugInject exprs $ PLam i (foldl (flip $ EC.binop OSeq) bodyE exprs) as
+    injectIndexCtor _ e = Left $ boxToString $ ["Invalid Mosaic warmup map initialization function: "]
+                                            %$ prettyLines e
+
+    debugExtract n (nacc,d) = if True then return (nacc, d)
+                              else flip trace (return (nacc,d))
+                                     $ boxToString $ ["Mosaic idx: "]
+                                                  %$ concatMap (indent 2 . prettyLines) nacc
+
+    debugInject exprs r = if True then return r
+                          else flip trace (return r) $ boxToString $ ["Mosaic inject idx: "]
+                                                    %$ (concatMap (indent 2 . prettyLines) $ map stripECompare exprs)
+                                                    %$ (indent 2 $ prettyLines $ stripECompare r)
+
+    idF a b = return (a,b)
+
 -- Helper patterns for fusion
 pattern PVar     i           iAs   = Node (EVariable i   :@: iAs)   []
 pattern PApp     fE  argE    appAs = Node (EOperate OApp :@: appAs) [fE, argE]

@@ -373,6 +373,7 @@ tTermOrFun = TSpan <-> mkTermOrFun <$> (TUID # tTerm) <*> optional (symbol "->" 
         mkTermOrFun t Nothing   = clean t
         clean t                 = stripAnnot isTSpan $ stripAnnot isTUID t
         stripAnnot f t          = maybe t (t @-) $ t @~ f
+
 tPrimitive :: TypeParser
 tPrimitive = tPrimError $ choice $ map tConst [ ("bool",    TC.bool)
                                               , ("int",     TC.int)
@@ -477,9 +478,8 @@ eTerm = do
     eProject :: K3Parser ((String, Maybe (K3 Type)), [Annotation Expression])
     eProject = prjWithAnnotations $ dot *> identifier
 
-    -- attachProjection :: _
     attachProjection e (((i, tOpt), anns), sp) =
-      EUID # (return $ foldl (@+) (EC.project i e) $ [ESpan sp] ++ maybe [] ((:[]) . EPType) tOpt ++ anns)
+      EUID # (return $ foldl (@+) (EC.project i e) $ [ESpan sp] ++ maybe [] ((:[]) . EPType . stripTUIDSpan) tOpt ++ anns)
 
     eWithProperties    p = withProperties "" False eProperties p
 
@@ -494,7 +494,7 @@ eTerm = do
       _ -> ctor <$> p
 
     attachPType :: K3 Expression -> Maybe (K3 Type) -> K3 Expression
-    attachPType e tOpt = maybe e ((e @+) . EPType) tOpt
+    attachPType e tOpt = maybe e ((e @+) . EPType . stripTUIDSpan) tOpt
 
     wrapInComments p = (\c1 e c2 -> (//) attachComment (c1++c2) e) <$> comment False <*> p <*> comment True
     attachComment e cmt = e @+ (ESyntax cmt)
