@@ -282,13 +282,14 @@ initPartition _ _ = error "Invalid initPartition argument"
 -- TODO: group-by patterns
 propagatePartition :: SpliceValue -> SpliceValue
 propagatePartition (SExpr e) = SExpr $ runIdentity $ do
-    (_,ne) <- biFoldMapRebuildTree mkBindings propagate [] () e
+    (_,ne) <- biFoldMapRebuildTree mkBindings propagate ([],[]) () e
     return ne
 
   where
-    mkBindings bnds (PPrjApp2 (baseRelOrIndexId -> Just n) "fold" _
+    mkBindings bnds@(rels,vars) (PPrjApp2 (baseRelOrIndexId -> Just n) "fold" _
                         (PLam _ (PLam _ (PBindAs _ (BRecord ijs) _ _) _) _) _ _ _)
-      = return (bnds, [bnds++[map (\(i,j) -> (j, (n, i))) ijs], bnds])
+      = return (bnds, [nbnds, bnds])
+      where nbnds = (rels++[n], vars ++ map (\(i,j) -> (j, (n, i))) ijs)
 
     mkBindings bnds n = return (bnds, flip replicate bnds $ length $ children n)
 
@@ -298,7 +299,7 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
 
     baseRelOrIndexId _ = Nothing
 
-    propagate bnds _ ch n@(flip replaceCh ch -> PPrjApp2 cE "fold" fAs accF zE accAs zAs)
+    propagate _ _ ch n@(flip replaceCh ch -> PPrjApp2 cE "fold" fAs accF zE accAs zAs)
       | not $ null $ filter isPartitionProperty $ annotations accF
       = debugExchangeProp $ return . ((),) $ PPrjApp2 (exchangeProp cE) "fold" fAs accF zE (filter (not . isPartitionProperty) accAs) zAs
 
@@ -318,7 +319,22 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
           npp = map (translateBindings bnds) pp
       in (npp, replaceAnnos c (npp++rest))
 
-    translateBindings _ = id
+    translateBindings (rels, vars) p@(EProperty (Left ("PartitionAlias", Just (tag -> LString s)))) =
+      case kl of
+        [(k1, k2)] -> EProperty (Left ("Partition", Just $ LC.string $ show [(invertBinding k1, invertBinding k2)]))
+        _ -> error $ boxToString $ ["Invalid basic partition key constraint:"] %$ concatMap (indent 2 . prettyLines) kl
+      where
+        kl = (read s :: [(K3 Expression, K3 Expression)])
+
+        invertBinding (tnc -> (ERecord ["key"], [(tag -> EVariable (flip lookup vars -> Just (r,v)))])) =
+          EC.record [("key", EC.variable $ r ++ "." ++ v)]
+
+        invertBinding (tnc -> (ERecord ["key"], [tnc -> (EProject v, [EVariable "t"])])) =
+          EC.record [("key", EC.variable $ (if null rels then "" else last rels ++ ".") ++ v)]
+
+        invertBinding e = e
+
+    translateBindings _ p = p
 
     partProp  pp c = c @+ (EProperty (Left ("Partition", Just $ LC.string $ show $ concatMap rebuildPVal pp)))
     exchangeProp c = c @+ (EProperty (Left ("Exchange", Nothing)))
