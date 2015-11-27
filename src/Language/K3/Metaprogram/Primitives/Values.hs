@@ -330,7 +330,7 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
         invertBinding (tnc -> (ERecord ["key"], [(tag -> EVariable (flip lookup vars -> Just (r,v)))])) =
           EC.record [("key", EC.project v $ EC.variable r)]
 
-        invertBinding (tnc -> (ERecord ["key"], [tnc -> (EProject v, [EVariable "t"])])) =
+        invertBinding (tnc -> (ERecord ["key"], [tnc -> (EProject v, [tag -> EVariable "t"])])) =
           EC.record [("key", EC.project v $ EC.variable $ if null rels then "t" else last rels)]
 
         invertBinding e = e
