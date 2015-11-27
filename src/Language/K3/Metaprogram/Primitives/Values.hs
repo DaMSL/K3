@@ -299,13 +299,6 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
 
     relOrIndexId _ = Nothing
 
-    propagate _ _ ch n@(flip replaceCh ch -> PPrjApp2 cE "fold" fAs accF zE accAs zAs)
-      | not $ null $ filter isConstraint $ annotations accF
-      = debugExchangeProp $ return . ((),) $ PPrjApp2 (exchangeProp cE) "fold" fAs accF zE (filter (not . isConstraint) accAs) zAs
-
-      where debugExchangeProp r = if True then r else flip trace r $ boxToString $ ["Exchange on: "] ++
-              (indent 2 $ concatMap (prettyLines . strip) ch)
-
     propagate bnds _ ch n =
       return . ((),) $ if not $ null chpp
         then debugConstraint $ constraintProp chpp $ replaceCh n nch
@@ -338,7 +331,6 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
     translateBindings _ p = p
 
     constraintProp pp c = c @+ (EProperty (Left ("PartitionConstraint", Just $ LC.string $ show $ unionConstraints pp)))
-    exchangeProp c = c @+ (EProperty (Left ("Exchange", Nothing)))
 
     isBaseRelation (EProperty (ePropertyName -> "BaseRelation")) = True
     isBaseRelation _ = False
