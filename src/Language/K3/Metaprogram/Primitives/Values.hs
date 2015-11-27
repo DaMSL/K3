@@ -329,6 +329,7 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
     isPartitionProperty _ = False
 
     rebuildPVal (EProperty (Left ("Partition", Just (tag -> LString s)))) = (read s :: [(K3 Expression, K3 Expression])
+    rebuildPVal (EProperty (Left ("PartitionAlias", Just (tag -> LString s)))) = (read s :: [(K3 Expression, K3 Expression])
     rebuildPVal _ = []
 
     strip = stripExprAnnotations cleanExpr cleanType

@@ -93,6 +93,7 @@ control ManualFusion {
 }
 
 // For use with Mosaic's fold encoding.
+// TODO: _accext patterns in addition to _accmap.
 control MosaicFusion {
 
   // Filter-filter
