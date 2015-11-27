@@ -317,7 +317,7 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
                                              %$ (indent 2 $ concatMap (prettyLines . strip) ch)
 
     rebuildCh bnds c =
-      let (pp, rest) = first (translateBindings bnds) $ partition isConstraint $ annotations c
+      let (pp, rest) = first (map $ translateBindings bnds) $ partition isConstraint $ annotations c
       in (pp, replaceAnnos c (pp++rest))
 
     translateBindings (rels, vars) p@(EProperty (Left ("PartitionConstraint", Just (tag -> LString s)))) =
