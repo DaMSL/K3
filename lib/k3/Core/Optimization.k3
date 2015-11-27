@@ -182,7 +182,7 @@ control MosaicIndex[ lbl          : label
   ((?e.filter ?filterF)
       .fold   ?foldF (?acc1 : ?t1)
   )
-  => ($[lbl]_index.lookup $[lookup_probe] (\_ -> $.[acc1]) (\r -> r.value)) @:{PartitionAlias "$[|initPartition 'lookup_probe 'index_probe|]"}
+  => ($[lbl]_index.lookup $[lookup_probe] (\_ -> $.[acc1]) (\r -> r.value)) @:{PartitionConstraint "$[|partitionConstraint 'lookup_probe 'index_probe|]"}
   +> {
     declare $[lbl]_index : mut collection {key: $[key_type], value: $::[t1]} @MapE(key:=index_key, value:=index_value)
 

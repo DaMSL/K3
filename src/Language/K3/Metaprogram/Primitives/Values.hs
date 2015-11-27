@@ -275,9 +275,9 @@ collectionContentType (SType (tag &&& children -> (TCollection , (t:_) ))) = STy
 collectionContentType _ = error "Invalid type in collectionContentType"
 
 {- Mosaic helpers -}
-initPartition :: SpliceValue -> SpliceValue -> SpliceValue
-initPartition (SExpr e1) (SExpr e2) = SLiteral $ LC.string $ show [(e1, e2)]
-initPartition _ _ = error "Invalid initPartition argument"
+partitionConstraint :: SpliceValue -> SpliceValue -> SpliceValue
+partitionConstraint (SExpr e1) (SExpr e2) = SLiteral $ LC.string $ show [(e1, e2)]
+partitionConstraint _ _ = error "Invalid initPartition argument"
 
 -- TODO: group-by patterns
 propagatePartition :: SpliceValue -> SpliceValue
@@ -286,68 +286,69 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
     return ne
 
   where
-    mkBindings bnds@(rels,vars) (PPrjApp2 (baseRelOrIndexId -> Just n) "fold" _
+    mkBindings bnds@(rels,vars) (PPrjApp2 (relOrIndexId -> Just n) "fold" _
                         (PLam _ (PLam _ (PBindAs _ (BRecord ijs) _ _) _) _) _ _ _)
       = return (bnds, [nbnds, bnds])
       where nbnds = (rels++[n], vars ++ map (\(i,j) -> (j, (n, i))) ijs)
 
     mkBindings bnds n = return (bnds, flip replicate bnds $ length $ children n)
 
-    baseRelOrIndexId n@(tag &&& (@~ isBaseRelation) -> (EVariable i, Just _)) = Just i
-    baseRelOrIndexId (PPrjApp3 (tag -> EVariable n@(("_index" `isSuffixOf`) -> True)) "lookup" _ _ _ _ _ _ _) =
+    relOrIndexId n@(tag &&& (@~ isBaseRelation) -> (EVariable i, Just _)) = Just i
+    relOrIndexId (PPrjApp3 (tag -> EVariable n@(("_index" `isSuffixOf`) -> True)) "lookup" _ _ _ _ _ _ _) =
       Just $ take ((length n) - (length "_index")) n
 
-    baseRelOrIndexId _ = Nothing
+    relOrIndexId _ = Nothing
 
     propagate _ _ ch n@(flip replaceCh ch -> PPrjApp2 cE "fold" fAs accF zE accAs zAs)
-      | not $ null $ filter isPartitionProperty $ annotations accF
-      = debugExchangeProp $ return . ((),) $ PPrjApp2 (exchangeProp cE) "fold" fAs accF zE (filter (not . isPartitionProperty) accAs) zAs
+      | not $ null $ filter isConstraint $ annotations accF
+      = debugExchangeProp $ return . ((),) $ PPrjApp2 (exchangeProp cE) "fold" fAs accF zE (filter (not . isConstraint) accAs) zAs
 
       where debugExchangeProp r = if True then r else flip trace r $ boxToString $ ["Exchange on: "] ++
               (indent 2 $ concatMap (prettyLines . strip) ch)
 
     propagate bnds _ ch n =
       return . ((),) $ if not $ null chpp
-        then debugPartProp $ partProp chpp $ replaceCh n nch
+        then debugConstraint $ constraintProp chpp $ replaceCh n nch
         else replaceCh n ch
       where (chpp, nch) = first concat $ unzip $ map (rebuildCh bnds) ch
-            debugPartProp r = if True then r else flip trace r $ boxToString $ ["Partition on: "] ++
-              (indent 2 $ concatMap (prettyLines . strip) ch)
+            debugConstraint r =
+              if True then r
+              else flip trace r $ boxToString $ ["Partition constraint on: "]
+                                             %$ (indent 2 $ concatMap (prettyLines . strip) ch)
 
     rebuildCh bnds c =
-      let (pp, rest) = partition isPartitionProperty $ annotations c
-          npp = map (translateBindings bnds) pp
-      in (npp, replaceAnnos c (npp++rest))
+      let (pp, rest) = first (translateBindings bnds) $ partition isConstraint $ annotations c
+      in (pp, replaceAnnos c (pp++rest))
 
-    translateBindings (rels, vars) p@(EProperty (Left ("PartitionAlias", Just (tag -> LString s)))) =
+    translateBindings (rels, vars) p@(EProperty (Left ("PartitionConstraint", Just (tag -> LString s)))) =
       case kl of
-        [(k1, k2)] -> EProperty (Left ("Partition", Just $ LC.string $ show [(invertBinding k1, invertBinding k2)]))
-        _ -> error $ boxToString $ ["Invalid basic partition key constraint:"] %$ concatMap (indent 2 . prettyLines) kl
+        [(k1, k2)] -> EProperty (Left ("PartitionConstraint", Just $ LC.string $ show [(invertBinding k1, invertBinding k2)]))
+        _ -> error "Invalid basic partition key constraint"
       where
         kl = (read s :: [(K3 Expression, K3 Expression)])
 
         invertBinding (tnc -> (ERecord ["key"], [(tag -> EVariable (flip lookup vars -> Just (r,v)))])) =
-          EC.record [("key", EC.variable $ r ++ "." ++ v)]
+          EC.record [("key", EC.project v $ EC.variable r)]
 
         invertBinding (tnc -> (ERecord ["key"], [tnc -> (EProject v, [EVariable "t"])])) =
-          EC.record [("key", EC.variable $ (if null rels then "" else last rels ++ ".") ++ v)]
+          EC.record [("key", EC.project v $ EC.variable $ if null rels then "t" else last rels)]
 
         invertBinding e = e
 
     translateBindings _ p = p
 
-    partProp  pp c = c @+ (EProperty (Left ("Partition", Just $ LC.string $ show $ concatMap rebuildPVal pp)))
+    constraintProp pp c = c @+ (EProperty (Left ("PartitionConstraint", Just $ LC.string $ show $ unionConstraints pp)))
     exchangeProp c = c @+ (EProperty (Left ("Exchange", Nothing)))
 
     isBaseRelation (EProperty (ePropertyName -> "BaseRelation")) = True
     isBaseRelation _ = False
 
-    isPartitionProperty (EProperty (ePropertyName -> n)) = n `elem` ["Partition", "PartitionAlias"]
-    isPartitionProperty _ = False
+    isConstraint (EProperty (ePropertyName -> "PartitionConstraint")) = True
+    isConstraint _ = False
 
-    rebuildPVal (EProperty (Left ("Partition", Just (tag -> LString s)))) = (read s :: [(K3 Expression, K3 Expression)])
-    rebuildPVal (EProperty (Left ("PartitionAlias", Just (tag -> LString s)))) = (read s :: [(K3 Expression, K3 Expression)])
-    rebuildPVal _ = []
+    unionConstraints = concatMap rebuildPConstraint
+    rebuildPConstraint (EProperty (Left ("PartitionConstraint", Just (tag -> LString s)))) = (read s :: [(K3 Expression, K3 Expression)])
+    rebuildPConstraint _ = []
 
     strip = stripExprAnnotations cleanExpr cleanType
       where cleanExpr a = not (isEQualified a || isEUserProperty a || isEAnnotation a || isEApplyGen a)
