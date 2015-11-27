@@ -2,6 +2,7 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE PatternGuards #-}
 {-# LANGUAGE PatternSynonyms #-}
+{-# LANGUAGE TupleSections #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -276,7 +277,7 @@ collectionContentType _ = error "Invalid type in collectionContentType"
 {- Mosaic helpers -}
 initPartition :: SpliceValue -> SpliceValue -> SpliceValue
 initPartition (SExpr e1) (SExpr e2) = SLiteral $ LC.string $ show [(e1, e2)]
-initPartition _ = error "Invalid initPartition argument"
+initPartition _ _ = error "Invalid initPartition argument"
 
 -- TODO: group-by patterns
 propagatePartition :: SpliceValue -> SpliceValue
@@ -289,10 +290,10 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
                         (PLam _ (PLam _ (PBindAs _ (BRecord ijs) _ _) _) _) _ _ _)
       = return (bnds, [bnds++[map (\(i,j) -> (j, (n, i))) ijs], bnds])
 
-    mkBindings bnds n = return (bnds, flip replicate bnds $ List.length $ children n)
+    mkBindings bnds n = return (bnds, flip replicate bnds $ length $ children n)
 
     baseRelOrIndexId n@(tag &&& (@~ isBaseRelation) -> (EVariable i, Just _)) = Just i
-    baseRelOrIndexId n@(PPrjApp3 (tag -> EVariable n@(("_index" `isSuffix`) -> True)) "lookup" _ _ _ _ _ _ _) =
+    baseRelOrIndexId (PPrjApp3 (tag -> EVariable n@(("_index" `isSuffixOf`) -> True)) "lookup" _ _ _ _ _ _ _) =
       Just $ take ((length n) - (length "_index")) n
 
     baseRelOrIndexId _ = Nothing
@@ -308,13 +309,13 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
       return . ((),) $ if not $ null chpp
         then debugPartProp $ partProp chpp $ replaceCh n nch
         else replaceCh n ch
-      where (chpp, nch) = first concat $ unzip $ map rebuildCh bnds ch
+      where (chpp, nch) = first concat $ unzip $ map (rebuildCh bnds) ch
             debugPartProp r = if True then r else flip trace r $ boxToString $ ["Partition on: "] ++
               (indent 2 $ concatMap (prettyLines . strip) ch)
 
     rebuildCh bnds c =
       let (pp, rest) = partition isPartitionProperty $ annotations c
-          npp = map translateBindings bnds pp
+          npp = map (translateBindings bnds) pp
       in (npp, replaceAnnos c (npp++rest))
 
     translateBindings _ = id
