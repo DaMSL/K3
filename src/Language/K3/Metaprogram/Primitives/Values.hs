@@ -130,6 +130,7 @@ literalExpr (SExpr (tag -> EConstant (CString i))) = SLiteral $ LC.string i
 literalExpr (SExpr (tag -> EConstant (CInt i)))    = SLiteral $ LC.int i
 literalExpr (SExpr (tag -> EConstant (CReal r)))   = SLiteral $ LC.real r
 literalExpr (SExpr (tag -> EConstant (CBool b)))   = SLiteral $ LC.bool b
+literalExpr (SExpr e) = SLiteral $ LC.string $ show e
 literalExpr _ = error "Invalid splice expression for labelExpr"
 
 literalType :: SpliceValue -> SpliceValue
@@ -273,33 +274,61 @@ collectionContentType (SType (tag &&& children -> (TCollection , (t:_) ))) = STy
 collectionContentType _ = error "Invalid type in collectionContentType"
 
 {- Mosaic helpers -}
+initPartition :: SpliceValue -> SpliceValue -> SpliceValue
+initPartition (SExpr e1) (SExpr e2) = SLiteral $ LC.string $ show [(e1, e2)]
+initPartition _ = error "Invalid initPartition argument"
+
+-- TODO: group-by patterns
 propagatePartition :: SpliceValue -> SpliceValue
-propagatePartition (SExpr e) = SExpr $ runIdentity $ mapTree propagate e
+propagatePartition (SExpr e) = SExpr $ runIdentity $ do
+    (_,ne) <- biFoldMapRebuildTree mkBindings propagate [] () e
+    return ne
+
   where
-    propagate ch n@(flip replaceCh ch -> PPrjApp2 cE "fold" fAs accF zE accAs zAs)
+    --mkBindings bnds (tag -> ELambda i) = return $ (bnds, [bnds++[]])
+    --mkBindings bnds (tag -> ELetIn  i) = return $ (bnds, [bnds, bnds++[]])
+    --mkBindings bnds (tag -> ECaseOf i) = return $ (bnds, [bnds, bnds++[], bnds])
+    --mkBindings bnds (tag -> EBindAs b) = return $ (bnds, [bnds, bnds++[]])
+
+    mkBindings bnds n@(PPrjApp2 cE@(baseRelOrIndexId -> Just rin) "fold" fAs
+                        (PLam i (PLam j (PBindAs srcE bnd bodyE bas) jas) ias) zE accAs zAs)
+      = return (bnds, [bnds++[map (rin, ) $ bindingVariables bnd], bnds])
+
+    mkBindings bnds n = return (bnds, flip replicate bnds $ List.length $ children n)
+
+    baseRelOrIndexId n@(tag &&& (@~ isBaseRelation) -> (EVariable i, True)) = xxx
+    baseRelOrIndexId n@(PPrjApp3 (tag -> EVariable idxn) "lookup" fAs fArg1 fArg2 fArg3 app1As app2As app3As)
+
+    propagate bnds _ ch n@(flip replaceCh ch -> PPrjApp2 cE "fold" fAs accF zE accAs zAs)
       | not $ null $ filter isPartitionProperty $ annotations accF
-      = debugExchangeProp $ return $ PPrjApp2 (exchangeProp cE) "fold" fAs accF zE (filter (not . isPartitionProperty) accAs) zAs
+      = debugExchangeProp $ return . ((),) $ PPrjApp2 (exchangeProp cE) "fold" fAs accF zE (filter (not . isPartitionProperty) accAs) zAs
 
       where debugExchangeProp r = if True then r else flip trace r $ boxToString $ ["Exchange on: "] ++
               (indent 2 $ concatMap (prettyLines . strip) ch)
 
-    propagate ch n =
-      return $ if not $ null chpp
-        then debugPartProp $ partProp $ replaceCh n nch
+    propagate bnds _ ch n =
+      return . ((),) $ if not $ null chpp
+        then debugPartProp $ partProp chpp $ replaceCh n nch
         else replaceCh n ch
-      where (chpp, nch) = first concat $ unzip $ map rebuildCh ch
+      where (chpp, nch) = first concat $ unzip $ map rebuildCh bnds ch
             debugPartProp r = if True then r else flip trace r $ boxToString $ ["Partition on: "] ++
               (indent 2 $ concatMap (prettyLines . strip) ch)
 
-    rebuildCh c =
+    rebuildCh bnds c =
       let (pp, rest) = partition isPartitionProperty $ annotations c
-      in (pp, replaceAnnos c (pp++rest))
+          npp = map translateBindings bnds pp
+      in (npp, replaceAnnos c (npp++rest))
 
-    partProp c     = c @+ (EProperty (Left ("Partition", Nothing)))
+    translateBindings _ = id
+
+    partProp  pp c = c @+ (EProperty (Left ("Partition", Just $ LC.string $ show $ concatMap rebuildPVal pp)))
     exchangeProp c = c @+ (EProperty (Left ("Exchange", Nothing)))
 
-    isPartitionProperty (EProperty (ePropertyName -> "Partition")) = True
+    isPartitionProperty (EProperty (ePropertyName -> n)) = n `elem` ["Partition", "PartitionAlias"]
     isPartitionProperty _ = False
+
+    rebuildPVal (EProperty (Left ("Partition", Just (tag -> LString s)))) = (read s :: [(K3 Expression, K3 Expression])
+    rebuildPVal _ = []
 
     strip = stripExprAnnotations cleanExpr cleanType
       where cleanExpr a = not (isEQualified a || isEUserProperty a || isEAnnotation a || isEApplyGen a)
@@ -307,8 +336,14 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ mapTree propagate e
 
 propagatePartition _ = error "Invalid expr arg for propagatePartition"
 
+pattern PLam     i   bodyE   iAs   = Node (ELambda i     :@: iAs)   [bodyE]
 pattern PApp     fE  argE    appAs = Node (EOperate OApp :@: appAs) [fE, argE]
 pattern PPrj     cE  fId     fAs   = Node (EProject fId  :@: fAs)   [cE]
 
+pattern PBindAs      srcE bnd bodyE bAs          = Node (EBindAs bnd   :@: bAs) [srcE, bodyE]
+
 pattern PPrjApp2 cE fId fAs fArg1 fArg2 app1As app2As
   = PApp (PApp (PPrj cE fId fAs) fArg1 app1As) fArg2 app2As
+
+pattern PPrjApp3 cE fId fAs fArg1 fArg2 fArg3 app1As app2As app3As
+  = PApp (PApp (PApp (PPrj cE fId fAs) fArg1 app1As) fArg2 app2As) fArg3 app3As
