@@ -285,19 +285,17 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
     return ne
 
   where
-    --mkBindings bnds (tag -> ELambda i) = return $ (bnds, [bnds++[]])
-    --mkBindings bnds (tag -> ELetIn  i) = return $ (bnds, [bnds, bnds++[]])
-    --mkBindings bnds (tag -> ECaseOf i) = return $ (bnds, [bnds, bnds++[], bnds])
-    --mkBindings bnds (tag -> EBindAs b) = return $ (bnds, [bnds, bnds++[]])
-
-    mkBindings bnds n@(PPrjApp2 cE@(baseRelOrIndexId -> Just rin) "fold" fAs
-                        (PLam i (PLam j (PBindAs srcE bnd bodyE bas) jas) ias) zE accAs zAs)
-      = return (bnds, [bnds++[map (rin, ) $ bindingVariables bnd], bnds])
+    mkBindings bnds (PPrjApp2 (baseRelOrIndexId -> Just n) "fold" _
+                        (PLam _ (PLam _ (PBindAs _ (BRecord ijs) _ _) _) _) _ _ _)
+      = return (bnds, [bnds++[map (\(i,j) -> (j, (n, i))) ijs], bnds])
 
     mkBindings bnds n = return (bnds, flip replicate bnds $ List.length $ children n)
 
-    baseRelOrIndexId n@(tag &&& (@~ isBaseRelation) -> (EVariable i, True)) = xxx
-    baseRelOrIndexId n@(PPrjApp3 (tag -> EVariable idxn) "lookup" fAs fArg1 fArg2 fArg3 app1As app2As app3As)
+    baseRelOrIndexId n@(tag &&& (@~ isBaseRelation) -> (EVariable i, Just _)) = Just i
+    baseRelOrIndexId n@(PPrjApp3 (tag -> EVariable n@(("_index" `isSuffix`) -> True)) "lookup" _ _ _ _ _ _ _) =
+      Just $ take ((length n) - (length "_index")) n
+
+    baseRelOrIndexId _ = Nothing
 
     propagate bnds _ ch n@(flip replaceCh ch -> PPrjApp2 cE "fold" fAs accF zE accAs zAs)
       | not $ null $ filter isPartitionProperty $ annotations accF
@@ -323,6 +321,9 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
 
     partProp  pp c = c @+ (EProperty (Left ("Partition", Just $ LC.string $ show $ concatMap rebuildPVal pp)))
     exchangeProp c = c @+ (EProperty (Left ("Exchange", Nothing)))
+
+    isBaseRelation (EProperty (ePropertyName -> "BaseRelation")) = True
+    isBaseRelation _ = False
 
     isPartitionProperty (EProperty (ePropertyName -> n)) = n `elem` ["Partition", "PartitionAlias"]
     isPartitionProperty _ = False
