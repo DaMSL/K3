@@ -282,32 +282,34 @@ partitionConstraint _ _ = error "Invalid initPartition argument"
 -- TODO: group-by patterns
 propagatePartition :: SpliceValue -> SpliceValue
 propagatePartition (SExpr e) = SExpr $ runIdentity $ do
-    (_,ne) <- biFoldMapRebuildTree mkBindings propagate ([],[]) () e
-    return ne
+    (rels,ne) <- biFoldMapRebuildTree mkBindings propagate ([],[]) [] e
+    return $ ne @+ EProperty (Left ("RelationOrder", Just $ LC.string $ show rels))
 
   where
-    mkBindings bnds@(rels,vars) (PPrjApp2 (relOrIndexId -> Just n) "fold" _
-                        (PLam _ (PLam _ (PBindAs _ (BRecord ijs) _ _) _) _) _ _ _)
-      = return (bnds, [nbnds, bnds])
+    mkBindings bnds@(rels,vars) (PFRelation n ijs) = return (bnds, [nbnds, bnds])
+      where nbnds = (rels++[n], vars ++ map (\(i,j) -> (j, (n, i))) ijs)
+
+    mkBindings bnds@(rels,vars) (PGRelation n ijs) = return (bnds, [nbnds, bnds])
       where nbnds = (rels++[n], vars ++ map (\(i,j) -> (j, (n, i))) ijs)
 
     mkBindings bnds n = return (bnds, flip replicate bnds $ length $ children n)
 
-    relOrIndexId n@(tag &&& (@~ isBaseRelation) -> (EVariable i, Just _)) = Just i
-    relOrIndexId (PPrjApp3 (tag -> EVariable n@(("_index" `isSuffixOf`) -> True)) "lookup" _ _ _ _ _ _ _) =
-      Just $ take ((length n) - (length "_index")) n
-
-    relOrIndexId _ = Nothing
-
-    propagate bnds _ ch n =
-      return . ((),) $ if not $ null chpp
+    propagate bnds rels ch n =
+      return . (nrels,) $ if not $ null chpp
         then debugConstraint $ constraintProp chpp $ replaceCh n nch
         else replaceCh n ch
-      where (chpp, nch) = first concat $ unzip $ map (rebuildCh bnds) ch
-            debugConstraint r =
-              if True then r
-              else flip trace r $ boxToString $ ["Partition constraint on: "]
-                                             %$ (indent 2 $ concatMap (prettyLines . strip) ch)
+      where
+        (chpp, nch) = first concat $ unzip $ map (rebuildCh bnds) ch
+
+        nrels = (++ concat rels) $ case n of
+                  PFRelation n ijs -> [n]
+                  PGRelation n ijs -> [n]
+                  _ -> []
+
+        debugConstraint r =
+          if True then r
+          else flip trace r $ boxToString $ ["Partition constraint on: "]
+                                         %$ (indent 2 $ concatMap (prettyLines . strip) ch)
 
     rebuildCh bnds c =
       let (pp, rest) = first (map $ translateBindings bnds) $ partition isConstraint $ annotations c
@@ -332,9 +334,6 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
 
     constraintProp pp c = c @+ (EProperty (Left ("PartitionConstraint", Just $ LC.string $ show $ unionConstraints pp)))
 
-    isBaseRelation (EProperty (ePropertyName -> "BaseRelation")) = True
-    isBaseRelation _ = False
-
     isConstraint (EProperty (ePropertyName -> "PartitionConstraint")) = True
     isConstraint _ = False
 
@@ -348,6 +347,29 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
 
 propagatePartition _ = error "Invalid expr arg for propagatePartition"
 
+relOrIndexId :: K3 Expression -> Maybe Identifier
+relOrIndexId n@(tag &&& (@~ isConstantRelation) -> (ELetIn i, Just _)) = Just i
+relOrIndexId n@(tag &&& (@~ isBaseOrMaterializedRelation) -> (EVariable i, Just _)) = Just i
+relOrIndexId (PPrjApp3 n@(tag -> EVariable (("_index" `isSuffixOf`) -> True)) "lookup" _ _ _ _ _ _ _) =
+  case n @~ hasRelationName of
+    Just (EProperty (ePropertyValue -> Just (tag -> LString s))) -> Just s
+    _ -> Nothing
+
+relOrIndexId _ = Nothing
+
+hasRelationName :: Annotation Expression -> Bool
+hasRelationName (EProperty (ePropertyName -> "RelationName")) = True
+hasRelationName _ = False
+
+isConstantRelation :: Annotation Expression -> Bool
+isConstantRelation (EProperty (ePropertyName -> "ConstantRelation")) = True
+isConstantRelation _ = False
+
+isBaseOrMaterializedRelation :: Annotation Expression -> Bool
+isBaseOrMaterializedRelation (EProperty (ePropertyName -> n)) = n `elem` ["BaseRelation", "MaterializedRelation"]
+isBaseOrMaterializedRelation _ = False
+
+
 pattern PLam     i   bodyE   iAs   = Node (ELambda i     :@: iAs)   [bodyE]
 pattern PApp     fE  argE    appAs = Node (EOperate OApp :@: appAs) [fE, argE]
 pattern PPrj     cE  fId     fAs   = Node (EProject fId  :@: fAs)   [cE]
@@ -359,3 +381,10 @@ pattern PPrjApp2 cE fId fAs fArg1 fArg2 app1As app2As
 
 pattern PPrjApp3 cE fId fAs fArg1 fArg2 fArg3 app1As app2As app3As
   = PApp (PApp (PApp (PPrj cE fId fAs) fArg1 app1As) fArg2 app2As) fArg3 app3As
+
+-- | Mosaic specific patterns
+pattern PFRelation n ijs <-
+  PPrjApp2 (relOrIndexId -> Just n) "fold" _ (PLam _ (PLam _ (PBindAs _ (BRecord ijs) _ _) _) _) _ _ _
+
+pattern PGRelation n ijs <-
+  PPrjApp3 (relOrIndexId -> Just n) "group_by" _ _ (PLam _ (PLam _ (PBindAs _ (BRecord ijs) _ _) _) _) _ _ _ _

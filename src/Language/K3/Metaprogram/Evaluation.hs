@@ -432,6 +432,8 @@ spliceExpression = mapTree doSplice
     doSplice ch e@(tag -> EProject i)            = expectIdSplicer i        >>= newAnns e >>= \(nid, nanns)  -> return $ Node (EProject nid  :@: nanns) ch
     doSplice ch e@(tag -> EAssign i)             = expectIdSplicer i        >>= newAnns e >>= \(nid, nanns)  -> return $ Node (EAssign  nid  :@: nanns) ch
     doSplice ch e@(tag -> ELambda i)             = expectIdSplicer i        >>= newAnns e >>= \(nid, nanns)  -> return $ Node (ELambda  nid  :@: nanns) ch
+    doSplice ch e@(tag -> ELetIn i)              = expectIdSplicer i        >>= newAnns e >>= \(nid, nanns)  -> return $ Node (ELetIn   nid  :@: nanns) ch
+    doSplice ch e@(tag -> ECaseOf i)             = expectIdSplicer i        >>= newAnns e >>= \(nid, nanns)  -> return $ Node (ECaseOf  nid  :@: nanns) ch
     doSplice ch e@(tag -> EBindAs b)             = expectBindSplicer b      >>= newAnns e >>= \(nb, nanns)   -> return $ Node (EBindAs  nb   :@: nanns) ch
     doSplice ch e@(tag -> EConstant (CEmpty ct)) = spliceType ct            >>= newAnns e >>= \(nct, nanns)  -> return $ Node (EConstant (CEmpty nct) :@: nanns) ch
     doSplice ch e@(Node (tg :@: _) _) = newAnns e () >>= \(_,nanns) -> return $ Node (tg :@: nanns) ch
