@@ -315,14 +315,17 @@ inline e@(tag -> ELambda _) = do
                             $ getInDecisions outerFExpr)
 
     let reifyArg a g = if a == "_" then [] else
-          let reifyType = case if a == head (argNames) && isAccumulating then Referenced else (getInMethodFor a innerFExpr) of
+          let discriminator = if a == head (argNames) && isAccumulating then Referenced else (getInMethodFor a innerFExpr)
+              reifyType = case discriminator of
                   ConstReferenced -> R.Reference $ R.Const R.Inferred
                   Referenced -> R.Reference R.Inferred
                   Forwarded -> R.RValueReference R.Inferred
                   _ -> R.Inferred
+              reifyFrom = case discriminator of
+                  Copied -> id
+                  _ -> R.SForward (R.ConstExpr $ R.Call (R.Variable $ R.Name "decltype") [R.Variable $ R.Name g])
           in [R.Forward $ R.ScalarDecl (R.Name a) reifyType
-               (Just $ R.SForward (R.ConstExpr $ R.Call (R.Variable $ R.Name "decltype") [R.Variable $ R.Name g])
-                         (R.Variable $ R.Name g))]
+               (Just $ reifyFrom (R.Variable $ R.Name g))]
 
     let argReifications = concat [reifyArg a g | a <- argNames | g <- formalArgNames]
 

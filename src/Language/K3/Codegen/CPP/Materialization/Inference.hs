@@ -364,11 +364,14 @@ materializeE e@(Node (t :@: _) cs) = case t of
   EOperate OApp -> do
     let [f, x] = cs
     case (f, x) of
-      (tag -> EProject "fold", tag &&& children -> (ELambda i, [il])) -> do
+      (tag -> EProject "fold", tag &&& children -> (ELambda i, [il@(tag &&& children -> (ELambda ele, _))])) -> do
         xu <- eUID x
         ilu <- eUID il
         constrain xu i In (mAtom Moved -??- "Fold Override")
         constrain ilu i In (mAtom Moved -??- "Fold Override")
+
+        ila <- asks (isolateApplicationMZ . flags)
+        when ila $ constrain ilu ele In (mAtom Copied -??- "Application Isolation Override")
       _ -> return ()
 
     contextualizeNow x >>= \x' -> withDownstreams [x'] $ materializeE f
