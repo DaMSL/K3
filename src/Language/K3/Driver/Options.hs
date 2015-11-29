@@ -31,7 +31,7 @@ import Language.K3.Utils.Logger.Config
 
 import Language.K3.Driver.Common
 
-import Language.K3.Codegen.CPP.Types (CPPCGFlags(..))
+import Language.K3.Codegen.CPP.Types (CPPCGFlags(..), defaultCPPCGFlags)
 
 import Language.K3.Utils.Pretty (
     Pretty(..), PrintConfig(..),
@@ -410,9 +410,9 @@ compileStagesOpt ct = extractStageAndSpec . keyValList "" <$> strOption (
       h:t -> stageOf mzfs (specOf t) h
      where
       extractMZFlags :: [(String, String)] -> (MZFlags, [(String, String)])
-      extractMZFlags kvs = let (mzfs, rest) = L.partition (\(key, val) -> key `elem` ["isolateArgs"]) kvs in
+      extractMZFlags kvs = let (mzfs, rest) = L.partition (\(key, val) -> key `elem` ["isolateRuntime"]) kvs in
         case mzfs of
-          [(_, read -> True)] -> (MZFlags { isolateArgs = True }, rest)
+          [(_, read -> True)] -> (MZFlags { isolateRuntimeMZ = True }, rest)
           _ -> (mz0, rest)
 
     -- | Local compilation stages definitions.
@@ -539,10 +539,11 @@ cppOpt = CPPOptions <$> strOption (long "cpp-flags" <> help "Specify CPP Flags" 
                                <> help "Code Generation Options"
                                <> metavar "CGOptions"))
  where
-   extractCPPCGFlags stropt = CPPCGFlags ili elp
+   extractCPPCGFlags stropt = CPPCGFlags ili elp ilr
     where
       ili = fromMaybe False $ fmap read $ lookup "isolateLoopIndex" kvs
       elp = fromMaybe False $ fmap read $ lookup "enableLifetimeProfiling" kvs
+      ilr = fromMaybe (isolateRuntimeCG defaultCPPCGFlags) $ fmap read $ lookup "isolateRuntime" kvs
       kvs = keyValList "" stropt
 
 ktraceOpt :: Parser [(String, String)]
