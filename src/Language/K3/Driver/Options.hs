@@ -410,10 +410,11 @@ compileStagesOpt ct = extractStageAndSpec . keyValList "" <$> strOption (
       h:t -> stageOf mzfs (specOf t) h
      where
       extractMZFlags :: [(String, String)] -> (MZFlags, [(String, String)])
-      extractMZFlags kvs = let (mzfs, rest) = L.partition (\(key, val) -> key `elem` ["isolateRuntime"]) kvs in
-        case mzfs of
-          [(_, read -> True)] -> (MZFlags { isolateRuntimeMZ = True }, rest)
-          _ -> (mz0, rest)
+      extractMZFlags kvs = let (mzfs, rest) = L.partition (\(key, val) -> key `elem` ["isolateRuntime", "isolateApplication", "isolateQuery"]) kvs in
+        (MZFlags { isolateRuntimeMZ = fromMaybe (isolateRuntimeMZ mz0) (read <$> lookup "isolateRuntime" mzfs)
+                 , isolateApplicationMZ = fromMaybe (isolateApplicationMZ mz0) (read <$> lookup "isolateApplication" mzfs)
+                 , isolateQueryMZ = fromMaybe (isolateQueryMZ mz0) (read <$> lookup "isolateQuery" mzfs)}
+        , rest)
 
     -- | Local compilation stages definitions.
     stageOf _ _     ("none",      read -> True) = []
@@ -539,11 +540,13 @@ cppOpt = CPPOptions <$> strOption (long "cpp-flags" <> help "Specify CPP Flags" 
                                <> help "Code Generation Options"
                                <> metavar "CGOptions"))
  where
-   extractCPPCGFlags stropt = CPPCGFlags ili elp ilr
+   extractCPPCGFlags stropt = CPPCGFlags ili elp ilr ila ilq
     where
       ili = fromMaybe False $ fmap read $ lookup "isolateLoopIndex" kvs
       elp = fromMaybe False $ fmap read $ lookup "enableLifetimeProfiling" kvs
       ilr = fromMaybe (isolateRuntimeCG defaultCPPCGFlags) $ fmap read $ lookup "isolateRuntime" kvs
+      ila = fromMaybe (isolateApplicationCG defaultCPPCGFlags) $ fmap read $ lookup "isolateApplication" kvs
+      ilq = fromMaybe (isolateQueryCG defaultCPPCGFlags) $ fmap read $ lookup "isolateQuery" kvs
       kvs = keyValList "" stropt
 
 ktraceOpt :: Parser [(String, String)]

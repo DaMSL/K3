@@ -103,6 +103,8 @@ data CPPCGFlags
     { isolateLoopIndex :: Bool
     , enableLifetimeProfiling :: Bool
     , isolateRuntimeCG :: Bool
+    , isolateApplicationCG :: Bool
+    , isolateQueryCG :: Bool
     } deriving (Eq, Generic, Ord, Read, Show)
 
 instance Binary CPPCGFlags
@@ -114,6 +116,8 @@ defaultCPPCGFlags
     { isolateLoopIndex = False
     , enableLifetimeProfiling = False
     , isolateRuntimeCG = False
+    , isolateApplicationCG = False
+    , isolateQueryCG = False
     }
 
 -- | The default code generation state.

@@ -72,10 +72,15 @@ import Language.K3.Utils.Pretty
 
 -- * Entry-Point
 
-data MZFlags = MZFlags { isolateRuntimeMZ :: Bool } deriving (Eq, Generic, Ord, Read, Show)
+data MZFlags =
+  MZFlags { isolateRuntimeMZ :: Bool
+          , isolateApplicationMZ :: Bool
+          , isolateQueryMZ :: Bool
+          }
+ deriving (Eq, Generic, Ord, Read, Show)
 
 defaultMZFlags :: MZFlags
-defaultMZFlags = MZFlags { isolateRuntimeMZ = False }
+defaultMZFlags = MZFlags { isolateRuntimeMZ = False, isolateApplicationMZ = False, isolateQueryMZ = False }
 
 instance Binary MZFlags
 instance Serialize MZFlags
@@ -154,7 +159,7 @@ optimizeMaterialization dbg mzfs is (p, f) d = runExceptT $ inferMaterialization
         Just u = e @~ isEUID >>= getUID
         as' = MM.fromList [((i, r), q) | ((Juncture u' i, r), q) <- M.toList m, u' == u]
 
-     maybeAttachNoInline = if isolateRuntimeMZ mzfs then (EProperty (Left ("NoInline", Nothing)):) else id
+     maybeAttachNoInline = if isolateQueryMZ mzfs then (EProperty (Right ("NoInline", Nothing)):) else id
 
 -- * Types
 
