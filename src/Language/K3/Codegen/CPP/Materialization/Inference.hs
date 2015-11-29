@@ -72,10 +72,10 @@ import Language.K3.Utils.Pretty
 
 -- * Entry-Point
 
-data MZFlags = MZFlags { isolateArgs :: Bool } deriving (Eq, Generic, Ord, Read, Show)
+data MZFlags = MZFlags { isolateRuntimeMZ :: Bool } deriving (Eq, Generic, Ord, Read, Show)
 
 defaultMZFlags :: MZFlags
-defaultMZFlags = MZFlags { isolateArgs = False }
+defaultMZFlags = MZFlags { isolateRuntimeMZ = False }
 
 instance Binary MZFlags
 instance Serialize MZFlags
@@ -154,7 +154,7 @@ optimizeMaterialization dbg mzfs is (p, f) d = runExceptT $ inferMaterialization
         Just u = e @~ isEUID >>= getUID
         as' = MM.fromList [((i, r), q) | ((Juncture u' i, r), q) <- M.toList m, u' == u]
 
-     maybeAttachNoInline = if isolateArgs mzfs then (EProperty (Left ("NoInline", Nothing)):) else id
+     maybeAttachNoInline = if isolateRuntimeMZ mzfs then (EProperty (Left ("NoInline", Nothing)):) else id
 
 -- * Types
 
@@ -324,13 +324,16 @@ materializeE e@(Node (t :@: _) cs) = case t of
     (ehw, _) <- hasWriteIn ci cb
 
     topL <- asks topLevel
-    fnCopyOverride <- mBool <$> asks (isolateArgs . flags)
+    iRun <- asks (isolateRuntimeMZ . flags)
 
     let argShouldBeMoved = case (e @~ \case { EType _ -> True; _ -> False }) of
           Just (EType (tag &&& children -> (TFunction, [t, _]))) -> isNonScalarType t
           _ -> False
 
-    constrain u i In $ mITE (ehw -||- mBool (topL && argShouldBeMoved)) (mAtom Copied) (mAtom Forwarded)
+    let standardPath = mITE ehw (mITE (mBool argShouldBeMoved) (mAtom Moved) (mAtom Copied)) (mAtom Forwarded)
+    let topLPath = mITE (mBool topL -&&- mBool iRun) (mAtom Copied) standardPath
+
+    constrain u i In topLPath
 
     cls <- ePrv e >>= \case
       (tag -> PLambda _ cls) -> return cls
@@ -347,7 +350,7 @@ materializeE e@(Node (t :@: _) cs) = case t of
       outerP <- chasePPtr ptr
       moveable <- contextualizeNow outerP >>= isMoveableNow
 
-      constrain u name In $ mITE needsOwn (mITE (moveable -&&- mNot fnCopyOverride) (mAtom Moved) (mAtom Copied)) (mAtom ConstReferenced)
+      constrain u name In $ mITE needsOwn (mITE moveable (mAtom Moved) (mAtom Copied)) (mAtom ConstReferenced)
 
     clps <- sequence [withNearestBind u (contextualizeNow $ pbvar m) | m <- cls]
     nrvo <- mOr <$> traverse (`occursIn` fProv) (ci:clps)
@@ -372,20 +375,20 @@ materializeE e@(Node (t :@: _) cs) = case t of
       Just (Juncture u i) -> return $ mOneOf (mVar u i In) [Forwarded] -??- "Forwarded by containing context?"
       Nothing -> return $ mBool True -??- "Temporary."
 
-    fnCopyOverride <- mBool <$> asks (isolateArgs . flags)
-
     u <- eUID e
-    constrain u anon In $ mITE (moveable -&&- (mNot fnCopyOverride)) (mAtom Moved) (mAtom Copied)
+    constrain u anon In $ mITE moveable (mAtom Moved) (mAtom Copied)
 
   EOperate OSnd -> do
     let [h, m] = cs
     contextualizeNow m >>= \m' -> withDownstreams [m'] $ materializeE h
     materializeE m
 
+    ir <- asks (isolateRuntimeMZ . flags)
+
     moveable <- ePrv m >>= contextualizeNow >>= isMoveableNow
 
     u <- eUID e
-    constrain u anon In $ mITE moveable (mAtom Moved) (mAtom Copied)
+    constrain u anon In $ mITE (moveable -&&- mNot (mBool ir)) (mAtom Moved) (mAtom Copied)
 
   EOperate _ -> case cs of
     [x] -> materializeE x
