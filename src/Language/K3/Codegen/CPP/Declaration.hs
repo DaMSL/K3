@@ -162,18 +162,20 @@ source_builtin_map = [("MuxHasRead",   genHasRead True     Nothing),
                      ++ extraSuffixes
 
         -- These suffixes are for data loading hacks.
-  where extraSuffixes = [("Loader",     genLoader False False False False False ","),
-                         ("LoaderC",    genLoader False False True  False False ","),
-                         ("LoaderF",    genLoader False True  False False False ","),
-                         ("LoaderFC",   genLoader False True  True  False False ","),
-                         ("LoaderE",    genLoader True  False False False False ","),
-                         ("LoaderP",    genLoader False False False False False "|"),
-                         ("LoaderPC",   genLoader False False True  False False "|"),
-                         ("LoaderPF",   genLoader False True  False False False "|"),
-                         ("LoaderPFC",  genLoader False True  True  False False "|"),
-                         ("LoaderRP",   genLoader False False False True  False "|"),
-                         ("LoaderPE",   genLoader True  False False False False "|"),
-                         ("LoaderMPC",  genLoader False False True  False True  "|"),
+	-- TODO this needs refactoring, big time
+  where extraSuffixes = [("Loader",       genLoader False False False False False False ","),
+                         ("LoaderC",      genLoader False False True  False False False ","),
+                         ("LoaderF",      genLoader False True  False False False False ","),
+                         ("LoaderFC",     genLoader False True  True  False False False ","),
+                         ("LoaderE",      genLoader True  False False False False False ","),
+                         ("LoaderP",      genLoader False False False False False False "|"),
+                         ("LoaderPC",     genLoader False False True  False False False "|"),
+                         ("LoaderPF",     genLoader False True  False False False False "|"),
+                         ("LoaderPFC",    genLoader False True  True  False False False "|"),
+                         ("LoaderRP",     genLoader False False False True  False False "|"),
+                         ("LoaderPE",     genLoader True  False False False False False "|"),
+                         ("LoaderMPC",    genLoader False False True  False True  False "|"),
+                         ("LoaderMosaic", genLoader False False False False False True  "|"),
                          ("Logger",    genLogger)]
 
 source_builtins :: [String]
@@ -261,8 +263,8 @@ genDoWrite suf typ name = do
 
 -- TODO: Loader is not quite valid K3. The collection should be passed by indirection so we are not working with a copy
 -- (since the collection is technically passed-by-value)
-genLoader :: Bool -> Bool -> Bool -> Bool -> Bool -> String -> String -> K3 Type -> String -> CPPGenM R.Definition
-genLoader elemWrap fixedSize projectedLoader asReturn addMeta sep suf ft@(children -> [_,f]) name = do
+genLoader :: Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> String -> String -> K3 Type -> String -> CPPGenM R.Definition
+genLoader elemWrap fixedSize projectedLoader asReturn addMeta addMultiplicity sep suf ft@(children -> [_,f]) name = do
  void (genCType ft) -- Force full type to generate potential record/collection variants.
  (colType, recType, fullRecTypeOpt) <- return $ getColType f
  cColType      <- genCType colType
@@ -297,11 +299,14 @@ genLoader elemWrap fixedSize projectedLoader asReturn addMeta sep suf ft@(childr
  let container = R.Variable $ R.Name (if asReturn then "c2" else "c")
 
  let setMeta = R.Assignment (R.Project (R.Variable $ R.Name "record") (R.Name "meta")) (R.Call (R.Variable $ R.Name "mf") [R.Initialization R.Unit [] ])
+ let setMult = R.Assignment (R.Project (R.Variable $ R.Name "record") (R.Name . last . fst $ fields)) (R.Literal $ R.LInt 1)
 
+ let ftsToRead = init ftsWSkip
  let recordGetLines = recordDecl
-                      ++ concat [readField field ft skip False | (field, ft, skip)  <- init ftsWSkip]
-                      ++ (\(a,b,c) -> readField a b c True) (last ftsWSkip)
+                      ++ concat [readField field ft skip False | (field, ft, skip)  <- init ftsToRead]
+                      ++ (\(a,b,c) -> readField a b c True) (last ftsToRead)
 		      ++ (if addMeta then [setMeta] else [])
+		      ++ (if addMultiplicity then [setMult] else [])
                       ++ [R.Return $ R.Variable $ R.Name "record"]
  let extraCaptures = if addMeta then [R.RefCapture (Just ("mf", Nothing))] else []
 
@@ -385,7 +390,7 @@ genLoader elemWrap fixedSize projectedLoader asReturn addMeta sep suf ft@(childr
 
    type_mismatch = error "Invalid type for Loader function. Should Be String -> Collection R -> ()"
 
-genLoader _ _ _ _ _ _ _ _ _ =  error "Invalid type for Loader function."
+genLoader _ _ _ _ _ _ _ _ _ _ =  error "Invalid type for Loader function."
 
 genLogger :: String -> K3 Type -> String -> CPPGenM R.Definition
 genLogger _ (children -> [_,f]) name = do
