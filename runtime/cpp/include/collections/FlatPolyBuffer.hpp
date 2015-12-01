@@ -451,8 +451,13 @@ public:
     size_t foffset = static_cast<size_t>(offset);
     size_t sz = size(unit_t{});
     for (size_t j = i; j < sz && t == tag_at(static_cast<int>(j)); ++j) {
-      f(static_cast<int>(j), static_cast<int>(foffset), *reinterpret_cast<T*>(p + foffset));
-      foffset += elemsize(t);
+      size_t e_sz = elemsize(t);
+      if (e_sz > 0) {
+        f(static_cast<int>(j), static_cast<int>(foffset), *reinterpret_cast<T*>(p + foffset));
+      } else {
+        f(static_cast<int>(j), static_cast<int>(foffset), T());
+      }
+      foffset += e_sz;
     }
     return unit_t {};
   }
@@ -464,8 +469,13 @@ public:
     size_t foffset = static_cast<size_t>(offset);
     size_t sz = size(unit_t{});
     for (size_t j = i; j < sz && t == tag_at(static_cast<int>(j)); ++j) {
-      acc = f(std::move(acc), static_cast<int>(j), static_cast<int>(foffset), *reinterpret_cast<T*>(p + foffset));
-      foffset += elemsize(t);
+      size_t e_sz = elemsize(t);
+      if (e_sz > 0) {
+        acc = f(std::move(acc), static_cast<int>(j), static_cast<int>(foffset), *reinterpret_cast<T*>(p + foffset));
+      } else {
+        acc = f(std::move(acc), static_cast<int>(j), static_cast<int>(foffset), T());
+      }
+      foffset += e_sz;
     }
     return acc;
   }
@@ -483,20 +493,25 @@ public:
     InternalizerT itl(ncv);
 
     size_t offset = buffer_size(ncf);
-    int status = buffer_insert(ncf, offset, reinterpret_cast<char*>(const_cast<T*>(&t)), sizeof(t));
-    if ( status == 0 ) {
-      T* elem = reinterpret_cast<T*>(buffer_data(ncf)+offset);
-      elem->externalize(etl);
-      if ( isInternalized() ) { elem->internalize(itl); }
-      vector_push_back(tags(), const_cast<Tag*>(&tg));
+    size_t e_sz = elemsize(tg);
+    if (e_sz > 0) {
+      int status = buffer_insert(ncf, offset, reinterpret_cast<char*>(const_cast<T*>(&t)), e_sz);
+      if ( status == 0 ) {
+        T* elem = reinterpret_cast<T*>(buffer_data(ncf)+offset);
+        elem->externalize(etl);
+        if ( isInternalized() ) { elem->internalize(itl); }
+        vector_push_back(tags(), const_cast<Tag*>(&tg));
+      } else {
+        throw std::runtime_error("Append failed on a FPB");
+      }
     } else {
-      throw std::runtime_error("Append failed on a FPB");
+        vector_push_back(tags(), const_cast<Tag*>(&tg));
     }
     return unit_t {};
   }
 
   // Specialized version for unit: no space usage
-  template<>
+  /*
   unit_t append(Tag tg, const R_elem<unit_t>& t) {
     if (buffer.data()) {
       throw std::runtime_error("Invalid append on a FPB: backed by a base_string");
@@ -504,6 +519,7 @@ public:
     vector_push_back(tags(), const_cast<Tag*>(&tg));
     return unit_t{};
   }
+  */
 
   R_key_value<int, int> skip_tag(Tag t, int i, int offset) const {
     size_t sz = size(unit_t{});
@@ -559,8 +575,11 @@ public:
     size_t sz = size(unit_t{});
     for (size_t i = 0; i < sz; ++i) {
       Tag tg = tag_at(static_cast<int>(i));
-      Derived::externalize(etl, tg, buffer_data(ncf) + foffset);
-      foffset += elemsize(tg);
+      size_t e_sz = elemsize(tg);
+      if (e_sz > 0) {
+        Derived::externalize(etl, tg, buffer_data(ncf) + foffset);
+        foffset += e_sz;
+      }
     }
     container->internalized = false;
     return unit_t{};
@@ -580,8 +599,11 @@ public:
     size_t sz = size(unit_t{});
     for (size_t i = 0; i < sz; ++i) {
       Tag tg = tag_at(static_cast<int>(i));
-      Derived::internalize(itl, tg, buffer_data(ncf) + foffset);
-      foffset += elemsize(tg);
+      size_t tg_sz = elemsize(tg);
+      if (tg_sz > 0) {
+        Derived::internalize(itl, tg, buffer_data(ncf) + foffset);
+        foffset += tg_sz;
+      }
     }
     container->internalized = true;
     return unit_t{};
@@ -856,6 +878,7 @@ protected:
 
   base_string buffer;
 };
+
 
 }; // end namespace Libdynamic
 
