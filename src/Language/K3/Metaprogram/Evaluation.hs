@@ -302,7 +302,15 @@ applyCAnnotation targetE cAnnId sEnv = do
 
 evalBindings :: SpliceContext -> SpliceEnv -> GeneratorM SpliceEnv
 evalBindings sctxt senv = evalMap (generateInSpliceCtxt sctxt) senv
-  where eval sv@(SVar  _)   = let csv = chase sv in if csv == sv then return sv else eval csv
+  where eval (SVar i) = do
+          sv <- expectEmbeddingSplicer i
+          case sv of
+            SLabel j | i == j -> eval_var $ SVar j
+            SVar j -> eval_var sv
+            _ -> return sv
+
+          where eval_var sv@(chase -> csv) = if csv == sv then return sv else eval csv
+
         eval (SLabel   i)   = spliceIdentifier i  >>= return . SLabel
         eval (SBinder  b)   = spliceBinder b      >>= return . SBinder
         eval (SType    t)   = spliceType t        >>= return . SType
