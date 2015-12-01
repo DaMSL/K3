@@ -392,7 +392,7 @@ indexes name ans content_ts = do
     fold_slice_vid_fn _ = return Nothing
    
 -- Specialize for unit record
-pattern RElemUnit = R.Named $ Specialized [R.Named $ Name "unit"] "R_elem"
+pattern RElemUnit = R.Named (R.Specialized [R.Named (R.Name "unit")] (R.Name "R_elem"))
 
 
 -- Returns member definitions for a FlatPolyBuffer or UniquePolyBuffer
