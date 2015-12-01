@@ -109,7 +109,7 @@ data Polarity = Provides | Requires deriving (Eq, Ord, Read, Show, Typeable, Gen
 -- | A pattern-based rewrite rule, as used in control annotations.
 --   This includes a pattern matching expression, a rewritten expression,
 --   and any declarations used in the rewrite.
-type PatternRewriteRule = (K3 Expression, K3 Expression, [K3 Declaration])
+type PatternRewriteRule = (K3 Expression, K3 Expression, [Either MPRewriteDecl (K3 Declaration)])
 
 
 -- | Annotations on Declarations.

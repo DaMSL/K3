@@ -214,8 +214,13 @@ rewriteRule (pat, rewrite, extensions) =
     printRule patd rewrited extds =
       patd <$> (indent 2 $ text "=>") <$> (indent 4 rewrited) <$> (indent 2 $ vsep extds)
 
-ctrlExtension :: K3 Declaration -> SyntaxPrinter
-ctrlExtension d = (text "+>" <+>) C.<$> decl d
+ctrlExtension :: Either MPRewriteDecl (K3 Declaration) -> SyntaxPrinter
+ctrlExtension d = (text "+>" <+>) C.<$> either mprewrite decl d
+  where mprewrite (MPRewriteDecl i c decls) = do
+          csp <- spliceValue c
+          dsps <- mapM decl decls
+          return $ text "for" <+> text i <+> text "in" <+> csp <$> (indent 2 $ vsep dsps)
+
 
 spliceType :: SpliceType -> SyntaxPrinter
 spliceType = \case

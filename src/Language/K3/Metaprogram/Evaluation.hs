@@ -712,7 +712,7 @@ matchAnnotations :: (Eq (Annotation a), Show (Annotation a))
 matchAnnotations a2FilterF a1 a2 = all (`elem` a1) $ filter a2FilterF a2
 
 
-exprPatternMatcher :: [TypedSpliceVar] -> [PatternRewriteRule] -> [K3 Declaration] -> K3Generator
+exprPatternMatcher :: [TypedSpliceVar] -> [PatternRewriteRule] -> [Either MPRewriteDecl (K3 Declaration)] -> K3Generator
 exprPatternMatcher spliceParams rules extensions = ExprRewriter $ \expr spliceEnv ->
     let vspliceEnv  = validateSplice spliceParams spliceEnv
         matchResult = foldl (tryMatch expr) Nothing rules
@@ -727,11 +727,12 @@ exprPatternMatcher spliceParams rules extensions = ExprRewriter $ \expr spliceEn
     exprDeclSR spliceEnv (sEnv, rewriteE, ruleExts) =
       let msenv = mergeSpliceEnv spliceEnv sEnv in
       SRRewrite . (, msenv) $ generateInSpliceEnv msenv $
-        (,) <$> spliceExpression rewriteE <*> mapM spliceNonAnnotationTree (extensions ++ ruleExts)
+        (\ a b -> (a, concat b)) <$> spliceExpression rewriteE <*> mapM spliceNonAnnotationTree (extensions ++ ruleExts)
 
     tryMatch _ acc@(Just _) _ = acc
-    tryMatch expr Nothing (pat, rewrite, ruleExts) =
-      (localLogAction (tryMatchLogger expr pat) $ matchExpr expr pat) >>= return . (, rewrite, ruleExts)
+    tryMatch expr Nothing (pat, rewrite, ruleExts) = do
+      nsEnv <- (localLogAction (tryMatchLogger expr pat) $ matchExpr expr pat)
+      return (nsEnv, rewrite, ruleExts)
 
     tryMatchLogger expr pat = maybe (Just $ debugMatchStep expr pat) (Just . debugMatchStepResult expr pat)
 
@@ -744,7 +745,25 @@ exprPatternMatcher spliceParams rules extensions = ExprRewriter $ \expr spliceEn
 
     debugMatchResult opt = unwords ["Match result", show opt]
 
-    spliceNonAnnotationTree d = mapTree spliceNonAnnotationDecl d
+    spliceNonAnnotationTree (Left (MPRewriteDecl i c decls)) = spliceWithValue c
+      where
+        spliceWithValue c' = case c' of
+          SVar v -> generatorWithSCtxt $ \sctxt -> do
+                      sv <- expectEmbeddingSplicer v
+                      case sv of
+                        SLabel v' -> maybe (lookupErr v') spliceWithValue $ lookupSCtxt v' sctxt
+                        _ -> spliceWithValue sv
+
+          SList svs -> do
+            dll <- forM svs $ \sv -> generateInExtendedSpliceEnv i sv $
+                     forM decls $ \d -> mapTree (spliceNonAnnotationDecl) d
+            return $ concat dll
+
+          v -> throwG $ boxToString $ ["Invalid splice value in member generator "] %+ prettyLines v
+
+        lookupErr v = throwG $ "Invalid loop target in rewrite declaration generator: " ++ show v
+
+    spliceNonAnnotationTree (Right d) = mapTree spliceNonAnnotationDecl d >>= return . (:[])
 
     spliceNonAnnotationDecl ch d@(tag -> DGlobal  n t eOpt) =
       spliceDeclParts n t eOpt >>= \(nn, nt, neOpt) ->

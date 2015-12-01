@@ -304,16 +304,23 @@ dControlAnnotation = namedIdentifier "control annotation" "control" $ rule
         body           = (,) <$> some cpattern <*> (extensions $ keyword "shared")
         cpattern       = (,,) <$> patternE <*> (symbol "=>" *> rewriteE) <*> (extensions $ symbol "+>")
 
-        extensions :: K3Parser a -> K3Parser [K3 Declaration]
+        extensions :: K3Parser a -> K3Parser [Either MPRewriteDecl (K3 Declaration)]
         extensions pfx = concat <$> option [] (try $ pfx *> braces (many extensionD))
         rewriteE       = cleanExpr =<< parseInMode Splice expr
         patternE       = cleanExpr =<< parseInMode SourcePattern expr
-        extensionD     = mapM cleanDecl =<< parseInMode Splice declaration
+        extensionD     = mapM cleanDecl =<< parseInMode Splice (    try ((\mpd -> [Left mpd]) <$> rewriteDecl)
+                                                                <|> try (map Right <$> declaration))
+
+        rewriteDecl :: K3Parser MPRewriteDecl
+        rewriteDecl = mpRewriteDecl <$> (keyword "for" *> parseInMode Normal identifier)
+                                    <*> (keyword "in" *> svTerm <* colon)
+                                    <*> (concat <$> some declaration)
 
         mkCtrlAnn n svars (rw, exts) = DC.generator $ mpCtrlAnnotation n svars rw exts
 
         cleanExpr e = return $ stripEUIDSpan e
-        cleanDecl d = return $ stripDUIDSpan d
+        cleanDecl (Left (MPRewriteDecl i c ds)) = return $ Left $ MPRewriteDecl i c $ map stripDUIDSpan ds
+        cleanDecl (Right d) = return $ Right $ stripDUIDSpan d
 
 
 dTypeAlias :: K3Parser (Maybe (K3 Declaration))
