@@ -495,6 +495,16 @@ public:
     return unit_t {};
   }
 
+  // Specialized version for unit: no space usage
+  template<>
+  unit_t append(Tag tg, const R_elem<unit_t>& t) {
+    if (buffer.data()) {
+      throw std::runtime_error("Invalid append on a FPB: backed by a base_string");
+    }
+    vector_push_back(tags(), const_cast<Tag*>(&tg));
+    return unit_t{};
+  }
+
   R_key_value<int, int> skip_tag(Tag t, int i, int offset) const {
     size_t sz = size(unit_t{});
     if ( i < sz && tag_at(i) == t ) {

@@ -390,6 +390,10 @@ indexes name ans content_ts = do
       return result
 
     fold_slice_vid_fn _ = return Nothing
+   
+-- Specialize for unit record
+pattern RElemUnit = R.Named $ Specialized [R.Named $ Name "unit"] "R_elem"
+
 
 -- Returns member definitions for a FlatPolyBuffer or UniquePolyBuffer
 polybuffer :: Identifier -> [(Identifier, [AnnMemDecl])] -> CPPGenM [R.Definition]
@@ -719,7 +723,8 @@ polybuffer name ans  = do
                         True
                         [branch_chain "tag" tags types elseStmt elemStmt]
 
-      where elemStmt _ ty = R.Return $ R.Call (R.Variable $ R.Name "sizeof") [R.ExprOnType ty]
+      where elemStmt _ RElemUnit = R.Return $ R.Literal $ R.LInt 0
+            elemStmt _ ty = R.Return $ R.Call (R.Variable $ R.Name "sizeof") [R.ExprOnType ty]
             elseStmt = R.Ignore $  R.ThrowRuntimeErr $ R.Literal $ R.LString "Invalid poly buffer tag"
 
     elemappend_fn :: [Int] -> [R.Type] -> CPPGenM (Maybe R.Definition)
