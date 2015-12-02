@@ -166,13 +166,11 @@ source_builtin_map = [("MuxHasRead",   genHasRead True     Nothing),
                          ("LoaderC",    genLoader False False True  False False ","),
                          ("LoaderF",    genLoader False True  False False False ","),
                          ("LoaderFC",   genLoader False True  True  False False ","),
-                         ("LoaderE",    genLoader True  False False False False ","),
                          ("LoaderP",    genLoader False False False False False "|"),
                          ("LoaderPC",   genLoader False False True  False False "|"),
                          ("LoaderPF",   genLoader False True  False False False "|"),
                          ("LoaderPFC",  genLoader False True  True  False False "|"),
                          ("LoaderRP",   genLoader False False False True  False "|"),
-                         ("LoaderPE",   genLoader True  False False False False "|"),
                          ("LoaderMPC",  genLoader False False True  False True  "|"),
                          ("Logger",    genLogger)]
 
