@@ -268,6 +268,8 @@ genLoader elemWrap fixedSize projectedLoader asReturn addMeta sep suf ft@(childr
  cfRecType     <- maybe (return Nothing) (\t -> genCType t >>= return . Just) fullRecTypeOpt
  fields        <- getRecFields recType
  fullFieldsOpt <- maybe (return Nothing) (\frt -> getRecFields frt >>= return . Just) fullRecTypeOpt
+ br <- gets (boxRecords . flags)
+ let bw = if br then R.Dereference else id
  let coll_name = stripSuffix suf name
  let bufferDecl = [R.Forward $ R.ScalarDecl (R.Name "tmp_buffer")
                         (R.Named $ R.Qualified (R.Name "std") (R.Name "string")) Nothing]
@@ -278,7 +280,7 @@ genLoader elemWrap fixedSize projectedLoader asReturn addMeta sep suf ft@(childr
                                      ] ++ [R.Literal (R.LChar sep) | not b]
                             ] ++
                             (if skip then []
-                             else [ R.Assignment (R.Project (R.Variable $ R.Name "record") (R.Name f))
+                             else [ R.Assignment (R.Project (bw $ R.Variable $ R.Name "record") (R.Name f))
                                            (typeMap t $ R.Variable $ R.Name "tmp_buffer")
                                   ])
 
@@ -294,7 +296,7 @@ genLoader elemWrap fixedSize projectedLoader asReturn addMeta sep suf ft@(childr
  let containerDecl = R.Forward $ R.ScalarDecl (R.Name "c2") cColType Nothing
  let container = R.Variable $ R.Name (if asReturn then "c2" else "c")
 
- let setMeta = R.Assignment (R.Project (R.Variable $ R.Name "record") (R.Name "meta")) (R.Call (R.Variable $ R.Name "mf") [R.Initialization R.Unit [] ])
+ let setMeta = R.Assignment (R.Project (bw $ R.Variable $ R.Name "record") (R.Name "meta")) (R.Call (R.Variable $ R.Name "mf") [R.Initialization R.Unit [] ])
 
  let recordGetLines = recordDecl
                       ++ concat [readField field ft skip False | (field, ft, skip)  <- init ftsWSkip]
@@ -308,8 +310,10 @@ genLoader elemWrap fixedSize projectedLoader asReturn addMeta sep suf ft@(childr
                     , (Just "tmp_buffer", (R.Reference $ R.Named $ (R.Qualified (R.Name "std") (R.Name "string"))))
                     ] False Nothing recordGetLines
 
+ let rrm = if br then (++ "_boxed") else id
+
  let readRecordsCall = if asReturn
-                       then R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "read_records_into_container")
+                       then R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name $ rrm "read_records_into_container")
                               [ R.Variable $ R.Name "paths"
                               , container
                               , readRecordFn ]
@@ -321,15 +325,14 @@ genLoader elemWrap fixedSize projectedLoader asReturn addMeta sep suf ft@(childr
                                 , container
                                 , readRecordFn
                                 ]
-                         else R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "read_records")
+                         else R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name $ rrm "read_records")
                                 [ R.Variable $ R.Name "paths"
                                 , container
                                 , readRecordFn
                                 ])
 
- let defaultArgs = [  (Just "paths", R.Named $ R.Specialized
-                         [R.Named $ R.Specialized [R.Named $ R.Name "string_impl"] (R.Name "R_path")]
-                         (R.Name "_Collection"))]
+ pathsType <- genCType ((T.collection $ T.record [("path", T.string)]) @+ TAnnotation "Collection")
+ let defaultArgs = [(Just "paths", pathsType)]
 
  let args = defaultArgs
               ++ [(Just "c", R.Reference $ (if asReturn then R.Const else id) cColType)]
