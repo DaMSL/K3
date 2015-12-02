@@ -338,6 +338,7 @@ inline e@(tag -> ELambda _) = do
 
     return ([], R.Lambda captures argList True (if isAccumulating then Just R.Void else returnType) fullBody)
 
+-- | Driver Inlining
 inline e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OApp, [p@(Fold c), f])), z])) | doInline e = do
   (ce, cv) <- inline c
   (ze, zv) <- inline z
@@ -404,7 +405,9 @@ inline e@(tag &&& children -> (EOperate OApp, [
   (ke, kv) <- inline k
   -- kg <- genSym
   -- ke <- reify (RDecl kg Nothing) k
-  let kp = R.Project kv (R.Name "key")
+
+  br <- gets (boxRecords . flags)
+  let kp = R.Project (if br then R.Dereference kv else kv) (R.Name "key")
 
   ug <- genSym
   let ue = R.Forward $ R.ScalarDecl (R.Name ug) (R.Reference R.Inferred) (Just $  R.Call (R.Project cv (R.Name "getContainer")) [])
@@ -435,8 +438,9 @@ inline e@(tag &&& children -> (EOperate OApp, [
   (ce, cv) <- inline c
 
   kg <- genSym
+  br <- gets (boxRecords . flags)
   (ke, kv) <- case k of
-    (tag &&& children -> (ERecord fs, cs)) -> do
+    (tag &&& children -> (ERecord fs, cs)) | not br -> do
       (unzip -> (fes, catMaybes -> [fv])) <- for (zip fs cs) $ \(f, j) ->
         if f == "key"
           then do
@@ -446,7 +450,7 @@ inline e@(tag &&& children -> (EOperate OApp, [
             fe <- reify RForget j
             return (fe, Nothing)
       return (concat fes, fv)
-    _ -> inline k >>= \(ke', kv') -> return (ke', R.Project kv' (R.Name "key"))
+    _ -> inline k >>= \(ke', kv') -> return (ke', R.Project (if br then R.Dereference kv' else kv') (R.Name "key"))
 
   ug <- genSym
   let ue = R.Forward $ R.ScalarDecl (R.Name ug) (R.Reference R.Inferred) (Just $  R.Call (R.Project cv (R.Name "getContainer")) [])
@@ -482,9 +486,10 @@ inline e@(tag &&& children -> (EOperate OApp, [
   (ce, cv) <- inline c
   kg <- genSym
   ke <- reify (RDecl kg Nothing) k
-  let kv = R.Project (R.Variable $ R.Name kg) (R.Name "key")
+  br <- gets (boxRecords . flags)
+  let kv = R.Project ((if br then R.Dereference else id) $ R.Variable $ R.Name kg) (R.Name "key")
   (ke, kv) <- case k of
-    (tag &&& children -> (ERecord fs, cs)) -> do
+    (tag &&& children -> (ERecord fs, cs)) | br -> do
       (unzip -> (fes, catMaybes -> [fv])) <- for (zip fs cs) $ \(f, j) ->
         if f == "key"
           then do
@@ -494,7 +499,7 @@ inline e@(tag &&& children -> (EOperate OApp, [
             fe <- reify RForget j
             return (fe, Nothing)
       return (concat fes, fv)
-    _ -> inline k >>= \(ke', kv') -> return (ke', R.Project kv' (R.Name "key"))
+    _ -> inline k >>= \(ke', kv') -> return (ke', R.Project (if br then R.Dereference kv' else kv') (R.Name "key"))
 
   ug <- genSym
   let ue = R.Forward $ R.ScalarDecl (R.Name ug) (R.Reference R.Inferred) (Just $  R.Call (R.Project cv (R.Name "getContainer")) [])
@@ -708,7 +713,14 @@ inline (tag &&& children -> (EOperate bop, [a, b])) = do
 
 inline e@(tag &&& children -> (EProject v, [k])) = do
     (ke, kv) <- inline k
-    return (ke, R.Project kv (R.Name v))
+
+    br <- gets (boxRecords . flags)
+    kt <- getKType k
+    let bw = case tag kt of
+               TRecord _ | br -> R.Dereference kv
+               _ -> kv
+    -- let bw = if br && tag kt /= TCollection then R.Dereference kv else kv
+    return (ke, R.Project bw (R.Name v))
 
 inline (tag &&& children -> (EAssign x, [e])) = reify (RName (R.Variable $ R.Name x) Nothing) e >>= \a ->
                                                   return (a, R.Initialization R.Unit [])
