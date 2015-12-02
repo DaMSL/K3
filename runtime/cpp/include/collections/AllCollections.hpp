@@ -22,3 +22,4 @@
 #include "collections/FlatPolyBuffer.hpp"
 #include "collections/UniquePolyBuffer.hpp"
 #include "HashCollections.hpp"
+#include "collections/BoxedMap.hpp"

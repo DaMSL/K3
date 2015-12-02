@@ -503,6 +503,7 @@ reservedAnnotations =
   , "IntMap", "StrMap", "VMap", "SortedMap", "MapE", "SortedMapE", "MapCE"
   , "MultiIndexBag", "MultiIndexMap", "MultiIndexVMap", "RealVector"
   , "BulkFlatCollection", "FlatPolyBuffer", "UniquePolyBuffer"
+  , "BoxMap"
   ]
 
 reservedGeneratedAnnotations :: [Identifier]
