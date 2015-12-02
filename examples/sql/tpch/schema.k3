@@ -10,14 +10,14 @@ declare populate_record_meta: () -> record_meta = \_ -> (
   {a: {x: random 100, y: randomWord (), z: randomFraction ()}, b: { x: { m: random 100, n: randomFraction (), p: randomFraction ()}, y: randomFraction (), z: randomFraction ()}, c: random 100 }
 )
 
-typedef array_meta = collection { elem: real } @ RealVector
-declare empty_array_meta : array_meta
+// typedef array_meta = collection { elem: real } @ RealVector
+// declare empty_array_meta : array_meta
 
-typedef mixed_meta = {a: {x: int, y: string, z: real}, b: { x: { m: array_meta, n: string, p: real}, y: string, z: real}, c: array_meta }
-declare empty_mixed_meta : mixed_meta
-declare populate_mixed_meta: () -> mixed_meta = \_ -> (
-  {a: {x: random 100, y: randomWord (), z: randomFraction ()}, b: { x: { m: randomVector 64, n: randomWord (), p: randomFraction ()}, y: randomWord (), z: randomFraction ()}, c: randomVector 64 }
-)
+// typedef mixed_meta = {a: {x: int, y: string, z: real}, b: { x: { m: array_meta, n: string, p: real}, y: string, z: real}, c: array_meta }
+// declare empty_mixed_meta : mixed_meta
+// declare populate_mixed_meta: () -> mixed_meta = \_ -> (
+//   {a: {x: random 100, y: randomWord (), z: randomFraction ()}, b: { x: { m: randomVector 64, n: randomWord (), p: randomFraction ()}, y: randomWord (), z: randomFraction ()}, c: randomVector 64 }
+// )
 
 typedef lineitem_r = {
       l_orderkey         : int,
