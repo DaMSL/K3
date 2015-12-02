@@ -6,3 +6,4 @@
 #include "builtins/FileBuiltins.hpp"
 #include "builtins/VectorBuiltins.hpp"
 #include "builtins/loaders/Amplab.hpp"
+#include "builtins/Boxing.hpp"
