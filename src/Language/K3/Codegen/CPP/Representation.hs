@@ -17,6 +17,7 @@ module Language.K3.Codegen.CPP.Representation (
   pattern Unit,
   pattern Tuple,
   pattern Void,
+  pattern Box,
 
   Literal(..),
   Capture(..),
@@ -138,12 +139,13 @@ data Type
   deriving (Eq, Ord, Read, Show)
 
 pattern Address = Named (Name "Address")
-pattern Collection c t = Named (Specialized [t] (Name c))
+pattern Box t = Named (Specialized [t] (Qualified (Name "K3") (Name "Box")))
 pattern Byte = Named (Name "unsigned char")
+pattern Collection c t = Named (Specialized [t] (Name c))
 pattern SharedPointer t = Named (Specialized [t] (Name "shared_ptr"))
+pattern Tuple ts = Named (Specialized ts (Qualified (Name "std") (Name "tuple")))
 pattern UniquePointer t = Named (Specialized [t] (Name "unique_ptr"))
 pattern Unit = Named (Name "unit_t")
-pattern Tuple ts = Named (Specialized ts (Qualified (Name "std") (Name "tuple")))
 pattern Void = Named (Name "void")
 
 flattenFnType :: Type -> Type
@@ -229,7 +231,10 @@ instance Stringifiable Expression where
     stringify (Call e as) = stringify e <> parens (commaSep $ map stringify as)
     stringify (Dereference e) = fromString "*" <> unaryParens e
     stringify (TakeReference e) = fromString "&" <> unaryParens e
-    stringify (Initialization t es) = stringify t <+> braces (commaSep $ map stringify es)
+    stringify (Initialization t es) =
+      case t of
+        Box bt -> stringify $ Call (Variable $ Specialized [bt] $ Qualified (Name "K3") (Name "make_box")) es
+        _ -> stringify t <+> braces (commaSep $ map stringify es)
     stringify (Lambda cs as mut rt bd) = cs' <+> as' <+> mut' <> rt' <> bd'
       where
         cs'  = brackets $ commaSep (map stringify cs)
