@@ -1071,11 +1071,17 @@ def compServiceUp():
 
     nodelist = {n : [] for n in ['master', 'worker', 'client', 'none']}
     for host in compileService.getAllNodes()['all']:
-      logger.debug(' Host added as ' + host)
-      if host in request.form:
-        logger.debug("    -->Recevied host val as: " + request.form[host])
-        nodelist[request.form[host].lower()].append(host)
-        logger.debug(' %s added as %s ' % (host, request.form[host].lower()))
+    #   if host in request.form:
+    #     logger.debug("    -->Recevied host val as: " + request.form[host])
+    #     nodelist[request.form[host].lower()].append(host)
+    #     logger.debug(' %s added as %s ' % (host, request.form[host].lower()))
+    # compileService.setNodes(nodelist)
+     
+      test = request.form.getlist("role_" + host)
+      logger.debug("Compiler Host Requested:  %s", str(test))
+      for role in request.form.getlist("role_" + host):
+        logger.debug(" Compiler: adding `%s` as `%s`", host, role)
+        nodelist[role.lower()].append(host)
     compileService.setNodes(nodelist)
 
 
@@ -1493,6 +1499,7 @@ if __name__ == '__main__':
     if dispatcher == None:
       logger.error("[FLASKWEB] Failed to create dispatcher. Aborting")
       sys.exit(1)
+
     driverDispatch = mesos.native.MesosSchedulerDriver(dispatcher, frameworkDispatch, master)
     threadDispatch = threading.Thread(target=driverDispatch.run)
     threadDispatch.start()

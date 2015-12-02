@@ -333,6 +333,7 @@ class Dispatcher(mesos.interface.Scheduler):
 
     # For now, return Mesos URL to Framework:
     master = resolve(self.mesosmaster).strip()
+
     url = master + '/#/frameworks/' + self.frameworkId.value
     return url
 

@@ -348,7 +348,10 @@ def resolve(master):
           break
       if host == '':
         host = "localhost"
+
+      logging.debug('HOST  ---> %s', host)
       return "http://%s:5050" % host
+
 
     process = subprocess.Popen(
         ['mesos-resolve', master],
@@ -368,5 +371,12 @@ def resolve(master):
 
     conn = httplib.HTTPConnection(server.strip())
     conn.request('GET', '/')
-    return server if conn.getresponse().status in [200, 201, 202] else None
+
+    status = conn.getresponse().status
+    if int(status) in [200, 201, 202]:
+      return server
+
+    else:
+      logging.warning("MESOS Master Not responding")
+      return None
 
