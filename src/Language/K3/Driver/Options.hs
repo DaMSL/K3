@@ -540,13 +540,14 @@ cppOpt = CPPOptions <$> strOption (long "cpp-flags" <> help "Specify CPP Flags" 
                                <> help "Code Generation Options"
                                <> metavar "CGOptions"))
  where
-   extractCPPCGFlags stropt = CPPCGFlags ili elp ilr ila ilq
+   extractCPPCGFlags stropt = CPPCGFlags ili elp ilr ila ilq wbr
     where
       ili = fromMaybe False $ fmap read $ lookup "isolateLoopIndex" kvs
       elp = fromMaybe False $ fmap read $ lookup "enableLifetimeProfiling" kvs
       ilr = fromMaybe (isolateRuntimeCG defaultCPPCGFlags) $ fmap read $ lookup "isolateRuntime" kvs
       ila = fromMaybe (isolateApplicationCG defaultCPPCGFlags) $ fmap read $ lookup "isolateApplication" kvs
       ilq = fromMaybe (isolateQueryCG defaultCPPCGFlags) $ fmap read $ lookup "isolateQuery" kvs
+      wbr = fromMaybe (boxRecords defaultCPPCGFlags) $ fmap read $ lookup "boxRecords" kvs
       kvs = keyValList "" stropt
 
 ktraceOpt :: Parser [(String, String)]

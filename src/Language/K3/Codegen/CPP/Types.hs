@@ -105,6 +105,7 @@ data CPPCGFlags
     , isolateRuntimeCG :: Bool
     , isolateApplicationCG :: Bool
     , isolateQueryCG :: Bool
+    , boxRecords :: Bool
     } deriving (Eq, Generic, Ord, Read, Show)
 
 instance Binary CPPCGFlags
@@ -118,6 +119,7 @@ defaultCPPCGFlags
     , isolateRuntimeCG = False
     , isolateApplicationCG = False
     , isolateQueryCG = False
+    , boxRecords = False
     }
 
 -- | The default code generation state.
