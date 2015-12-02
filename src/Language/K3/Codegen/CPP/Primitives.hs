@@ -19,6 +19,8 @@ import Language.K3.Codegen.Common
 import Language.K3.Codegen.CPP.Common
 import Language.K3.Codegen.CPP.Types
 
+import Control.Monad.State
+
 import qualified Language.K3.Codegen.CPP.Representation as R
 
 -- | Generate a (potentially templated) C++ function definition.
@@ -63,12 +65,21 @@ genCType t@(tag -> TRecord ids) = do
   let children' = snd . unzip . sort $ zip ids (children t)
   addRecord sig (zip ids (children t))
   templateVars <- mapM genCType children'
-  return $ R.Named (R.Specialized templateVars $ R.Name sig)
+
+  let baseType = R.Named $ R.Specialized templateVars $ R.Name sig
+  boxP <- gets (boxRecords . flags)
+  let boxWrapped = if boxP then R.Box baseType else baseType
+  -- let boxWrapped = R.Named $ if boxP then R.Specialized [R.Named baseType] (R.Qualified (R.Name "K3") $ R.Name "Box") else baseType
+  return boxWrapped
 genCType (tag -> TDeclaredVar t) = return $ R.Named (R.Name t)
 genCType (tag &&& children &&& annotations -> (TCollection, ([et], as))) = do
     ct <- genCType et
-    addComposite (namedTAnnotations as) et
-    case annotationComboIdT as of
+    -- boxP <- gets (boxRecords . flags)
+    let as' = as
+    -- let as' = if boxP then map (\a -> if a == TAnnotation "Map" then TAnnotation "BoxMap" else a) as else as
+    -- let as' = map (\a -> if boxP && a == TAnnotation "Map" then TAnnotation "BoxMap" else a) as
+    addComposite (namedTAnnotations as') et
+    case annotationComboIdT as' of
         Nothing -> return $ R.Named (R.Specialized [ct] $ R.Name "Collection")
         Just i' -> return $ R.Named (R.Specialized [ct] $ R.Name i')
 genCType (tag -> TAddress) = return R.Address
