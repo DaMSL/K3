@@ -114,6 +114,7 @@ labelExpr (SExpr (tag -> EConstant (CString i))) = SLabel i
 labelExpr (SExpr (tag -> EConstant (CInt i)))    = SLabel $ show $ abs i
 labelExpr (SExpr (tag -> EConstant (CReal r)))   = SLabel $ show $ abs r
 labelExpr (SExpr (tag -> EConstant (CBool b)))   = SLabel $ show b
+labelExpr (SExpr (tag -> EVariable i ))          = SLabel i
 labelExpr x = error $ "Invalid splice expression for labelExpr: " ++ show x
 
 labelLiteral :: SpliceValue -> SpliceValue
@@ -388,3 +389,14 @@ pattern PFRelation n ijs <-
 
 pattern PGRelation n ijs <-
   PPrjApp3 (relOrIndexId -> Just n) "group_by" _ _ (PLam _ (PLam _ (PBindAs _ (BRecord ijs) _ _) _) _) _ _ _ _
+
+
+mosaicGMRKey :: SpliceValue -> String -> SpliceValue
+mosaicGMRKey (SType t@(tag -> (TRecord ids))) s = SExpr $ EC.record $ map (\x -> (x, EC.project x $ EC.variable s)) $ init ids
+
+mosaicGMRMultiplicity :: SpliceValue -> String -> SpliceValue
+mosaicGMRMultiplicity (SType t@(tag -> (TRecord ids))) s = SExpr $ EC.project (last ids) (EC.variable s)
+
+mosaicGMRFlatten :: SpliceValue -> String -> SpliceValue
+mosaicGMRFlatten (SType t@(tag -> (TRecord ids))) s = SExpr $ EC.record $ map (\x -> (x, EC.project x $ EC.project "key" $ EC.variable s)) (init ids) 
+                                                                         ++ [(last ids, EC.project "value" $ EC.variable s)]

@@ -2,6 +2,16 @@ include "Annotation/Maps/MapE.k3"
 include "Core/Barrier.k3"
 include "Core/Messaging.k3"
 
+control MosaicLoader
+{
+    ?loader ?paths (?Col : collection ?T)  => $.[loader] $.[paths] $.[Col];
+                                              $[|labelExpr 'Col.expr|] = ($.[Col].group_by
+					                  (\x -> $[|mosaicGMRKey 'T.typ "x"|])
+							  (\a -> \x -> a + $[|mosaicGMRMultiplicity 'T.typ "x"|])
+							  0).fold (\a -> \e -> (a.insert $[|mosaicGMRFlatten 'T.typ "e"|]; a)) empty $::[T] @Collection
+
+}
+
 // Create base relation indexes for Mosaic warmup map accesses.
 control MosaicIndex[ lbl          : label
                    , relation     : label
