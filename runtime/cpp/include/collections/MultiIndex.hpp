@@ -28,6 +28,8 @@
 #include <yas/serializers/std_types_serializers.hpp>
 #include <yas/serializers/boost_types_serializers.hpp>
 
+#include "types/BaseString.hpp"
+
 #ifdef BSL_ALLOC
 #include <bsl_memory.h>
 #include <bsls_blockgrowth.h>
@@ -1240,20 +1242,45 @@ class MultiIndexVMap
   template<class Archive>
   void serialize(Archive &ar) const {
     ar.write(container.size());
-    for (const auto& elem : container) {
-      ar & elem;
+    for (const auto& tup: container) {
+      // Write the key
+      const Key& k = std::get<0>(tup);
+      ar & k;
+
+      // Write the inner map: a size, then individual keys and values
+      const auto& map = std::get<1>(tup);
+      ar.write(map.size());
+      for (const auto& elem : map) {
+        ar & elem.first;
+	ar & elem.second;
+      }
     }
   }
 
   template<class Archive>
   void serialize(Archive &ar) {
-    size_t sz = 0;
-    ar.read(sz);
-    while ( sz > 0 ) {
-      Elem elem;
-      ar & elem;
-      container.emplace(elem);
-      sz--;
+    size_t out_sz = 0;
+    ar.read(out_sz);
+    while ( out_sz > 0 ) {
+      // Read the key
+      Key k;
+      ar & k;
+
+      // Read the Inner Map
+      size_t in_sz = 0;
+      ar.read(in_sz);
+      VMap inner;
+      while (in_sz > 0) {
+        typename VMap::key_type k;
+        typename VMap::mapped_type v;
+	ar & k;
+	ar & v;
+	auto pair = std::make_pair(std::move(k), std::move(v));
+	inner.insert(std::move(pair));
+	in_sz--;
+      }
+      container.emplace(std::make_tuple<Key, VMap>(std::move(k), std::move(inner)));
+      out_sz--;
     }
   }
 
