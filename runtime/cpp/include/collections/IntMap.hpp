@@ -27,6 +27,8 @@ template <class R>
 class IntMap {
   using Key = typename R::KeyType;
   using CloneFn = void (*)(void*, void*, size_t);
+  using GetKeyFn = uint32_t (*)(void*);
+  using SetKeyFn = void (*)(void*, uint32_t);
   using Container = shared_ptr<mapi>;
 
  public:
@@ -520,6 +522,15 @@ class IntMap {
     new (dest) R(*static_cast<R*>(src));
   }
 
+  static inline uint32_t getKey(void* record) {
+    return static_cast<R*>(record)->key;
+  }
+
+  static inline void setKey(void* record, uint32_t newKey) {
+    static_cast<R*>(record)->key = newKey;
+    return;
+  }
+
   static inline void moveElem(void* dest, void* src, size_t sz) {
     new (dest) R(std::move(*static_cast<R*>(src)));
   }
@@ -542,6 +553,8 @@ class IntMap {
       container = Container(mapi_new(sz), [](mapi* m) { mapi_free(m); });
     }
     mapi_clone(get_mapi(), (CloneFn)&IntMap<R>::cloneElem);
+    mapi_getKey(get_mapi(), (GetKeyFn)&IntMap<R>::getKey);
+    mapi_setKey(get_mapi(), (SetKeyFn)&IntMap<R>::setKey);
   }
 
   void init_mapi(bool alloc, size_t sz) const {
@@ -550,6 +563,8 @@ class IntMap {
           Container(mapi_new(sz), [](mapi* m) { mapi_free(m); });
     }
     mapi_clone(get_mapi(), (CloneFn)&IntMap<R>::cloneElem);
+    mapi_getKey(get_mapi(), (GetKeyFn)&IntMap<R>::getKey);
+    mapi_setKey(get_mapi(), (SetKeyFn)&IntMap<R>::setKey);
   }
 
   template <class archive>
