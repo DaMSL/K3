@@ -194,7 +194,7 @@ declare sqrt : real -> real
 // Collection builtins
 
 // Collection enumeration [0,1,..n-1]
-@:ErrorFn
+@:{Boxable}
 declare range : int -> collection {elem : int} @Seq
   with effects \x -> R[x]
 
