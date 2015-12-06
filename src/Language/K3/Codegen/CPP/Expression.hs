@@ -109,6 +109,11 @@ hasMoveProperty ae = case ae of
 forceMoveP :: K3 Expression -> Bool
 forceMoveP e = isJust (e @~ hasMoveProperty)
 
+hasBoxableProperty :: Annotation Expression -> Bool
+hasBoxableProperty ae = case ae of
+                       (EProperty s) -> ePropertyName s == "Boxable"
+                       _ -> False
+
 -- Get the materializaitons of a given expression
 getMDecisions :: K3 Expression -> M.Map (Identifier, Direction) Method
 getMDecisions e = case e @~ isEMaterialization of
@@ -649,7 +654,11 @@ inline e@(tag -> EOperate OApp) = do
 
   (unzip -> (argDecls, argPasses)) <- mapM reifyArg $ zip3 xs xvs as
 
-  let eName i = maybe (return i) (const $ getKType e >>= genCType >>= \rt -> return $ R.Specialized [rt] i)
+  br <- gets (boxRecords . flags)
+
+  let nameMod = if br && isJust (f @~ hasBoxableProperty) then (R.nameConcat "boxed_") else id
+
+  let eName i = maybe (return $ nameMod i) (const $ getKType e >>= genCType >>= \rt -> return $ R.Specialized [rt] (nameMod i))
                   (f @~ CArgs.isErrorFn)
   fv' <- case fv of
            R.Project s i -> R.Project s <$> eName i
