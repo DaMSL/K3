@@ -34,6 +34,7 @@ module Language.K3.Codegen.CPP.Representation (
 
   bind,
   flattenFnType,
+  nameConcat,
 
   Declaration(..),
   Statement(..),
@@ -459,3 +460,9 @@ instance Substitutable Declaration where
     ScalarDecl n t me -> ScalarDecl (subst new old n) (subst new old t) (subst new old <$> me)
     TemplateDecl imts d -> TemplateDecl [(i, subst new old <$> mt) | (i, mt) <- imts] (subst new old d)
     UsingDecl enn mn -> UsingDecl (subst new old <$> enn) (subst new old <$> mn)
+
+nameConcat :: String -> Name -> Name
+nameConcat p s = case s of
+  Name k -> Name (p ++ k)
+  Qualified q k -> Qualified q (nameConcat p k)
+  Specialized ts k -> Specialized ts (nameConcat p k)
