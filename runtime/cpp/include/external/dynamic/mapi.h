@@ -30,6 +30,8 @@ struct mapi
   uint32_t    empty_key;
   void      (*release)(void *);
   void      (*clone)(void *, void *, size_t);
+  uint32_t  (*getKey)(void *);
+  void      (*setKey)(void *, uint32_t);
 };
 
 /* allocators */
@@ -38,6 +40,8 @@ void          mapi_init(mapi *, size_t);
 void          mapi_empty_key(mapi *, uint32_t);
 void          mapi_release(mapi *, void (*)(void *));
 void          mapi_clone(mapi *, void (*)(void*, void*, size_t));
+void          mapi_getKey(mapi *, uint32_t (*)(void*));
+void          mapi_setKey(mapi *, void (*)(void*, uint32_t));
 void          mapi_free(mapi *);
 
 /* capacity */
