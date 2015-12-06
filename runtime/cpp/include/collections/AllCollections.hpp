@@ -23,3 +23,5 @@
 #include "collections/UniquePolyBuffer.hpp"
 #include "HashCollections.hpp"
 #include "collections/BoxedMap.hpp"
+#include "collections/BoxedIntMap.hpp"
+#include "collections/BoxedStrMap.hpp"
