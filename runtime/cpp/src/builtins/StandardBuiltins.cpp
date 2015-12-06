@@ -9,6 +9,22 @@
 
 namespace K3 {
 
+Seq<R_elem<int>> StandardBuiltins::range(int i) {
+  Seq<R_elem<int>> result;
+  for (int j = 0; j < i; j++) {
+    result.insert(R_elem<int> { j });
+  }
+  return result;
+}
+
+Seq<Box<R_elem<int>>> StandardBuiltins::boxed_range(int i) {
+  Seq<Box<R_elem<int>>> result;
+  for (int j = 0; j < i; j++) {
+    result.insert(make_box<R_elem<int>>(j));
+  }
+  return result;
+}
+
 StandardBuiltins::StandardBuiltins(Engine& engine)
     : __engine_(engine), __rand_generator_(76), __rand_distribution_(0.0, 1.0), __word_distribution_{1, 1, 1, 1} {
   __seed_ = 76;

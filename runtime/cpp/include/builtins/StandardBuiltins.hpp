@@ -9,6 +9,8 @@
 #include "types/BaseString.hpp"
 #include "Common.hpp"
 
+#include "collections/AllCollections.hpp"
+
 namespace K3 {
 
 class Engine;
@@ -18,8 +20,8 @@ class StandardBuiltins {
   unit_t print(const string_impl& message);
   unit_t sleep(int n);
   unit_t haltEngine(unit_t);
-  template <class T>
-  T range(int i);
+  K3::Seq<R_elem<int>> range(int i);
+  K3::Seq<K3::Box<R_elem<int>>> boxed_range(int i);
   template <class T>
   T error(unit_t);
   template <class T>
@@ -38,15 +40,6 @@ class StandardBuiltins {
   std::vector<K3::base_string> __words_;
   unsigned int __seed_;
 };
-
-template <class T>
-T StandardBuiltins::range(int i) {
-  T result;
-  for (int j = 0; j < i; j++) {
-    result.insert(j);
-  }
-  return result;
-}
 
 template <class T>
 T StandardBuiltins::error(unit_t) {
