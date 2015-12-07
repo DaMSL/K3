@@ -134,6 +134,7 @@ namespace Libdynamic {
   }
 
   bool member(const R& r) const {
+    mapi* m = get_mapi();
     return m->size == 0 ? false : (mapi_find(m, r->key) != nullptr);
   }
 
