@@ -36,7 +36,7 @@ namespace Libdynamic {
   using Container = shared_ptr<mapi>;
 
  public:
-  IntMap() : container() { std::cout << "Constructed." << std::endl; }
+  IntMap() : container() {}
 
   IntMap(const Container& con) {
     mapi* m = con.get();
@@ -134,18 +134,6 @@ namespace Libdynamic {
   }
 
   bool member(const R& r) const {
-    mapi* m = get_mapi();
-    std::cout << "searching for: " << r->key << std::endl;
-    std::cout << "size: " << m->size << std::endl;
-    std::cout << "capacity: " << m->capacity << std::endl;
-    std::cout << "found: " << mapi_find(m, r->key) << std::endl;
-    auto at = mapi_at(m, r->key);
-    std::cout << "at: " << at << std::endl;
-    if (at) {
-      std::cout << "empty?: " << mapi_empty(m, at) << std::endl;
-      std::cout << "super key: " << mapi_super(at)->key << std::endl;
-      std::cout << "empty key: " << m->empty_key << std::endl;
-    }
     return m->size == 0 ? false : (mapi_find(m, r->key) != nullptr);
   }
 
@@ -234,7 +222,6 @@ namespace Libdynamic {
   template <class F, class G>
   unit_t upsert_with(const R& rec, F f, G g) {
     mapi* m = get_mapi();
-    std::cout << m->getKey << std::endl;
     if (m->size == 0) {
       auto* placement = static_cast<R*>(
           mapi_insert(m, const_cast<void*>(static_cast<const void*>(&rec))));
@@ -558,28 +545,22 @@ namespace Libdynamic {
   friend class boost::serialization::access;
 
   mapi* get_mapi() const {
-    std::cout << "Getting MAPI: " << container << std::endl;
     if (!container) {
-      std::cout << "Initializing MAPI." << std::endl;
       init_mapi(true, sizeof(R));
     }
     return container.get();
   }
 
   void init_mapi(bool alloc, size_t sz) {
-    std::cout << "Calling init_mapi" << std::endl;
     if (alloc) {
       container = Container(mapi_new(sz), [](mapi* m) { mapi_free(m); });
     }
     mapi_clone(get_mapi(), (CloneFn)&IntMap<R>::cloneElem);
     mapi_getKey(get_mapi(), (GetKeyFn)&IntMap<R>::getKey);
     mapi_setKey(get_mapi(), (SetKeyFn)&IntMap<R>::setKey);
-
-    std::cout << "Initialized getKey at: " << get_mapi()->getKey << std::endl;
   }
 
   void init_mapi(bool alloc, size_t sz) const {
-    std::cout << "Calling init_mapi" << std::endl;
     if (alloc) {
       const_cast<shared_ptr<mapi>&>(container) =
           Container(mapi_new(sz), [](mapi* m) { mapi_free(m); });
@@ -587,7 +568,6 @@ namespace Libdynamic {
     mapi_clone(get_mapi(), (CloneFn)&IntMap<R>::cloneElem);
     mapi_getKey(get_mapi(), (GetKeyFn)&IntMap<R>::getKey);
     mapi_setKey(get_mapi(), (SetKeyFn)&IntMap<R>::setKey);
-    std::cout << "Initialized getKey at: " << get_mapi()->getKey << std::endl;
   }
 
   template <class archive>
