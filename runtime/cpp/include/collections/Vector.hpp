@@ -162,22 +162,22 @@ class Vector<R_elem<bool>> : public VectorDS<K3::Vector, bool> {
   using const_iterator = bool_iterator<std::vector<bool>::const_iterator>;
 
   iterator begin() {
-    auto c = Super::getContainer();
+    auto &c = Super::getContainer();
     return iterator(c.begin());
   }
 
   iterator end() {
-    auto c = Super::getContainer();
+    auto &c = Super::getContainer();
     return iterator(c.end());
   }
 
   const_iterator begin() const {
-    auto c = Super::getConstContainer();
+    auto const &c = Super::getConstContainer();
     return const_iterator(c.begin());
   }
 
   const_iterator end() const {
-    auto c = Super::getConstContainer();
+    auto const &c = Super::getConstContainer();
     return const_iterator(c.end());
   }
 
