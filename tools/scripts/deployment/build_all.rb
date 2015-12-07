@@ -150,11 +150,13 @@ def run(name)
         if !select?(experiment, query, role)
           next
         end
+
+        role_prefix = $options.fetch(:role_dir, name)
         for i in 1..($options[:trials]) do
           puts "\tSubmitting #{role} for #{experiment}/#{query} trial #{i}"
           response = RC.post(
             "http://qp2:5000/jobs/#{slugify(experiment, query)}/#{apps[slugify(experiment, query)]}",
-            {:file => File.new("#{name}/roles/#{yml}")},
+            {:file => File.new("#{role_prefix}/roles/#{yml}")},
             :accept => :json
           )
           json = JSON.parse response
@@ -322,6 +324,7 @@ def main()
     opts.on("-l", "--list", "List matching workloads") { $options[:list] = true }
 
     opts.on("-w", "--workdir [PATH]",    String,  "Working Directory") { |s| $options[:workdir]      = s    }
+    opts.on("-r", "--role-dir [PATH]",   String,  "Role Directory")    { |r| $options[:role_dir]     = r    }
     opts.on("-t", "--trials [NUM]",      Integer, "Number of Trials")  { |i| $options[:trials]       = i    }
     opts.on("-d", "--correctdir [PATH]", Integer, "Number of Trials")  { |s| $options[:correctdir]   = s    }
 
