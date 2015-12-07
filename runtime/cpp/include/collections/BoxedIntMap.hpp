@@ -340,11 +340,11 @@ namespace Libdynamic {
   }
 
   template <typename F1, typename F2, typename Z>
-  IntMap<R_key_value<RT<F1, R>, Z>> group_by(F1 grouper, F2 folder, const Z& init) const
+  IntMap<Box<R_key_value<RT<F1, R>, Z>>> group_by(F1 grouper, F2 folder, const Z& init) const
   {
     // Create a map to hold partial results
     typedef RT<F1, R> K;
-    IntMap<R_key_value<K, Z>> result;
+    IntMap<Box<R_key_value<K, Z>>> result;
 
     mapi* m = get_mapi();
     mapi* n = result.get_mapi();
@@ -354,10 +354,10 @@ namespace Libdynamic {
       K key = grouper(*elem);
       auto existing_acc = mapi_find(n, key);
       if (existing_acc == nullptr) {
-        R_key_value<K, Z> elem(key, std::move(folder(init, *elem)));
+        auto elem = make_box<R_key_value<K, Z>>(key, std::move(folder(init, *elem)));
         mapi_insert(n, &elem);
       } else {
-        R_key_value<K, Z> elem(
+        auto elem = make_box<R_key_value<K, Z>>(
             key, std::move(folder(std::move(existing_acc->value), *elem)));
         mapi_erase(n, key);
         mapi_insert(n, &elem);
@@ -367,7 +367,7 @@ namespace Libdynamic {
   }
 
   template <typename F1, typename F2, typename Z>
-  Map<R_key_value<RT<F1, R>, Z>> group_by_generic(F1 grouper, F2 folder, const Z& init) const
+  Map<Box<R_key_value<RT<F1, R>, Z>>> group_by_generic(F1 grouper, F2 folder, const Z& init) const
   {
     // Create a std::unordered_map to hold partial results
     typedef RT<F1, R> K;
@@ -383,10 +383,9 @@ namespace Libdynamic {
       accs[key] = folder(std::move(accs[key]), *elem);
     }
 
-    Map<R_key_value<K, Z>> result;
+    Map<Box<R_key_value<K, Z>>> result;
     for (auto&& it : accs) {
-      result.insert(std::move(
-          R_key_value<K, Z>{std::move(it.first), std::move(it.second)}));
+      result.insert(make_box<R_key_value<K, Z>>(std::move(it.first), std::move(it.second)));
     }
     return result;
   }
