@@ -730,12 +730,16 @@ def post_process_latencies(jobid, sw_regex, script_path)
 end
 
 # create heat maps for messages
-def plot_messages(jobid, script_path)
+def plot_messages(jobid, nice_name, script_path)
   job_path = File.join($workdir, "job_#{jobid}")
   plots_path = File.join(script_path, "plots")
-  yaml_path = File.join(job_path, "#{jobid}_msgs.yaml")
-  run("#{File.join(plots_path, "process-msg-counts.rb")} #{job_path} > #{yaml_path}", always_out:true)
-  run("#{File.join(plots_path, "plot-msg-counts.py")} #{yaml_path} --out-prefix #{File.join(job_path, "heat")}", always_out:true)
+  yaml_path = $options[:run_mode] == :local ? "local_msgs.yaml" : File.join(job_path, "#{jobid}_msgs.yaml")
+  local_path = File.join($workdir, "#{nice_name}_local.yaml")
+  path = $options[:run_mode] == :local ? "-f #{local_path}" : "-j #{job_path}"
+  heat_path = $options[:run_mode] == :local ? "heat" : File.join(job_path, "heat")
+
+  run("#{File.join(plots_path, "process-msg-counts.rb")} #{path} > #{yaml_path}", always_out:true)
+  run("#{File.join(plots_path, "plot-msg-counts.py")} #{yaml_path} --out-prefix #{heat_path}", always_out:true)
 end
 
 def check_param(p, nm)
@@ -1043,7 +1047,7 @@ def main()
 
   #plot messages
   if $options[:plot_messages]
-    plot_messages(jobid, script_path)
+    plot_messages(jobid, nice_name, script_path)
   end
 
   if $options[:compare]

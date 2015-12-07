@@ -329,7 +329,7 @@ def main():
                         dest="num_switches", default=1)
     parser.add_argument("-n", "--nodes", type=int, help="number of nodes",
                         dest="num_nodes", default=4)
-    parser.add_argument("--nmask", type=str, help="mask for nodes", default="qp-hm.|qp-hd.?")
+    parser.add_argument("--nmask", type=str, help="mask for nodes", default="^.*hd[0-9].*$")
     parser.add_argument("--perhost", type=int, help="peers per host", default=None)
 
     parser.add_argument("--csv_path", type=str, help="path of csv data source", default=None)

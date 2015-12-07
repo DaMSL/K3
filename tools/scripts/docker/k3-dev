@@ -47,7 +47,8 @@ RUN apt-get update && apt-get install -y \
                        opam \
                        ruby2.2 ruby2.2-dev python python-dev python-pip \
                        postgresql-client-9.4 libpq-dev \
-                       libzmq3-dev libre2-dev numactl libunwind-dev && \
+                       libzmq3-dev libre2-dev numactl libunwind-dev
+                       libfreetype6-dev libpng12-dev && \
     update-alternatives \
       --install /usr/bin/ruby ruby /usr/bin/ruby2.2 50 \
       --slave /usr/bin/irb irb /usr/bin/irb2.2 \
@@ -62,6 +63,7 @@ RUN apt-get update && apt-get install -y \
     pip install pytz && \
     pip install enum34 && \
     pip install Flask-SocketIO && \
+    pip install matplotlib && \
     gem install pg && \
     opam init -a && \
     opam switch 4.02.1 && \
