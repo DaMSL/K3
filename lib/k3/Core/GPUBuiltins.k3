@@ -7,23 +7,19 @@ declare device_info      : () -> ()
 
 // A Simple function, send a GPU code string and
 // compile it in runtime with no headers
-// Usage: compile_to_ptx_str <source code string> <ptx name>
-@:CArgs 2
-declare compile_to_ptx_str : string -> string -> string
-  with effects \x -> \y -> [R[x]; R[y]]
+// Usage: compile_to_ptx_str <source code string> 
+@:CArgs 1
+declare compile_to_ptx_str :  string -> string
+  with effects \x -> [R[x]]
 
 // Usage: compile_to_ptx_file <source code string> <ptx file name>
 @:CArgs 2
 declare compile_to_ptx_file : string -> string -> int
   with effects \x -> \y -> [R[x]; R[y]]
 
-// Usage: transformer_gpu_int <source vector> <modulename> <funname> <ptx> <deviceid>
-@:CArgs 5
-declare transformer_gpu_int : collection {elem: int} @Vector -> string -> string -> string -> int
-                              -> collection {elem: int} @Vector
-  with effects \x -> \y -> \z -> \d -> \p -> [R[x]; R[y]; R[z]; R[d]; R[p]]
+// Usage: load_ptx_from_file ptx_filename
+@:CArgs 1
+declare load_ptx_from_file : string -> string
+  with effects \x -> [R[x]]
 
-@:CArgs 5
-declare transformer_gpu_real : collection {elem: real} @Vector -> string -> string -> string -> int
-                            -> collection {elem: real} @Vector
-  with effects \x -> \y -> \z -> \d -> \p -> [R[x]; R[y]; R[z]; R[d]; R[p]]
+ 
