@@ -232,17 +232,17 @@ def harvest(statuses, out_folder)
       for tar in tars
         url = "http://qp2:5000/fs/jobs/#{info["name"]}/#{job_id}/#{tar}"
         name = File.basename(tar, ".tar")
-        `mkdir -p #{run_folder}/#{name}`
+        `mkdir -p #{run_folder}/#{job_id}/#{name}`
         response = RC.get(url)
-        file = File.new("#{run_folder}/#{name}/sandbox.tar", 'w')
+        file = File.new("#{run_folder}/#{job_id}/#{name}/sandbox.tar", 'w')
         file.write response
         file.close
-        `tar -xvf #{run_folder}/#{name}/sandbox.tar -C #{run_folder}/#{name}`
+        `tar -xvf #{run_folder}/#{job_id}/#{name}/sandbox.tar -C #{run_folder}/#{job_id}/#{name}`
       end
       # Find the master tar, for results.csv
       master_tar = tars.select { |x| x =~ /.*\.0_.*/}[0]
       name = File.basename(master_tar, ".tar")
-      master_folder = "#{run_folder}/#{name}/"
+      master_folder = "#{run_folder}/#{job_id}/#{name}/"
       results[job_id] = info
       results[job_id].merge!({"status" => "RAN", "output" => master_folder})
       time_file = "#{master_folder}/time.csv"
