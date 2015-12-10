@@ -1,7 +1,8 @@
 #include "cuda.h"
 #include "nvrtc.h"
 #include <iostream>
-
+#include <regex>
+#include <fstream>
 #include "builtins/GPUBuiltins.hpp"
 
 #define NVRTC_SAFE_CALL(x)                                        \
@@ -20,7 +21,8 @@
 
 namespace K3 {
 
-const string_impl extern_C("extern \"C\" ");
+const string_impl extern_C("struct R_elem2 {int elem;}; \n  extern \"C\" ");
+//const string_impl extern_C("template <typename R_elem> \n extern \"C\" ");
 
 GPUimpl::GPUimpl() {
   CUDA_SAFE_CALL(cuInit(0));
@@ -75,7 +77,6 @@ GPUimpl::dev_info()
 
 void 
 GPUimpl::compile_ptx(const char* src, 
-                     const char* name,
                      std::string& ptxstr,
                      int nh, 
                      const char** headers,
@@ -111,7 +112,7 @@ GPUimpl::compile_ptx(const char* src,
   opts[3] = "--builtin-initializer-list=true";
   opts[4] = "--device-c";
       
-  NVRTC_SAFE_CALL(nvrtcCreateProgram(&prog, src, name, nh, headers, includeNames));
+  NVRTC_SAFE_CALL(nvrtcCreateProgram(&prog, src, "kernel", nh, headers, includeNames));
   NVRTC_SAFE_CALL(nvrtcCompileProgram(prog, 5, opts));
     
   size_t ptxsize;
@@ -197,7 +198,7 @@ GPUBuiltins::device_info(unit_t) {
   _impl->dev_info();
   return unit_t{};
 }
-
+/*
 string_impl  
 GPUBuiltins::compile_to_ptx_str(const string_impl& code, 
                                 const string_impl& ptxname){
@@ -205,67 +206,39 @@ GPUBuiltins::compile_to_ptx_str(const string_impl& code,
   _impl->compile_ptx((extern_C + code).c_str(), code.c_str(), ptx);
   return string_impl(ptx);
 }
+*/
+
+string_impl  
+GPUBuiltins::compile_to_ptx_str(const string_impl& code){
+  std::string ptx;
+  std::regex e ("__(device|global|host)__");
+  std::regex e0 ("extern(\\s)+\\\"C\\\"(\\s)+__(device|global)__");
+  std::string kernel =  static_cast<std::string>(code);
+  if (!std::regex_match(kernel, e0) ){
+    kernel = static_cast<std::string> (std::regex_replace (kernel, e, " extern \"C\" $0"));
+  }
+  _impl->compile_ptx(kernel.c_str(), ptx);
+  return string_impl(ptx);
+}
   
 int
 GPUBuiltins::compile_to_ptx_file(const string_impl& code, 
                                  const string_impl& fname){
+  std::ofstream file(fname.c_str());
+  file << compile_to_ptx_str(code);
+  file.close();
   return 0;
 }
 
-/*
-unit_t 
-GPUBuiltins::run_ptx(const string_impl ptx, const string_impl func_name){
-		// Load the generated PTX and get a handle to the SAXPY kernel.
-		  CUdevice cuDevice;
-		  CUcontext context;
-		  CUmodule module;
-		  CUfunction kernel;
-		  CUDA_SAFE_CALL(cuInit(0));
-		  CUDA_SAFE_CALL(cuDeviceGet(&cuDevice, 0));
-		  CUDA_SAFE_CALL(cuCtxCreate(&context, 0, cuDevice));
-		  CUDA_SAFE_CALL(cuModuleLoadDataEx(&module, ptx.c_str(), 0, 0, 0));
-		  CUDA_SAFE_CALL(cuModuleGetFunction(&kernel, module, func_name.c_str()));
-		  // Generate input for execution, and create output buffers.
-		  size_t n = NUM_THREADS * NUM_BLOCKS;
-		  size_t bufferSize = n * sizeof(float);
-		  float a = 5.1f;
-		  float *hX = new float[n], *hY = new float[n], *hOut = new float[n];
-		  for (size_t i = 0; i < n; ++i) {
-		    hX[i] = static_cast<float>(i);
-		    hY[i] = static_cast<float>(i * 2);
-		  }
-		  CUdeviceptr dX, dY, dOut;
-		  CUDA_SAFE_CALL(cuMemAlloc(&dX, bufferSize));
-		  CUDA_SAFE_CALL(cuMemAlloc(&dY, bufferSize));
-		  CUDA_SAFE_CALL(cuMemAlloc(&dOut, bufferSize));
-		  CUDA_SAFE_CALL(cuMemcpyHtoD(dX, hX, bufferSize));
-		  CUDA_SAFE_CALL(cuMemcpyHtoD(dY, hY, bufferSize));
-		  // Execute SAXPY.
-		  void *args[] = { &a, &dX, &dY, &dOut, &n };
-		  CUDA_SAFE_CALL(
-		    cuLaunchKernel(kernel,
-		                   NUM_THREADS, 1, 1,   // grid dim
-		                   NUM_BLOCKS, 1, 1,    // block dim
-		                   0, NULL,             // shared mem and stream
-		                   args, 0));           // arguments
-		  CUDA_SAFE_CALL(cuCtxSynchronize());
-		  // Retrieve and print output.
-		  CUDA_SAFE_CALL(cuMemcpyDtoH(hOut, dOut, bufferSize));
-		  for (size_t i = 0; i < n; ++i) {
-		    std::cout << a << " * " << hX[i] << " + " << hY[i]
-		              << " = " << hOut[i] << '\n';
-		  }
-		  // Release resources.
-		  CUDA_SAFE_CALL(cuMemFree(dX));
-		  CUDA_SAFE_CALL(cuMemFree(dY));
-		  CUDA_SAFE_CALL(cuMemFree(dOut));
-		  CUDA_SAFE_CALL(cuModuleUnload(module));
-		  CUDA_SAFE_CALL(cuCtxDestroy(context));
-		  delete[] hX;
-		  delete[] hY;
-		  delete[] hOut;
-
-		return unit_t{};
-	}
-*/
+string_impl
+GPUBuiltins::load_ptx_from_file(const string_impl& filename){
+  std::ifstream file(filename.c_str());
+  auto s = [&file]{
+    std::ostringstream ss{};
+    ss << file.rdbuf();
+    return ss.str();
+  }();
+  file.close();
+  return string_impl(s);
+}
 } // namespace K3

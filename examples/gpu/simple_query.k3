@@ -1,55 +1,75 @@
 include "Core/Builtins.k3"
 include "Core/GPUBuiltins.k3"
+include "Annotation/Collection.k3"
+include "Annotation/Vector.k3"
+include "Annotation/CArray.k3"
 
 // A Simple synthetic query for testing
-
-// A Simple synthetic schema that covers all primitives 
 typedef simple = {
     s_id     : int,
-    s_name   : string,
     s_age    : int,
+    s_name   : char(4),
     s_wage   : real
 }
 
-// A Simple result schema
-typedef simple_result = {
-    s_name   : string,
-    s_wage   : real
-}
+typedef s_table = collection simple @Vector
 
-// table of simple
-typedef s_table = collection simple        @Vector
-typedef r_table = collection simple_result @Vector
+// For simple query
+@:CArgs 5
+declare transformer_gpu_sq : s_table -> string -> string -> string -> int
+                            -> s_table
+  with effects \x -> \y -> \z -> \d -> \p -> [R[x]; R[y]; R[z]; R[d]; R[p]] 
+
 
 declare input  : s_table
-declare output : mut r_table
+declare output : mut s_table
 
 declare device_code : string = ""
 declare ptx         : mut string = ""
 
+
+declare select : string =
+              " struct R_in {                                           " ++
+              "   int s_id;                                             " ++
+              "   int s_age;                                            " ++
+              "   float s_wage;                                          " ++
+              " };                                                      " ++ 
+              " __global__                                              " ++
+              " void select(const R_in *A, R_in *C, size_t n)           " ++
+              " {                                                       " ++
+              "   size_t i = blockDim.x * blockIdx.x + threadIdx.x;     " ++
+              "   if (i < n){                                           " ++
+              "     C[i].s_id = A[i].s_id;                              " ++
+              "     C[i].s_wage = A[i].s_wage - 1;                      " ++
+              "     C[i].s_age = A[i].s_age;                            " ++
+              "   }                                                     " ++
+              " }                                                       "   
+
 trigger q1 : () = \_ -> (
    // building synthetic data
    (range 10000).iterate (\r -> input.insert {s_id   : r.elem, 
-                                              s_name : "John",
                                               s_age  : 30,
-                                              s_wage : 45.0
+                                              s_wage : r.elem * 0.66
                                              });
    (range 10000).iterate (\r -> input.insert {s_id   : (r.elem + 10000),
-                                              s_name : "Peter",
                                               s_age  : 40,
-                                              s_wage : 35.0
+                                              s_wage : r.elem * 0.1
                                              });
    
    print "Synthetic data loaded";
    
-   //ptx = (compile_to_ptx_str "query" "simple");
+   (ptx = (compile_to_ptx_str select "simple"));
    
-   //print "ptx compiled in runtime";
+   print "ptx compiled in runtime";
    
-   //output = (transformer_gpu_simple input "simple" "query" ptx 0);
+   output = (transformer_gpu_sq input "simple" "select" ptx 0);
 
-   print "query done"
+   print "query done";  
+   
+   (output.iterate (\r -> print (rtos (r.s_wage)) ) )
+
 )  
 
 source s1 : () = value ()
 feed s1 |> q1                                                       
+

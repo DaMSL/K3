@@ -24,6 +24,8 @@
     }                                                             \
   } while(0)
 
+#define BLOCKSIZ 256
+
 namespace K3 {
 
 struct device_info {
@@ -52,7 +54,6 @@ public:
   int          get_dev_count();
   void         dev_info();
   void         compile_ptx(const char* src,
-                           const char* name,
                            std::string& ptxstr,
                            int nh = 0,
                            const char** headers = NULL,
@@ -94,6 +95,16 @@ public:
 
   void          cleanup(CUcontext* context);
 
+  inline int    getBlockDim(size_t size) {
+    if (size < BLOCKSIZ) return 1;
+    else                 return size/BLOCKSIZ + 1;
+  }
+  
+  inline int    getBlockSiz(size_t size) {
+    if (size < BLOCKSIZ) return size;
+    else                 return BLOCKSIZ;
+  }
+   
   // Template functions 
   template <typename T>
   int transfer_to_device(T* hdata, CUdeviceptr ddata, size_t buffersize)
@@ -134,16 +145,19 @@ public:
   unit_t       device_info(unit_t);
 
   /* Runtime compilation */
-  string_impl  compile_to_ptx_str(const string_impl& code, const string_impl& ptxname);
+  string_impl  compile_to_ptx_str(const string_impl& code);
   int          compile_to_ptx_file(const string_impl& code, const string_impl& fname);
-  
+ 
+  /* ptx file loader */
+  string_impl  load_ptx_from_file(const string_impl& filename);
+ 
   /* Run kernels */
-  template <template<class> class R, typename I, typename O>
-  Vector<R<I>>       transformer_gpu(Vector<R<I>>& in, 
-                                     const string_impl& modname, 
-                                     const string_impl& funname,
-                                     const string_impl& ptx,
-                                     int   dev) {
+  template <template<typename> class Derived, typename O, typename I>
+  unit_t       transformer_gpu(Derived<I>& in,
+                               Derived<O>& out, 
+                               const string_impl& funname,
+                               const string_impl& ptx,
+                               int   dev) {
     if(dev >= _impl->get_dev_count())
       throw "invalid dev id";
 
@@ -158,7 +172,7 @@ public:
     CUDA_SAFE_CALL(cuCtxCreate(&cont, dev, cdev));
     
     size_t size = in.getConstContainer().size();
-    O* res = new O[size];
+    O* res   = new O[size];
     CUDA_SAFE_CALL(cuMemAlloc(&dres, size*sizeof(O)));
  
     cuMemAlloc(&cptr, size * sizeof(I));
@@ -168,7 +182,8 @@ public:
     CUfunction fun;
     CUDA_SAFE_CALL(cuModuleLoadDataEx(&module, ptx.c_str(), 0, 0, 0));
     CUDA_SAFE_CALL(cuModuleGetFunction(&fun, module, funname.c_str()));
-    _impl->run_kernel(fun, &cdev, param, true, 256, 1, 1, 256, 1, 1);    
+    _impl->run_kernel(fun, &cdev, param, true, _impl->getBlockDim(size), 
+                      1, 1, _impl->getBlockSiz(size), 1, 1);    
     
     if(_impl->transfer_to_host(res, dres, sizeof(O) * size) == -1) {
       CUDA_SAFE_CALL(cuMemFree(cptr));    
@@ -178,33 +193,14 @@ public:
     CUDA_SAFE_CALL(cuMemFree(cptr));
     CUDA_SAFE_CALL(cuModuleUnload(module)); 
     CUDA_SAFE_CALL(cuCtxDestroy(cont));  
-    Vector<R<O>> result;
+
     for(int i = 0; i < size; i++)
-      result.insert(res[i]);
+      out.insert(res[i]);
 
     delete[] res;
-    return result;
-  }
-
-  template <template<class> class R>
-  Vector<R<int>>     transformer_gpu_int(Vector<R<int>>& in,
-                                         const string_impl& modname,
-                                         const string_impl& funname,
-                                         const string_impl& ptx,
-                                         int   dev) {
-    return this->transformer_gpu<R, int, int>(in, modname, funname, ptx, dev);
-  }
-
-  template <template<class> class R>
-  Vector<R<float>>   transformer_gpu_real(Vector<R<double>>& in,
-                                          const string_impl& modname,
-                                          const string_impl& funname,
-                                          const string_impl& ptx,
-                                          int   dev) {
-    return this->transformer_gpu<R, double, double>(in, modname, funname, ptx, dev);
+    return unit_t{};
   }
   
-  /* Builtins    */
 private:
   std::shared_ptr<GPUimpl> _impl;
 };

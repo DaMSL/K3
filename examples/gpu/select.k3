@@ -1,0 +1,45 @@
+include "Core/Builtins.k3"
+include "Core/GPUBuiltins.k3"
+
+include "Annotation/Collection.k3"
+include "Annotation/Vector.k3"
+
+declare devicecount : mut int = 0
+
+declare modname : string = "select" //useless
+
+declare kernel_code : mut string = ""
+declare  ptx : mut string = ""
+declare  fn  : string = "select"
+
+declare c  : collection {elem:int} @Vector
+declare re : mut collection {elem:int} @Vector
+
+declare cu_file : string = "/home-4/yliu120@jhu.edu/K3/K3/cuda_kernels/select.cu"
+declare compiled : mut int = -1
+
+// Declared here!
+@:CArgs 5
+declare transformer_gpu :  collection {elem: int}@Vector -> collection {elem: int}@Vector  -> string -> string -> int
+                           -> ()
+  with effects \x -> \y -> \d -> \p -> [R[x]; RW[y]; R[d]; R[p]; R[d]]
+
+
+trigger t : () = \_ -> (
+   devicecount = get_device_count ();
+   print ("GPU device count: " ++ (itos devicecount));
+   device_info ();
+
+   (kernel_code = (load_ptx_from_file cu_file));
+   (ptx = (compile_to_ptx_str kernel_code));
+   print ptx; 
+   
+   // build a vector
+   ((range 10).iterate (\r -> c.insert {elem: r.elem}));
+   (transformer_gpu c re fn ptx 0);
+
+   (re.iterate (\r -> print (itos (r.elem))))  
+)
+
+source s1 : () = value ()
+feed s1 |> t

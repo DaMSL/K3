@@ -8,21 +8,15 @@ declare devicecount : mut int = 0
 
 declare modname : string = "test"
 
-
-declare transformer : string =
-              " __global__ void " ++
-              "transformer(const int *A, int *C, size_t numElements) "     ++
-              "{                                                      "    ++
-              "  size_t i = blockDim.x * blockIdx.x + threadIdx.x;       " ++
-              "  if (i < numElements)                                 "    ++
-              "    C[i] = A[i] + 5;                                 "      ++
-              "}                                                      "
-
+declare transformer : mut string = ""
 declare  ptx : mut string = ""
 declare  fn  : string = "transformer"
 
 declare c  : collection {elem:int} @Vector
 declare re : mut collection {elem:int} @Vector
+
+declare ptx_file : string = "/home-4/yliu120@jhu.edu/K3/K3/cuda_kernels/transformer.ptx"
+declare compiled : mut int = -1
 
 // Declared here!
 @:CArgs 5
@@ -30,15 +24,17 @@ declare transformer_gpu_sq : collection {elem: int}@Vector -> string -> string -
                             -> collection {elem: int}@Vector
   with effects \x -> \y -> \z -> \d -> \p -> [R[x]; R[y]; R[z]; R[d]; R[p]]
 
-
 trigger t : () = \_ -> (
    devicecount = get_device_count ();
    print ("GPU device count: " ++ (itos devicecount));
    device_info ();
-
+   (transformer = (load_ptx_from_file "/home-4/yliu120@jhu.edu/K3/K3/cuda_kernels/transformer.cu"));
    (ptx = (compile_to_ptx_str transformer modname));
+   print ptx;
    
-   print ptx; 
+   (compiled = (compile_to_ptx_file transformer ptx_file));
+   print ("write ptx to file: " ++ ptx_file); 
+   
    // build a vector
    ((range 10000).iterate (\r -> c.insert {elem:1}));
    re = (transformer_gpu_sq c modname fn ptx 0);
