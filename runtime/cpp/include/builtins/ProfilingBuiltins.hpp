@@ -26,6 +26,9 @@
 
 #include "Common.hpp"
 
+#include "unistd.h"
+#include "sys/types.h"
+
 namespace K3 {
 
 class __heap_profiler {
@@ -81,10 +84,17 @@ class ProfilingBuiltins: public __heap_profiler {
   unit_t jemallocStop(unit_t);
   unit_t jemallocDump(unit_t);
 
+  unit_t perfStart(unit_t);
+  unit_t perfStop(unit_t);
+
  protected:
 #ifdef K3_PCM
   PCM *pcm_instance_;
   shared_ptr<SystemCounterState> pcm_initial_state_;
+#endif
+
+#ifdef K3_PERF
+  pid_t pid;
 #endif
 };
 

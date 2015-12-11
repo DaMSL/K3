@@ -87,6 +87,12 @@ with effects \_ -> io
 declare pcmStop: () -> ()
 with effects \_ -> io
 
+declare perfStart: () -> ()
+  with effects \_ -> io
+
+declare perfStop: () -> ()
+  with effects \_ -> io
+
 // openBuiltin: channel id -> builtin channel id -> format -> ()
 // builtin channel id is one of: stdin, stdout, stderr
 @:CArgs 3

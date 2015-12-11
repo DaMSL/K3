@@ -4,6 +4,8 @@
 
 #include "builtins/ProfilingBuiltins.hpp"
 
+#include <sys/wait.h>
+
 namespace K3 {
 
 ProfilingBuiltins::ProfilingBuiltins() {}
@@ -126,6 +128,39 @@ unit_t ProfilingBuiltins::jemallocDump(unit_t) {
   return unit_t{};
 }
 
+  unit_t ProfilingBuiltins::perfStart(unit_t) {
+#ifndef K3_PERF
+    std::cout << "K3_PERF not set, continuing without perf." << std::endl;
+#else
+    std::cout << "K3_PERF set, starting perf record..." << std::endl;
+    auto pid_stream = std::stringstream {};
+    pid_stream << ::getpid();
 
+    std::cout << pid_stream.str() << std::endl;
 
+    pid = fork();
+
+    if (pid == 0) {
+      auto fd = open("/dev/null", O_RDWR);
+      dup2(fd, 1);
+      dup2(fd, 2);
+
+      exit(execl("/usr/bin/perf", "perf", "record", "-o", "perf.data", "-p", pid_stream.str().c_str(), nullptr));
+    }
+#endif
+
+    return unit_t {};
+  }
+
+  unit_t ProfilingBuiltins::perfStop(unit_t) {
+#ifndef K3_PERF
+    std::cout << "K3_PERF not set, ignoring call to stop perf." << std::endl;
+#else
+    std::cout << "K3_PERF set, stopping perf record..." << std::endl;
+    kill(pid, SIGINT);
+    waitpid(pid, nullptr, 0);
+#endif
+
+    return unit_t {};
+  }
 }  // namespace K3
