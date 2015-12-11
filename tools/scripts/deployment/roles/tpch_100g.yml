@@ -3,6 +3,7 @@ volumes:
 name: role 1
 peers: 128
 hostmask: ".*hm.*"
+privileged: True
 k3_globals:
   role: [{i: rows}]
   master: auto
