@@ -19,10 +19,6 @@ control PSendByKey[ dest_trg : expr, barrier_trg : expr, nodes : expr, send_extr
           () @SendPunctuation(trg = barrier_trg, nodes = nodes) )
 }
 
-control AttachIf[envVar: label, attachIfSet: label] {
-  ?E => $[|attachIfVar 'envVar 'attachIfSet 'E.expr|]
-}
-
 // Partition a collection by peer and send partitions to each peer; send an empty partition to any
 // peer that does not have one.
 control PartitionShuffleWithMissing[lbl: label, dest_trg: expr, nodes: expr, send_extra_fn: expr, send_ty: type] {
@@ -31,7 +27,7 @@ control PartitionShuffleWithMissing[lbl: label, dest_trg: expr, nodes: expr, sen
     let partition_table = (((($.[e].group_by_generic @:HGroupBy)
                                      ((\v -> ($[nodes].at (index_by_hash v.key)).addr) @:Projection)
                                      ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
-                                     empty $::[t] @IntMap) @:Fuse) @AttachIf(envVar = [# K3_IsolateArgs], attachIfSet = [# ManualFusion]))
+                                     empty $::[t] @IntMap) @:Fuse) @ManualFusion)
     in $[nodes].iterate (\n ->
     (partition_table.lookup { key: n.addr, value: empty $::[t] @IntMap }
         (\_ -> ($[dest_trg], n.addr) <- $[lbl]_send_ty_default)
@@ -47,7 +43,7 @@ control PartitionShuffleWithMissing[lbl: label, dest_trg: expr, nodes: expr, sen
     let partition_table = (((($.[e].group_by_generic @:HGroupBy)
                                      ((\v -> ($[nodes].at (index_by_hash v.key)).addr) @:Projection)
                                      ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
-                                     empty $::[t] @StrMap) @:Fuse) @AttachIf(envVar = [# K3_IsolateArgs], attachIfSet = [# ManualFusion]))
+                                     empty $::[t] @StrMap) @:Fuse) @ManualFusion)
     in $[nodes].iterate (\n ->
     (partition_table.lookup { key: n.addr, value: empty $::[t] @StrMap }
         (\_ -> ($[dest_trg], n.addr) <- $[lbl]_send_ty_default)
@@ -64,7 +60,7 @@ control PartitionShuffleWithMissing[lbl: label, dest_trg: expr, nodes: expr, sen
     let partition_table = (((($.[e].group_by @:HGroupBy)
                                      ((\v -> ($[nodes].at (index_by_hash v.key)).addr) @:Projection)
                                      ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
-                                     empty $::[t] @Map) @:Fuse) @AttachIf(envVar = [# K3_IsolateArgs], attachIfSet = [# ManualFusion]))
+                                     empty $::[t] @Map) @:Fuse) @ManualFusion)
     in $[nodes].iterate (\n ->
     (partition_table.lookup { key: n.addr, value: empty $::[t] @Map }
         (\_ -> ($[dest_trg], n.addr) <- $[lbl]_send_ty_default)
