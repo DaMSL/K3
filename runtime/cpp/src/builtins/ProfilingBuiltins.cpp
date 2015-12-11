@@ -145,7 +145,9 @@ unit_t ProfilingBuiltins::jemallocDump(unit_t) {
       dup2(fd, 1);
       dup2(fd, 2);
 
-      exit(execl("/usr/bin/perf", "perf", "record", "-o", "perf.data", "-p", pid_stream.str().c_str(), nullptr));
+      auto freq = std::getenv("K3_PERF_FREQUENCY");
+
+      exit(execl("/usr/bin/perf", "perf", "record", "-F", (freq ? freq : "10"), "-o", "perf.data", "-p", pid_stream.str().c_str(), nullptr));
     }
 #endif
 
