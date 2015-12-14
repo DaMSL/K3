@@ -6,16 +6,14 @@ include "Annotation/Vector.k3"
 
 declare devicecount : mut int = 0
 
-declare modname : string = "select" //useless
-
 declare kernel_code : mut string = ""
 declare  ptx : mut string = ""
-declare  fn  : string = "select"
+declare  function  : string = "select"
 
-declare c  : collection {elem:int} @Vector
-declare re : mut collection {elem:int} @Vector
+declare input  : mut collection {elem:int} @Vector
+declare output : mut collection {elem:int} @Vector
 
-declare cu_file : string = "/home-4/yliu120@jhu.edu/K3/K3/cuda_kernels/select.cu"
+declare cu_file : string = "examples/gpu/cuda_kernels/select.cu"
 declare compiled : mut int = -1
 
 // Declared here!
@@ -30,15 +28,15 @@ trigger t : () = \_ -> (
    print ("GPU device count: " ++ (itos devicecount));
    device_info ();
 
-   (kernel_code = (load_ptx_from_file cu_file));
-   (ptx = (compile_to_ptx_str kernel_code));
+   (kernel_code = (load_ptx_from_file cu_file)); //load cuda codes from cu_file (not ptx codes)
+   (ptx = (compile_to_ptx_str kernel_code)); //runtime compilation to ptx 
    print ptx; 
    
    // build a vector
-   ((range 10).iterate (\r -> c.insert {elem: r.elem}));
-   (transformer_gpu c re fn ptx 0);
+   ((range 256).iterate (\r -> input.insert {elem: r.elem}));
+   (transformer_gpu input output function ptx 0);
 
-   (re.iterate (\r -> print (itos (r.elem))))  
+   (output.iterate (\r -> print (itos (r.elem))))  
 )
 
 source s1 : () = value ()

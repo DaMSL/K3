@@ -11,13 +11,14 @@ typedef simple = {
 }
 
 typedef result = {
+    s_id     : int,
     s_wage   : real
 }
 
 typedef s_table = collection simple @Vector
 typedef r_table = collection result @Vector
 
-declare master: address = 127.0.0.1:40000
+declare master: address = 127.0.0.1:40001
 
 // For simple query
 @:CArgs 5
@@ -26,38 +27,38 @@ declare transformer_gpu :  s_table -> r_table  -> string -> string -> int
   with effects \x -> \y -> \d -> \p -> [R[x]; RW[y]; R[d]; R[p]; R[d]] 
 
 declare input  : s_table
-declare output : mut s_table
+declare output : s_table
 
 declare ptx    : mut string = ""
-declare i      : mut int = 0
+@:pinned
+declare index  : mut int = 0
+
+// Timing
+declare time_start : mut int = 0
+declare time_end   : mut int = 0
 
 trigger result : r_table = \res ->
    res.iterate (\r -> if r.s_wage <> 0 then (print (rtos (r.s_wage))) else ())
 
 trigger q1 : int = \i -> (
    // building synthetic data
-   (range 1000000).iterate (\r -> input.insert {s_id   : r.elem + i, 
-                                              s_age  : 30 + i,
-                                              s_wage : r.elem / 1000 * 0.5
-                                             });
-   (range 1000000).iterate (\r -> input.insert {s_id   : (r.elem + 10000 + i * 1000),
-                                              s_age  : 40 + i,
-                                              s_wage : r.elem /1000 * 0.5 + 2000
-                                             });
-   
+   (range 160000000).iterate (\r -> input.insert {s_id   : r.elem + i, 
+                                                 s_age  : 30 + i,
+                                                 s_wage : r.elem / 1000 * 0.5
+                                                });
+    
    print "Synthetic data loaded"; 
-   (transformer_gpu input output "queryplan" ptx i);
-   print ("query done " ++ (itos i));  
+   (ptx = (load_ptx_from_file "examples/gpu/cuda_kernels/select_proj.ptx"));
+   time_start =  now_int(); 
+   (transformer_gpu input output "select_proj" ptx i);
+   time_end =  now_int();
+   print ("time: " ++ (itos (time_end - time_start)));  
    (result, master) <- output
 )  
 
 trigger setup : () = \_ -> (
-  // master load ptx kernel
-  (ptx = (load_ptx_from_file "/home-4/yliu120@jhu.edu/K3/K3/cuda_kernels/sel_proj_groupby.ptx"));   
-  // Load Data and Launch kernel
-  peers.iterate \p -> (((q1, p.addr) <- i) ; (i = i + 1)) 
+  peers.iterate \p -> (((q1, p.addr) <- index) ; (index = index + 1)) 
 )
 
-source s1 : () = value ()
-feed s1 |> setup                                                      
-
+source start : () = value ()
+feed start |> setup                                                      

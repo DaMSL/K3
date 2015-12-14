@@ -4,7 +4,7 @@ struct R {
 
 __device__
 int predicate(const R* input, int index){
-  if (input[index].elem > 5)
+  if (input[index].elem < 5)
     return 1;
   else
     return 0;
@@ -34,7 +34,7 @@ void select(const R *input, R *out_idx, size_t n)
     temp[2 * blockDim.x - 1] = 0;
   }
   // step 3: traverse down the tree
-  for (int stride = blockDim.x ; stride >= 1; stride >>= 1){
+  for (int stride = blockDim.x ; stride >= 2; stride >>= 1){
     __syncthreads();
     int index = (thid + 1) * stride * 2 - 1;
     if (index  < 2 * blockDim.x){
@@ -44,27 +44,28 @@ void select(const R *input, R *out_idx, size_t n)
     }
   }  
  __syncthreads();
-  // inclusive scan -> exclusive scan
-  temp[2 * thid] = temp[2 * thid + 1] ;
-  temp[2 * thid + 1] = (2 * thid + 2 < 2 * blockDim.x ?
-     temp[2 * thid + 2] : temp[2 * thid + 1] + predicate(input, 2 * thid + 1 + start) ) ;
-  __syncthreads();
-  // set all location to -1 (meaning not selected)
-  out_idx[start + 2*thid].elem = -1;
-  out_idx[start + 2*thid + 1].elem = -1;
-  __syncthreads();
-  // write index to the right location (overwrite -1)
-  if (thid != 0 && temp[2 * thid] > temp[2 * thid - 1] ){
-    out_idx[start + temp[2 * thid] - 1].elem = 2 * thid;
-  } 
-  if (thid == 0 && temp[2 * thid] > 0){
-   out_idx[start + temp[2 * thid] - 1].elem = 2 * thid;
-  } 
-  if (temp[2 * thid + 1] > temp[2 * thid]){
-    out_idx[start + temp[2 * thid + 1] - 1].elem = 2 * thid + 1;
-  }
-  // debug only: output exclusive scan
-  //out_idx[2 * thid + start].elem = temp[2 * thid ] ;
-  //out_idx[2 * thid + start + 1].elem = temp[2 * thid + 1] ; 
+//  // inclusive scan -> exclusive scan
+//  temp[2 * thid] = temp[2 * thid + 1] ;
+//  temp[2 * thid + 1] = (2 * thid + 2 < 2 * blockDim.x ?
+//     temp[2 * thid + 2] : temp[2 * thid + 1] + predicate(input, 2 * thid + 1 + start) ) ;
+//  __syncthreads();
+//  // set all location to -1 (meaning not selected)
+//  out_idx[start + 2*thid].elem = -1;
+//  out_idx[start + 2*thid + 1].elem = -1;
+//  __syncthreads();
+//  // write index to the right location (overwrite -1)
+//  if (thid != 0 && temp[2 * thid] > temp[2 * thid - 1] ){
+//    out_idx[start + temp[2 * thid] - 1].elem = 2 * thid;
+//  } 
+//  if (thid == 0 && temp[2 * thid] > 0){
+//   out_idx[start + temp[2 * thid] - 1].elem = 2 * thid;
+//  } 
+//  if (temp[2 * thid + 1] > temp[2 * thid]){
+//    out_idx[start + temp[2 * thid + 1] - 1].elem = 2 * thid + 1;
+//  }
+//  //
+// choice 1. output exclusive scan
+ out_idx[2 * thid + start].elem = temp[2 * thid ] ;
+ out_idx[2 * thid + start + 1].elem = temp[2 * thid + 1] ; 
 } 
 

@@ -2,24 +2,15 @@ include "Core/Builtins.k3"
 include "Core/GPUBuiltins.k3"
 include "Annotation/Collection.k3"
 include "Annotation/Vector.k3"
-include "Annotation/CArray.k3"
 
 // A Simple synthetic query for testing
 typedef simple = {
     s_id     : int,
     s_age    : int,
-    s_name   : char(4),
     s_wage   : real
 }
 
 typedef s_table = collection simple @Vector
-
-// For simple query
-@:CArgs 5
-declare transformer_gpu_sq : s_table -> string -> string -> string -> int
-                            -> s_table
-  with effects \x -> \y -> \z -> \d -> \p -> [R[x]; R[y]; R[z]; R[d]; R[p]] 
-
 
 declare input  : s_table
 declare output : mut s_table
@@ -27,6 +18,10 @@ declare output : mut s_table
 declare device_code : string = ""
 declare ptx         : mut string = ""
 
+@:CArgs 5
+declare transformer_gpu :  s_table -> s_table  -> string -> string -> int
+                           -> ()
+  with effects \x -> \y -> \d -> \p -> [R[x]; RW[y]; R[d]; R[p]; R[d]]
 
 declare select : string =
               " struct R_in {                                           " ++
@@ -58,11 +53,11 @@ trigger q1 : () = \_ -> (
    
    print "Synthetic data loaded";
    
-   (ptx = (compile_to_ptx_str select "simple"));
+   ptx = (compile_to_ptx_str select);
    
    print "ptx compiled in runtime";
    
-   output = (transformer_gpu_sq input "simple" "select" ptx 0);
+   (transformer_gpu input output "select" ptx 0);
 
    print "query done";  
    

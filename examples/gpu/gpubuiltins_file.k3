@@ -6,40 +6,49 @@ include "Annotation/Vector.k3"
 
 declare devicecount : mut int = 0
 
-declare modname : string = "test"
-
-declare transformer : mut string = ""
 declare  ptx : mut string = ""
 declare  fn  : string = "transformer"
 
-declare c  : collection {elem:int} @Vector
-declare re : mut collection {elem:int} @Vector
+declare input  : mut collection {elem:int} @Vector
+declare output : mut collection {elem:int} @Vector
 
-declare ptx_file : string = "/home-4/yliu120@jhu.edu/K3/K3/cuda_kernels/transformer.ptx"
+declare ptx_file : string = "examples/gpu/cuda_kernels/transformer.ptx"
+declare cu_file  : string = "examples/gpu/cuda_kernels/transformer.cu" 
 declare compiled : mut int = -1
+
+declare transformer : string =
+              " __global__ void " ++
+              "transformer(const int *A, int *C, size_t numElements) "     ++
+              "{                                                      "    ++
+              "  size_t i = blockDim.x * blockIdx.x + threadIdx.x;       " ++
+              "  if (i < numElements)                                 "    ++
+              "    C[i] = A[i] + 5;                                 "      ++
+              "}                                                      "
+
 
 // Declared here!
 @:CArgs 5
-declare transformer_gpu_sq : collection {elem: int}@Vector -> string -> string -> string -> int
-                            -> collection {elem: int}@Vector
-  with effects \x -> \y -> \z -> \d -> \p -> [R[x]; R[y]; R[z]; R[d]; R[p]]
+declare transformer_gpu :  collection {elem: int}@Vector -> collection {elem: int}@Vector  -> string -> string -> int
+                           -> ()
+  with effects \x -> \y -> \d -> \p -> [R[x]; RW[y]; R[d]; R[p]; R[d]]
+
 
 trigger t : () = \_ -> (
    devicecount = get_device_count ();
    print ("GPU device count: " ++ (itos devicecount));
    device_info ();
-   (transformer = (load_ptx_from_file "/home-4/yliu120@jhu.edu/K3/K3/cuda_kernels/transformer.cu"));
-   (ptx = (compile_to_ptx_str transformer modname));
-   print ptx;
    
    (compiled = (compile_to_ptx_file transformer ptx_file));
-   print ("write ptx to file: " ++ ptx_file); 
-   
+   print ("write ptx to file: " ++ ptx_file);    
+   ptx = load_ptx_from_file ptx_file;
+   print ptx;
+ 
    // build a vector
-   ((range 10000).iterate (\r -> c.insert {elem:1}));
-   re = (transformer_gpu_sq c modname fn ptx 0);
-   // print re;
-   (re.iterate (\r -> print (itos (r.elem))))  
+   ((range 10000).iterate (\r -> input.insert {elem: 2}));
+   transformer_gpu input output fn ptx 0;
+
+   // print output
+   (output.iterate (\r -> print (itos (r.elem))))  
 )
 
 source s1 : () = value ()
