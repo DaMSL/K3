@@ -20,14 +20,14 @@ typedef r_table = collection result @Vector
 
 // For simple query
 @:CArgs 5
-declare transformer_gpu :  s_table -> r_table -> string -> string -> string -> int
+declare transformer_gpu :  s_table -> r_table -> string ->  string -> int
                            -> ()
   with effects \x -> \y -> \z -> \d -> \p -> [R[x]; R[y]; R[z]; R[d]; R[p]; R[d]] 
 
 declare input  : s_table
 declare output : mut s_table
 
-declare ptx         : mut string = ""
+declare ptx    : mut string = ""
 
 
 declare select : mut string =""
@@ -45,13 +45,13 @@ trigger q1 : () = \_ -> (
    
    print "Synthetic data loaded";
   
-   (select = (load_ptx_from_file "/home-4/yliu120@jhu.edu/K3/K3/cuda_kernels/select_simple.cu"));
+   (select = (load_ptx_from_file "examples/gpu/cuda_kernels/select_simple.cu"));
  
-   (ptx = (compile_to_ptx_str select "simple"));
+   (ptx = compile_to_ptx_str select);
    
    print "ptx compiled in runtime";
    
-   transformer_gpu input output "simple" "select" ptx 0;
+   transformer_gpu input output "select" ptx 0;
 
    print "query done";  
    

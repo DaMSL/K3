@@ -23,7 +23,7 @@ typedef r_table = collection result @Vector
 
 // For simple query
 @:CArgs 5
-declare transformer_gpu :  s_table -> r_table -> string -> string -> string -> int
+declare transformer_gpu :  s_table -> r_table  -> string -> string -> int
                            -> ()
   with effects \x -> \y -> \z -> \d -> \p -> [R[x]; R[y]; R[z]; R[d]; R[p]; R[d]] 
 
@@ -37,33 +37,21 @@ declare select : mut string =""
 
 trigger q1 : () = \_ -> (
    // building synthetic data
-   (range 10).iterate (\r -> input.insert {s_id   : r.elem, 
+   (range 320000000).iterate (\r -> input.insert {s_id   : r.elem, 
                                               s_age  : 30,
                                               s_wage : r.elem * 1.1
                                              });
-   (range 10).iterate (\r -> input.insert {s_id   : (r.elem + 10000),
-                                              s_age  : 40,
-                                              s_wage : r.elem * 1.0
-                                              });
-   (input.iterate (\r -> print (rtos (r.s_wage))));
-  
    print "Synthetic data loaded";
   
-   (select = (load_ptx_from_file "/home-4/yliu120@jhu.edu/K3/K3/cuda_kernels/select_simple.cu"));
+   (ptx = (load_ptx_from_file "examples/gpu/cuda_kernels/select_proj.ptx"));
  
-   (ptx = (compile_to_ptx_str select "simple"));
-   
-   print ptx;
-   
    time_start =  now_int();
-
-   transformer_gpu input output "simple" "select" ptx 0;
-  
+   transformer_gpu input output "select_proj" ptx 0;
    time_end = now_int();
 
    print "query done";  
    
-   (output.iterate (\r -> print (rtos (r.s_wage)) ) );
+   //(output.iterate (\r -> if r.s_wage <> 0 then print (rtos (r.s_wage)) else ()));
    
    print ("time: " ++ (itos (time_end - time_start)))
 )  
