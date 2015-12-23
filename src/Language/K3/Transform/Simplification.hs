@@ -1127,10 +1127,16 @@ encodeTransformers noBR restChanged expr = do
         bodyF aVar eVar $ PSeq (EC.applyMany (EC.project "insert" aVar) [elemF aVar eVar]) aVar []
 
     mkCondAccF elemF condF = mkAccF elemF $ \aVar eVar accumE ->
-      EC.ifThenElse (EC.applyMany condF [eVar]) accumE aVar
+      EC.ifThenElse (attachNoBR $ EC.applyMany condF [eVar]) accumE aVar
 
     -- Note the element accumulator must be a function to match with our UCond pattern.
     mkIdAccF = mkAccF (\_ e -> EC.applyMany (EC.lambda "x" $ EC.variable "x") [e]) (\_ _ e -> e)
+
+    attachNoBR :: K3 Expression -> K3 Expression
+    attachNoBR e = if noBR
+                     then e @+ (EProperty (Left ("NoBetaReduce", Nothing)))
+                            @+ (EProperty (Left ("IsolateApplication", Nothing)))
+                     else e
 
     mkIndepAccF fId fAs fArg =
       case fId of
@@ -1138,7 +1144,8 @@ encodeTransformers noBR restChanged expr = do
                     in return (nfAs, mkCondAccF (\_ e -> e) fArg)
 
         "map" -> let nfAs = fAs ++ [pOElemRec, pFusionSpec (UCond, IndepTr), pFusionLineage "map"]
-                 in return (nfAs, mkAccF (\_ e -> EC.applyMany (EC.lambda "x" $ elemE' $ EC.variable "x") [EC.applyMany fArg [e]]) (\_ _ e -> e))
+                 in return (nfAs, mkAccF (\_ e -> EC.applyMany (EC.lambda "x" $ elemE' $ EC.variable "x")
+                                                   [ attachNoBR $ EC.applyMany fArg [e] ]) (\_ _ e -> e))
 
         _ -> invalidAccFerr fId
 
@@ -1152,7 +1159,7 @@ encodeTransformers noBR restChanged expr = do
           -- to avoid duplicate UIDs.
           missingAccFE = stripEUIDSpan accFE
 
-          entryE v = EC.record [("key", EC.applyMany gbE [eVar]), ("value", v)]
+          entryE v = EC.record [("key", attachNoBR $ EC.applyMany gbE [eVar]), ("value", v)]
 
           missingE = EC.lambda "_" $
                        EC.record [("key", EC.project "key" rVar)
@@ -1160,7 +1167,7 @@ encodeTransformers noBR restChanged expr = do
 
           presentE = EC.lambda oVarId $
                       EC.record [("key", EC.project "key" oVar)
-                                ,("value", EC.applyMany accFE [EC.project "value" oVar, eVar])]
+                                ,("value", attachNoBR $ EC.applyMany accFE [EC.project "value" oVar, eVar])]
 
       in do
       defaultV <- defaultExpression valueT
