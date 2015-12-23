@@ -214,7 +214,7 @@ cDecl t i = genCType t >>= \ct -> return [R.Forward $ R.ScalarDecl (R.Name i) ct
 inline :: K3 Expression -> CPPGenM ([R.Statement], R.Expression)
 inline e@(tag &&& annotations -> (EConstant (CEmpty t), as)) = case annotationComboIdE as of
     Nothing -> throwE $ CPPGenE $ "No Viable Annotation Combination for Empty " ++ show e
-    Just ac -> genCType t >>= \ct -> return ([], R.Initialization (R.Collection ac ct) [])
+    Just ac -> getKType e >>= genCType >> genCType t >>= \ct -> return ([], R.Initialization (R.Collection ac ct) [])
 
 inline (tag -> EConstant c) = constant c >>= \c' -> return ([], R.Literal c')
 
