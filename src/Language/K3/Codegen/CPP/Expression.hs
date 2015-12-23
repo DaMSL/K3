@@ -114,6 +114,10 @@ hasBoxableProperty ae = case ae of
                        (EProperty s) -> ePropertyName s == "Boxable"
                        _ -> False
 
+ifIsolateApplicationProp :: K3 Expression -> Bool
+ifIsolateApplicationProp e = isJust $ e @~ \case { EProperty s -> ePropertyName s == "IsolateApplication"; _ -> False}
+
+
 -- Get the materializaitons of a given expression
 getMDecisions :: K3 Expression -> M.Map (Identifier, Direction) Method
 getMDecisions e = case e @~ isEMaterialization of
@@ -615,6 +619,16 @@ inline e@(tag &&& children -> (EOperate OApp, [
 
   return (ce ++ [ue] ++ ie ++ [resultDecl] ++ [R.Block (advance ++ wfe ++ wfb)]
          , R.Variable $ R.Name result)
+
+inline e@(tag -> EOperate OApp) | ifIsolateApplicationProp e = do
+  a <- gets (isolateApplicationCG . flags)
+  let e' = (e @- (EProperty (Left ("IsolateApplication", Nothing))))
+  if a
+    then do
+      g <- genSym
+      es <- reify (RDecl g Nothing) e'
+      return (es, R.Variable (R.Name g))
+    else inline e'
 
 inline e@(tag -> EOperate OApp) = do
   -- Inline both function and argument for call.
