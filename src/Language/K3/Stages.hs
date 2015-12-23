@@ -668,7 +668,12 @@ declTransforms stSpec extInfOpt n = topLevel
         mkT $ mkSeqRep "Optimize" highLevel $ fPf fst $ prepend [ ("refreshI",      False) ]
                                                               $ [ ("Decl-Simplify", True)
                                                                 , ("Decl-Fuse",     True)
-                                                                , ("Decl-Simplify", True) ]
+                                                                , ("Decl-Simplify", True) ],
+        second mkFix $
+        mkT $ mkSeqRep "Optimize-NoBR" highLevel $ fPf fst $ prepend [ ("refreshI",       False) ]
+                                                                   $ [ ("Decl-Simplify",  True)
+                                                                     , ("Decl-Fuse-NoBR", True)
+                                                                     , ("Decl-Simplify",  True) ]
 
       ]) `Map.union` highLevel
 
@@ -681,15 +686,20 @@ declTransforms stSpec extInfOpt n = topLevel
       , mkT $ mkSeq "Decl-Fuse" lowLevel $ fP [ "Decl-FE"
                                               , "typEffI"
                                               , "Decl-FT" ]
+
+      , mkT $ mkSeq "Decl-Fuse-NoBR" lowLevel $ fP [ "Decl-FE-NoBR"
+                                                   , "typEffI"
+                                                   , "Decl-FT" ]
       ]) `Map.union` lowLevel
 
     lowLevel = Map.fromList $ fPf fst $ [
-              mk  foldConstants            "Decl-CF"  False True False True  (Just [typEffI])
-      ,       betaReduce                   "Decl-BR"  False True False True
-      ,       mk  eliminateDeadCode        "Decl-DCE" False True False True  (Just [typEffI])
-      ,       mkW cseTransform             "Decl-CSE" False True False True  (Just [typEffI])
-      , mkT $ mkD encodeTransformers       "Decl-FE"  False True False True  (Just [typEffI])
-      , mkT $ mk  fuseFoldTransformers     "Decl-FT"  False True False True  (Just fusionI)
+              mk  foldConstants              "Decl-CF"      False True False True (Just [typEffI])
+      ,       betaReduce                     "Decl-BR"      False True False True
+      ,       mk  eliminateDeadCode          "Decl-DCE"     False True False True (Just [typEffI])
+      ,       mkW cseTransform               "Decl-CSE"     False True False True (Just [typEffI])
+      , mkT $ mkD (encodeTransformers False) "Decl-FE"      False True False True (Just [typEffI])
+      , mkT $ mkD (encodeTransformers True)  "Decl-FE-NoBR" False True False True (Just [typEffI])
+      , mkT $ mk  fuseFoldTransformers       "Decl-FT"      False True False True (Just fusionI)
       , mkT $ mkDebug False $ fusionReduce
       , mkT $ mkDebug False $ ("typEffI",)  $ typEffI
       , mkT $ mkDebug False $ ("refreshI",) $ refreshI

@@ -995,10 +995,10 @@ streamableTransformerArg (PStreamableTransformerArg _ _ _ _ _) = (True, ICondN, 
 streamableTransformerArg _ = (False, Open, DepTr)
 
 encodeProgramTransformers :: K3 Declaration -> Either String (Bool, K3 Declaration)
-encodeProgramTransformers prog = foldExpression encodeTransformers False prog
+encodeProgramTransformers prog = foldExpression (encodeTransformers False) False prog
 
-encodeTransformers :: Bool -> K3 Expression -> Either String (Bool, K3 Expression)
-encodeTransformers restChanged expr = do
+encodeTransformers :: Bool -> Bool -> K3 Expression -> Either String (Bool, K3 Expression)
+encodeTransformers noBR restChanged expr = do
     (changed, eOpt) <- foldMapTree encodeUntilFirst (False, Nothing) expr
     maybe err (return . (restChanged || changed,)) eOpt
 
