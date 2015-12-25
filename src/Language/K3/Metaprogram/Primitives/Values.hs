@@ -712,213 +712,213 @@ pattern PTKVRecord kt vt tas = Node (TRecord ["key", "value"] :@: tas) [kt, vt]
 pattern PTCollection elem tas = Node (TCollection :@: tas) [elem]
 
 
-mosaicGMRKey :: SpliceValue -> String -> SpliceValue
-mosaicGMRKey (SType t@(tag -> (TRecord ids))) s = SExpr $ EC.record $ map (\x -> (x, EC.project x $ EC.variable s)) $ init ids
+-- mosaicGMRKey :: SpliceValue -> String -> SpliceValue
+-- mosaicGMRKey (SType t@(tag -> (TRecord ids))) s = SExpr $ EC.record $ map (\x -> (x, EC.project x $ EC.variable s)) $ init ids
 
-mosaicGMRMultiplicity :: SpliceValue -> String -> SpliceValue
-mosaicGMRMultiplicity (SType t@(tag -> (TRecord ids))) s = SExpr $ EC.project (last ids) (EC.variable s)
+-- mosaicGMRMultiplicity :: SpliceValue -> String -> SpliceValue
+-- mosaicGMRMultiplicity (SType t@(tag -> (TRecord ids))) s = SExpr $ EC.project (last ids) (EC.variable s)
 
-mosaicGMRFlatten :: SpliceValue -> String -> SpliceValue
-mosaicGMRFlatten (SType t@(tag -> (TRecord ids))) s = SExpr $ EC.record $ map (\x -> (x, EC.project x $ EC.project "key" $ EC.variable s)) (init ids)
-                                                                         ++ [(last ids, EC.project "value" $ EC.variable s)]
+-- mosaicGMRFlatten :: SpliceValue -> String -> SpliceValue
+-- mosaicGMRFlatten (SType t@(tag -> (TRecord ids))) s = SExpr $ EC.record $ map (\x -> (x, EC.project x $ EC.project "key" $ EC.variable s)) (init ids)
+--                                                                          ++ [(last ids, EC.project "value" $ EC.variable s)]
 
-mosaicExtractRelations :: SpliceValue -> SpliceValue
-mosaicExtractRelations (SExpr e) = maybe notFoundError extract $ e @~ isERelationProp
-  where isERelationProp (EProperty (ePropertyName -> n)) = n == "Relations"
-        isERelationProp _ = False
+-- mosaicExtractRelations :: SpliceValue -> SpliceValue
+-- mosaicExtractRelations (SExpr e) = maybe notFoundError extract $ e @~ isERelationProp
+--   where isERelationProp (EProperty (ePropertyName -> n)) = n == "Relations"
+--         isERelationProp _ = False
 
-        extract (EProperty ( (ePropertyName &&& ePropertyValue) -> ("Relations", Just (tag -> LString s)) )) = (read s) :: SpliceValue
-        extract _ = notFoundError
+--         extract (EProperty ( (ePropertyName &&& ePropertyValue) -> ("Relations", Just (tag -> LString s)) )) = (read s) :: SpliceValue
+--         extract _ = notFoundError
 
-        notFoundError = boxToString $ ["Could not extract relations from"] %$ prettyLines e
+--         notFoundError = boxToString $ ["Could not extract relations from"] %$ prettyLines e
 
-mosaicExtractRelations _ = error "Invalid expression argument for mosaicExtractRelations"
+-- mosaicExtractRelations _ = error "Invalid expression argument for mosaicExtractRelations"
 
-mosaicExtractJoinOrder :: SpliceValue -> SpliceValue
-mosaicExtractJoinOrder (SExpr e) = maybe notFoundError extract $ e @~ isERelationProp
-  where isERelationProp (EProperty (ePropertyName -> n)) = n == "JoinOrder"
-        isERelationProp _ = False
+-- mosaicExtractJoinOrder :: SpliceValue -> SpliceValue
+-- mosaicExtractJoinOrder (SExpr e) = maybe notFoundError extract $ e @~ isERelationProp
+--   where isERelationProp (EProperty (ePropertyName -> n)) = n == "JoinOrder"
+--         isERelationProp _ = False
 
-        extract (EProperty ( (ePropertyName &&& ePropertyValue) -> ("JoinOrder", Just (tag -> LString s)) )) = (read s) :: SpliceValue
-        extract _ = notFoundError
+--         extract (EProperty ( (ePropertyName &&& ePropertyValue) -> ("JoinOrder", Just (tag -> LString s)) )) = (read s) :: SpliceValue
+--         extract _ = notFoundError
 
-        notFoundError = boxToString $ ["Could not extract join order from"] %$ prettyLines e
+--         notFoundError = boxToString $ ["Could not extract join order from"] %$ prettyLines e
 
-mosaicExtractJoinOrder _ = error "Invalid expression argument for mosaicExtractJoinOrder"
-
-
-mosaicStartMultiExchange :: SpliceValue -> String -> SpliceValue
-mosaicStartMultiExchange (SList relations) addrVar = SExpr $ foldl exchangeRelation EC.unit relations
-  where exchangeRelation acc (SRecord rr) = EC.binop OSeq acc (EC.send (exchangeTrigger rr) (EC.variable addrVar) EC.unit)
-        exchangeRelation _ _ = error "Invalid relation record for mosaic"
-
-        exchangeTrigger rr = case rr Map.! "i" of
-                               SLabel i -> EC.variable $ i ++ "_exchange"
-                               _ -> error "Invalid mosaic relation label"
-
-mosaicStartMultiExchange _ _ = error "Invalid mosaic relations in mosaicStartMultiExchange"
-
-mosaicExchangeBarrierCount :: SpliceValue -> SpliceValue
-mosaicExchangeBarrierCount (SList relations) = SExpr $
-  EC.binop OMul (EC.applyMany (EC.project "size" $ EC.variable "peers") [EC.unit])
-               $ EC.constant $ CInt $ length relations
-
-mosaicExchangeBarrierCount _ = error "Invalid mosaic relations in mosaicExchangeBarrierCount"
-
-mosaicStartMultiwayJoin :: SpliceValue -> K3 Expression -> SpliceValue
-mosaicStartMultiwayJoin (SList svs) addrE = case svs of
-  [] -> SExpr EC.unit
-  (SRecord nsvs):_ -> case Map.lookup "i" nsvs of
-                        Just (SLabel lbl) -> SExpr $ EC.send (EC.variable $ lbl ++ "_lhs_redistribute") addrE EC.unit
-                        _ -> error "No label found in join order element"
-  _ -> error "Invalid join order head element"
-
-mosaicStartMultiwayJoin _ _ = error "Invalid join orders in mosaicStartMultiwayJoin"
-
-mosaicMultiwayJoinResult :: SpliceValue -> SpliceValue
-mosaicMultiwayJoinResult (SList svs) =
-  if null svs
-    then error "Invalid join order list"
-    else case last svs of
-           SRecord nsvs -> case Map.lookup "result_id" nsvs of
-                             Just (SLabel lbl) -> SExpr $ EC.variable lbl
-                             _ -> error "Invalid join order result label"
-           _ -> error "Invalid join order last element"
-
-mosaicMultiwayJoinResult _ = error "Invalid join orders in mosaicMultiwayJoinResult"
-
-mosaicGlobalNextMultiwayJoin :: SpliceValue -> SpliceValue -> SpliceValue -> String -> SpliceValue
-mosaicGlobalNextMultiwayJoin (SLabel lbl) (SList svs) (SRecord current) masterAddrVar =
-  if null svs
-    then error "Invalid join order list"
-    else case pickNext of
-           (True, _) -> SExpr $ EC.send (EC.variable $ lbl ++ "_mjoin_done") (EC.variable masterAddrVar) (EC.variable "me") EC.unit
-           (False, Just rsv) -> rsv
-
-  where pickNext = foldl (pickNextAcc $ maybe nameError labelStr $ Map.lookup "i" current) (False, Nothing) svs
-        pickNextAcc _ (True, _) (SRecord sv) = (False, maybe nameError (Just . nextJoin . labelStr) $ Map.lookup "i" sv)
-        pickNextAcc _ (_, Just rsv) (SRecord sv) = (False, Just rsv)
-        pickNextAcc cn _ (SRecord sv) = maybe nameError (matchLabel cn) $ Map.lookup "i" sv
-        pickNextAcc _ _ _ = error "Invalid join order element in mosaicGlobalNextMultiwayJoin"
-
-        nextJoin i = SExpr $ EC.applyMany (EC.project "iterate" $ EC.variable "peers")
-                               [EC.lambda "p" $ EC.send (EC.variable $ i ++ "_lhs_redistribute") (EC.project "addr" $ EC.variable "p") EC.unit]
-        matchLabel cn sv = (labelStr sv == cn, Nothing)
-
-        labelStr (SLabel i) = i
-        labelStr _ = nameError
-
-        nameError = error "Invalid join order name in mosaicGlobalNextMultiwayJoin"
-
-mosaicGlobalNextMultiwayJoin _ _ _ = error "Invalid arguments to mosaicGlobalNextMultiwayJoin"
-
-mosaicFetchPartitionBarrierKeyType :: SpliceValue -> SpliceValue
-mosaicFetchPartitionBarrierKeyType (SList relsvs) = TC.record $ map relationPartitionKeyElem relsvs
-  where relationPartitionKeyElem (SRecord nsvs) = case Map.lookup "i" nsvs of
-                                                    SLabel i -> ("part_" ++ i, TC.int)
-                                                    _ -> error "Invalid relation label in mosaicFetchPartitionBarrierKeyType"
-
-        relationPartitionKeyElem _ = error "Invalid relation param record in mosaicFetchPartitionBarrierKeyType"
-
-mosaicFetchPartitionBarrierKeyType _ = error "Invalid relations in mosaicFetchPartitionBarrierKeyType"
-
-mosaicFetchPartitionBarrierSize :: SpliceValue -> SpliceValue
-mosaicFetchPartitionBarrierSize (SList relsvs) = SExpr $ EC.constant $ CInt $ length relsvs
-mosaicFetchPartitionBarrierSize _ = error "Invalid relations in mosaicFetchPartitionBarrierSize"
+-- mosaicExtractJoinOrder _ = error "Invalid expression argument for mosaicExtractJoinOrder"
 
 
-mosaicFetchPartition :: SpliceValue -> String -> SpliceValue
-mosaicFetchPartition (SList relsvs) keyVar = SExpr $ foldl fetchAcc EC.unit relsvs
-  where fetchAcc accE (SRecord nsvs) =
-          case Map.lookup "i" nsvs of
-            Just (SLabel i) -> EC.binop OSeq
-                                (EC.letIn ("pi_" ++ i) (partId i) $
-                                 EC.send
-                                  (EC.variable $ i ++ "_fetch_part")
-                                  (EC.project "addr" $ partAddr i)
-                                  (EC.record [ ("part_id",     EC.variable $ "pi_"++i)
-                                             , ("dest",        EC.variable "me")
-                                             , ("barrier_key", EC.variable keyVar)]))
-                                accE
-            _ -> nameError
-        fetchAcc _ _ = error "Invalid relation param record in mosaicFetchPartition"
+-- mosaicStartMultiExchange :: SpliceValue -> String -> SpliceValue
+-- mosaicStartMultiExchange (SList relations) addrVar = SExpr $ foldl exchangeRelation EC.unit relations
+--   where exchangeRelation acc (SRecord rr) = EC.binop OSeq acc (EC.send (exchangeTrigger rr) (EC.variable addrVar) EC.unit)
+--         exchangeRelation _ _ = error "Invalid relation record for mosaic"
 
-        partId i = EC.project ("part_" ++ i) $ EC.variable keyVar
-        partAddr i = EC.applyMany (EC.project "at" $ EC.variable "peers")
-                       [EC.binop OMod (EC.variable $ "pi_" ++ i) (EC.variable $ i ++ "_stride")]
+--         exchangeTrigger rr = case rr Map.! "i" of
+--                                SLabel i -> EC.variable $ i ++ "_exchange"
+--                                _ -> error "Invalid mosaic relation label"
 
-        nameError = error "Invalid relation name in mosaicFetchPartition"
+-- mosaicStartMultiExchange _ _ = error "Invalid mosaic relations in mosaicStartMultiExchange"
 
-mosaicFetchPartition _ _ = error "Invalid relations in mosaicFetchPartition"
+-- mosaicExchangeBarrierCount :: SpliceValue -> SpliceValue
+-- mosaicExchangeBarrierCount (SList relations) = SExpr $
+--   EC.binop OMul (EC.applyMany (EC.project "size" $ EC.variable "peers") [EC.unit])
+--                $ EC.constant $ CInt $ length relations
+
+-- mosaicExchangeBarrierCount _ = error "Invalid mosaic relations in mosaicExchangeBarrierCount"
+
+-- mosaicStartMultiwayJoin :: SpliceValue -> K3 Expression -> SpliceValue
+-- mosaicStartMultiwayJoin (SList svs) addrE = case svs of
+--   [] -> SExpr EC.unit
+--   (SRecord nsvs):_ -> case Map.lookup "i" nsvs of
+--                         Just (SLabel lbl) -> SExpr $ EC.send (EC.variable $ lbl ++ "_lhs_redistribute") addrE EC.unit
+--                         _ -> error "No label found in join order element"
+--   _ -> error "Invalid join order head element"
+
+-- mosaicStartMultiwayJoin _ _ = error "Invalid join orders in mosaicStartMultiwayJoin"
+
+-- mosaicMultiwayJoinResult :: SpliceValue -> SpliceValue
+-- mosaicMultiwayJoinResult (SList svs) =
+--   if null svs
+--     then error "Invalid join order list"
+--     else case last svs of
+--            SRecord nsvs -> case Map.lookup "result_id" nsvs of
+--                              Just (SLabel lbl) -> SExpr $ EC.variable lbl
+--                              _ -> error "Invalid join order result label"
+--            _ -> error "Invalid join order last element"
+
+-- mosaicMultiwayJoinResult _ = error "Invalid join orders in mosaicMultiwayJoinResult"
+
+-- mosaicGlobalNextMultiwayJoin :: SpliceValue -> SpliceValue -> SpliceValue -> String -> SpliceValue
+-- mosaicGlobalNextMultiwayJoin (SLabel lbl) (SList svs) (SRecord current) masterAddrVar =
+--   if null svs
+--     then error "Invalid join order list"
+--     else case pickNext of
+--            (True, _) -> SExpr $ EC.send (EC.variable $ lbl ++ "_mjoin_done") (EC.variable masterAddrVar) (EC.variable "me") EC.unit
+--            (False, Just rsv) -> rsv
+
+--   where pickNext = foldl (pickNextAcc $ maybe nameError labelStr $ Map.lookup "i" current) (False, Nothing) svs
+--         pickNextAcc _ (True, _) (SRecord sv) = (False, maybe nameError (Just . nextJoin . labelStr) $ Map.lookup "i" sv)
+--         pickNextAcc _ (_, Just rsv) (SRecord sv) = (False, Just rsv)
+--         pickNextAcc cn _ (SRecord sv) = maybe nameError (matchLabel cn) $ Map.lookup "i" sv
+--         pickNextAcc _ _ _ = error "Invalid join order element in mosaicGlobalNextMultiwayJoin"
+
+--         nextJoin i = SExpr $ EC.applyMany (EC.project "iterate" $ EC.variable "peers")
+--                                [EC.lambda "p" $ EC.send (EC.variable $ i ++ "_lhs_redistribute") (EC.project "addr" $ EC.variable "p") EC.unit]
+--         matchLabel cn sv = (labelStr sv == cn, Nothing)
+
+--         labelStr (SLabel i) = i
+--         labelStr _ = nameError
+
+--         nameError = error "Invalid join order name in mosaicGlobalNextMultiwayJoin"
+
+-- mosaicGlobalNextMultiwayJoin _ _ _ = error "Invalid arguments to mosaicGlobalNextMultiwayJoin"
+
+-- mosaicFetchPartitionBarrierKeyType :: SpliceValue -> SpliceValue
+-- mosaicFetchPartitionBarrierKeyType (SList relsvs) = TC.record $ map relationPartitionKeyElem relsvs
+--   where relationPartitionKeyElem (SRecord nsvs) = case Map.lookup "i" nsvs of
+--                                                     SLabel i -> ("part_" ++ i, TC.int)
+--                                                     _ -> error "Invalid relation label in mosaicFetchPartitionBarrierKeyType"
+
+--         relationPartitionKeyElem _ = error "Invalid relation param record in mosaicFetchPartitionBarrierKeyType"
+
+-- mosaicFetchPartitionBarrierKeyType _ = error "Invalid relations in mosaicFetchPartitionBarrierKeyType"
+
+-- mosaicFetchPartitionBarrierSize :: SpliceValue -> SpliceValue
+-- mosaicFetchPartitionBarrierSize (SList relsvs) = SExpr $ EC.constant $ CInt $ length relsvs
+-- mosaicFetchPartitionBarrierSize _ = error "Invalid relations in mosaicFetchPartitionBarrierSize"
 
 
-mosaicAssignInputPartitions :: SpliceValue -> String -> String -> SpliceValue
-mosaicAssignInputPartitions (mosaicExtractRelations -> SList relsvs) partIdVar partMapSuffix currentPartSuffix = map assign relsvs
-  where assign (SRecord nsvs) = case (Map.lookup "i" nsvs, Map.lookup "val_type" nsvs) of
-                                  (Just (SLabel i), Just (SType ty))
-                                    -> EC.applyMany (EC.project "lookup" $ EC.variable $ i ++ partMapSuffix)
-                                         [ EC.record [ ("key", EC.project ("part_" ++ i) $ EC.variable partIdVar)
-                                                     , ("value", (EC.constant $ CEmpty elem_t) @+ EAnnotation "Collection" )]
-                                         , EC.lambda "_" EC.unit
-                                         , EC.lambda "part" $ EC.assign (i ++ currentPartSuffix) $ EC.project "value" $ EC.variable "part" ]
+-- mosaicFetchPartition :: SpliceValue -> String -> SpliceValue
+-- mosaicFetchPartition (SList relsvs) keyVar = SExpr $ foldl fetchAcc EC.unit relsvs
+--   where fetchAcc accE (SRecord nsvs) =
+--           case Map.lookup "i" nsvs of
+--             Just (SLabel i) -> EC.binop OSeq
+--                                 (EC.letIn ("pi_" ++ i) (partId i) $
+--                                  EC.send
+--                                   (EC.variable $ i ++ "_fetch_part")
+--                                   (EC.project "addr" $ partAddr i)
+--                                   (EC.record [ ("part_id",     EC.variable $ "pi_"++i)
+--                                              , ("dest",        EC.variable "me")
+--                                              , ("barrier_key", EC.variable keyVar)]))
+--                                 accE
+--             _ -> nameError
+--         fetchAcc _ _ = error "Invalid relation param record in mosaicFetchPartition"
 
-                                  _ -> error "Invalid relation name param in mosaicAssignInputPartitions"
-        assign _ = error "Invalid relation param record in mosaicAssignInputPartitions"
+--         partId i = EC.project ("part_" ++ i) $ EC.variable keyVar
+--         partAddr i = EC.applyMany (EC.project "at" $ EC.variable "peers")
+--                        [EC.binop OMod (EC.variable $ "pi_" ++ i) (EC.variable $ i ++ "_stride")]
 
-mosaicAssignInputPartitions _ _ = error "Invalid expression for mosaicAssignInputPartitions"
+--         nameError = error "Invalid relation name in mosaicFetchPartition"
+
+-- mosaicFetchPartition _ _ = error "Invalid relations in mosaicFetchPartition"
 
 
-mosaicAccumulatePartition :: SpliceValue -> SpliceValue -> SpliceValue -> SpliceValue
-mosaicAccumulatePartition (SLabel v) (SExpr e) (SType ty) =
-  case tnc ty of
-    (TCollection, [tnc -> (TRecord ids, tch)])
-      -> case ty @~ isTAnnotation of
-           (TAnnotation "Collection") ->
-             EC.binop OSeq
-               (EC.applyMany (EC.project "iterate" e)
-                 [EC.lambda "x" $ EC.applyMany (EC.project "insert" $ EC.variable v) [EC.variable "x"]])
-               (EC.assign v $ EC.applyMany (EC.project "group_by" $ EC.variable v)
-                 [ EC.lambda "x" $ EC.record $ map (\i -> (i, EC.project i $ EC.variable "x")) $ init ids
-                 , EC.lambda "acc" $ EC.lambda "x" $ EC.binop OAdd (EC.variable "acc)" $ EC.project (last ids) $ EC.variable "x"
-                 , defaultExpression $ last tch])
+-- mosaicAssignInputPartitions :: SpliceValue -> String -> String -> SpliceValue
+-- mosaicAssignInputPartitions (mosaicExtractRelations -> SList relsvs) partIdVar partMapSuffix currentPartSuffix = map assign relsvs
+--   where assign (SRecord nsvs) = case (Map.lookup "i" nsvs, Map.lookup "val_type" nsvs) of
+--                                   (Just (SLabel i), Just (SType ty))
+--                                     -> EC.applyMany (EC.project "lookup" $ EC.variable $ i ++ partMapSuffix)
+--                                          [ EC.record [ ("key", EC.project ("part_" ++ i) $ EC.variable partIdVar)
+--                                                      , ("value", (EC.constant $ CEmpty elem_t) @+ EAnnotation "Collection" )]
+--                                          , EC.lambda "_" EC.unit
+--                                          , EC.lambda "part" $ EC.assign (i ++ currentPartSuffix) $ EC.project "value" $ EC.variable "part" ]
 
-           (TAnnotation "Map") ->
-             EC.applyMany (EC.project "iterate" e)
-              [EC.lambda "x" $ EC.applyMany (EC.project "insert_with" $ EC.variable v)
-                [ EC.variable "x"
-                , EC.lambda "old" $ EC.lambda "new" $
-                    EC.record [ ("key", EC.project "key" $ EC.variable "old")
-                              , ("value", EC.binop OAdd (EC.project "value" $ EC.variable "old") $ EC.project "value" $ EC.variable "new")] ]]
+--                                   _ -> error "Invalid relation name param in mosaicAssignInputPartitions"
+--         assign _ = error "Invalid relation param record in mosaicAssignInputPartitions"
 
-           (TAnnotation ("MultiIndexVMap" `isInfixOf` -> True)) ->
-             EC.applyMany (EC.project "iterate" e)
-              [EC.lambda "x" $ EC.applyMany (EC.project "insert_with" $ EC.variable v)
-                [ EC.constant $ CInt 0
-                , EC.variable "x"
-                , EC.lambda "old" $ EC.lambda "new" $
-                    EC.record [ ("key", EC.project "key" $ EC.variable "old")
-                              , ("value", EC.binop OAdd (EC.project "value" $ EC.variable "old") $ EC.project "value" $ EC.variable "new")] ]]
+-- mosaicAssignInputPartitions _ _ = error "Invalid expression for mosaicAssignInputPartitions"
 
-           _ -> error $ boxToString $ ["Invalid partition collection in mosaicAccumulatePartition: "] %$ prettyLines ty
 
-    TInt  -> EC.assign v $ EC.binop OAdd (EC.variable v) e
-    TReal -> EC.assign v $ EC.binop OAdd (EC.variable v) e
-    _ -> error "Invalid accumulator type in mosaicAccumulatePartition"
+-- mosaicAccumulatePartition :: SpliceValue -> SpliceValue -> SpliceValue -> SpliceValue
+-- mosaicAccumulatePartition (SLabel v) (SExpr e) (SType ty) =
+--   case tnc ty of
+--     (TCollection, [tnc -> (TRecord ids, tch)])
+--       -> case ty @~ isTAnnotation of
+--            (TAnnotation "Collection") ->
+--              EC.binop OSeq
+--                (EC.applyMany (EC.project "iterate" e)
+--                  [EC.lambda "x" $ EC.applyMany (EC.project "insert" $ EC.variable v) [EC.variable "x"]])
+--                (EC.assign v $ EC.applyMany (EC.project "group_by" $ EC.variable v)
+--                  [ EC.lambda "x" $ EC.record $ map (\i -> (i, EC.project i $ EC.variable "x")) $ init ids
+--                  , EC.lambda "acc" $ EC.lambda "x" $ EC.binop OAdd (EC.variable "acc") $ EC.project (last ids) $ EC.variable "x"
+--                  , defaultExpression $ last tch])
 
-mosaicAccumulatePartition _ _ _ = error "Invalid arguments for mosaicAccumulatePartition"
+--            (TAnnotation "Map") ->
+--              EC.applyMany (EC.project "iterate" e)
+--               [EC.lambda "x" $ EC.applyMany (EC.project "insert_with" $ EC.variable v)
+--                 [ EC.variable "x"
+--                 , EC.lambda "old" $ EC.lambda "new" $
+--                     EC.record [ ("key", EC.project "key" $ EC.variable "old")
+--                               , ("value", EC.binop OAdd (EC.project "value" $ EC.variable "old") $ EC.project "value" $ EC.variable "new")] ]]
 
-mosaicDistributedPlanner :: SpliceValue -> SpliceValue
-mosaicDistributedPlanner sv@(SExpr e) =
-  case (relsvs, josvs) of
-    ([], []) -> error "Invalid empty relation and join order parameters"
-    ([_], []) -> SExpr $ e @+ (EApplyGen True "MosaicExecuteSingleton" singletonParams)
-    (_, _) -> SExpr $ e @+ (EApplyGen True "MosaicExecuteJoin" joinParams)
+--            (TAnnotation (("MultiIndexVMap" `isInfixOf`) -> True)) ->
+--              EC.applyMany (EC.project "iterate" e)
+--               [EC.lambda "x" $ EC.applyMany (EC.project "insert_with" $ EC.variable v)
+--                 [ EC.constant $ CInt 0
+--                 , EC.variable "x"
+--                 , EC.lambda "old" $ EC.lambda "new" $
+--                     EC.record [ ("key", EC.project "key" $ EC.variable "old")
+--                               , ("value", EC.binop OAdd (EC.project "value" $ EC.variable "old") $ EC.project "value" $ EC.variable "new")] ]]
 
-  where (SList relsvs) = mosaicExtractRelations sv
-        (SList josvs) = mosaicExtractJoinOrder sv
-        lbl = case tnc e of
-                (EOperate OSeq, [tnc -> (EAssign i, [asgne]), snde]) -> i
-                _ -> error "Invalid mosaic planner attachment point"
+--            _ -> error $ boxToString $ ["Invalid partition collection in mosaicAccumulatePartition: "] %$ prettyLines ty
 
-        singletonParams = Map.fromList [ ("lbl", lbl), ("relations", SList relsvs) ]
-        joinParams = Map.fromList [ ("lbl", lbl), ("relations", SList relsvs), ("joinOrder", SList josvs) ]
+--     TInt  -> EC.assign v $ EC.binop OAdd (EC.variable v) e
+--     TReal -> EC.assign v $ EC.binop OAdd (EC.variable v) e
+--     _ -> error "Invalid accumulator type in mosaicAccumulatePartition"
+
+-- mosaicAccumulatePartition _ _ _ = error "Invalid arguments for mosaicAccumulatePartition"
+
+-- mosaicDistributedPlanner :: SpliceValue -> SpliceValue
+-- mosaicDistributedPlanner sv@(SExpr e) =
+--   case (relsvs, josvs) of
+--     ([], []) -> error "Invalid empty relation and join order parameters"
+--     ([_], []) -> SExpr $ e @+ (EApplyGen True "MosaicExecuteSingleton" singletonParams)
+--     (_, _) -> SExpr $ e @+ (EApplyGen True "MosaicExecuteJoin" joinParams)
+
+--   where (SList relsvs) = mosaicExtractRelations sv
+--         (SList josvs) = mosaicExtractJoinOrder sv
+--         lbl = case tnc e of
+--                 (EOperate OSeq, [tnc -> (EAssign i, [asgne]), snde]) -> i
+--                 _ -> error "Invalid mosaic planner attachment point"
+
+--         singletonParams = Map.fromList [ ("lbl", lbl), ("relations", SList relsvs) ]
+--         joinParams = Map.fromList [ ("lbl", lbl), ("relations", SList relsvs), ("joinOrder", SList josvs) ]
