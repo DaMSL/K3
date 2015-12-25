@@ -200,7 +200,8 @@ spliceSymbols = [ ("$",[])
                 , ("$#",  [spliceVIdSym])
                 , ("$::", [spliceVTSym])
                 , ("$.",  [spliceVESym])
-                , ("$!",  [spliceVLSym])]
+                , ("$!",  [spliceVLSym])
+                , ("$~!", [spliceVBSym])]
 
 splicePath :: K3Parser [String]
 splicePath = i `sepBy1` (string ".")
@@ -242,6 +243,23 @@ exprEmbedding = choice [try (Left <$> identParts), Right . EC.variable <$> ident
 literalEmbedding :: K3EmbeddingParser Literal
 literalEmbedding = choice [try (Left <$> (some $ try spliceEmbedding)), Right . LC.string <$> many anyChar]
 
+bindEmbedding :: EmbeddingParser Binder
+bindEmbedding = choice [try (Left <$> identParts), Right <$> choice [bindInd, bindTup, bindRec]]
+
+
+{- Binders -}
+
+bindInd :: K3Parser Binder
+bindInd = BIndirection <$> (keyword "ind" *> identifier)
+
+bindTup :: K3Parser Binder
+bindTup = BTuple <$> parens (commaSep identifier)
+
+bindRec :: K3Parser Binder
+bindRec = BRecord <$> braces (commaSep ((,) <$> identifier <*> (colon *> identifier)))
+
+bindSplice :: K3Parser Binder
+bindSplice = BSplice <$> identifier
 
 {- Comments -}
 

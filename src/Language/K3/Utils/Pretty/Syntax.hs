@@ -214,12 +214,18 @@ rewriteRule (pat, rewrite, extensions) =
     printRule patd rewrited extds =
       patd <$> (indent 2 $ text "=>") <$> (indent 4 rewrited) <$> (indent 2 $ vsep extds)
 
-ctrlExtension :: K3 Declaration -> SyntaxPrinter
-ctrlExtension d = (text "+>" <+>) C.<$> decl d
+ctrlExtension :: Either MPRewriteDecl (K3 Declaration) -> SyntaxPrinter
+ctrlExtension d = (text "+>" <+>) C.<$> either mprewrite decl d
+  where mprewrite (MPRewriteDecl i c decls) = do
+          csp <- spliceValue c
+          dsps <- mapM decl decls
+          return $ text "for" <+> text i <+> text "in" <+> csp <$> (indent 2 $ vsep dsps)
+
 
 spliceType :: SpliceType -> SyntaxPrinter
 spliceType = \case
     STLabel    -> return $ text "label"
+    STBinder   -> return $ text "binder"
     STType     -> return $ text "type"
     STExpr     -> return $ text "expr"
     STDecl     -> return $ text "decl"
@@ -233,6 +239,7 @@ spliceValue :: SpliceValue -> SyntaxPrinter
 spliceValue = \case
     SVar     i    -> return $ text i
     SLabel   i    -> return $ brackets $ text "#" <+> text i
+    SBinder  b    -> return $ brackets $ text "!" <+> binder b
     SType    t    -> typ t >>= \td -> return $ brackets $ colon <+> td
     SExpr    e    -> expr e >>= \ed -> return $ brackets $ text "$" <+> ed
     SDecl    d    -> decl d >>= \dd -> return $ brackets $ text "$^" <+> dd
@@ -302,9 +309,13 @@ endpoint kw n specOpt t' eOpt' = case specOpt of
   Just (FileMuxseqEP seqcol txt fmt) ->
     common . Just $ text "filemxsq" <+> text seqcol <+> text (txtOrBin txt) <+> text fmt
 
-  Just (PolyFileMuxEP pathcol txt fmt orderpath) ->
+  Just (PolyFileMuxEP pathcol txt fmt orderpath rbsizeV) ->
     common . Just $ text "polyfile"
-        <+> text pathcol <+> text (txtOrBin txt) <+> text fmt <+> text orderpath
+        <+> text pathcol <+> text (txtOrBin txt) <+> text fmt <+> text orderpath <+> text rbsizeV
+
+  Just (PolyFileMuxSeqEP pathcol txt fmt orderpath rbsizeV) ->
+    common . Just $ text "polyfileseq"
+        <+> text pathcol <+> text (txtOrBin txt) <+> text fmt <+> text orderpath <+> text rbsizeV
 
   where
     common initializer =
@@ -697,10 +708,12 @@ bindExpr :: Binder -> Doc -> Doc -> Doc
 bindExpr b e e' = (text "bind" </> hang 2 e </> text "as"
                                </> (hang 2 $ binder b)
                                </> text "in") <$> indent 2 e'
-  where
-    binder (BIndirection i) = text "ind" <+> text i
-    binder (BTuple ids)     = stupled $ map text ids
-    binder (BRecord idMap)  = commaBrace $ map (\(s,t) -> text s <+> colon <+> text t) idMap
+
+binder :: Binder -> Doc
+binder (BIndirection i) = text "ind" <+> text i
+binder (BTuple ids)     = stupled $ map text ids
+binder (BRecord idMap)  = commaBrace $ map (\(s,t) -> text s <+> colon <+> text t) idMap
+binder (BSplice i)      = text i
 
 branchExpr :: Doc -> Doc -> Doc -> Doc
 branchExpr p t e = text "if" <+> (align $ p <$> text "then" </> t <$> text "else" </> e)

@@ -6,7 +6,7 @@ include "Annotation/Map.k3"
 // While there currently is no type enforcement, it should only be used
 // with key :: int
 //
-annotation IntMap given type a,b
+annotation IntMap given type a,b,c,d
 {
   provides lifted size : () -> int
     with effects \_ -> R[self]
@@ -38,11 +38,22 @@ annotation IntMap given type a,b
     with effects \elem -> [R[self]; R[elem]; W[self]]
 
   @:CArgs 2
-  provides lifted update  : content -> (content -> ())
+  provides lifted update  : content -> content -> ()
     with effects \oldElem -> \newElem -> [R[self]; R[oldElem]; R[newElem]; W[self]]
+
+  @:CArgs 2
+  provides lifted update_key  : int -> content -> ()
+    with effects \key -> \newElem -> [R[self]; R[key]; R[newElem]; W[self]]
 
   provides lifted erase  : content -> ()
     with effects \elem -> [R[self]; R[elem]; W[self]]
+  
+  provides lifted erase_key : int -> ()
+    with effects \key -> [R[self]; R[key]; W[self]]
+
+  @:CArgs 3
+  provides lifted erase_with : int -> (() -> a) -> (content -> a) -> a
+    with effects \key -> \noneF -> \someF -> [R[self]; R[key]; W[self]; noneF none; someF content]
 
   @:CArgs 2
   provides lifted insert_with: content -> (content -> content -> content) -> ()
@@ -118,5 +129,18 @@ annotation IntMap given type a,b
   provides lifted ext_generic : (content -> collection {key : a, value: b} @Map)
                                  -> collection {key : a, value: b} @Map
     with effects \extF -> [R[self]; ([R[content]; extF content])*]
+
+  // Mosaic-specific functionality.
+
+  // A fused equi-join and fold, taking a RHS collection, a key extractor
+  // that must produce the same type as the map's key, and an accumulator
+  // and initial value.
+  @:{Transformer, CArgs 4}
+  provides lifted equijoinkf_kv : collection {key: a, value: b} @Collection
+                                -> ({key: a, value: b} -> c)
+                                -> (d -> content -> {key: a, value: b} -> d) -> d -> d
+    with effects \other -> \otherKeyF -> \foldF -> \z ->
+                   [R[self]; R[z]; ([R[other]; R[content]; otherKeyF none; ((foldF z) content) none])*]
+
 
 }

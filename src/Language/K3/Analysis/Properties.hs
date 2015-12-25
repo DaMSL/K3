@@ -244,6 +244,7 @@ inferExprUsageProperties prog = mapIn1RebuildTree lambdaProp sidewaysProp inferP
       BIndirection i -> return [extNullExprProps i]
       BTuple     ids -> return [mapM_ extNullExprProps ids]
       BRecord    ijs -> return [mapM_ extNullExprProps $ map snd ijs]
+      BSplice    _   -> left "Incomplete bind splice while inferring properties"
     sidewaysProp _ (Node _ ch) = return $ replicate (length ch - 1) iu
 
     inferProp :: [K3 Expression] -> K3 Expression -> PInfM (K3 Expression)

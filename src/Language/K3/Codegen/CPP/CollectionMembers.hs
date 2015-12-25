@@ -10,6 +10,8 @@ import Data.List.Split (splitOn)
 import Data.Maybe (catMaybes, fromMaybe)
 import Data.Tree
 
+import Debug.Trace
+
 import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
 import Language.K3.Core.Annotation
@@ -19,6 +21,8 @@ import Language.K3.Core.Type
 import Language.K3.Core.Literal
 
 import qualified Language.K3.Core.Constructor.Type as TC
+
+import Language.K3.Utils.Pretty
 
 import Language.K3.Codegen.CPP.Primitives (genCType)
 import qualified Language.K3.Codegen.CPP.Representation as R
@@ -386,6 +390,10 @@ indexes name ans content_ts = do
       return result
 
     fold_slice_vid_fn _ = return Nothing
+   
+-- Specialize for unit record
+pattern RElemUnit = R.Named (R.Specialized [R.Named (R.Name "unit_t")] (R.Name "R_elem"))
+
 
 -- Returns member definitions for a FlatPolyBuffer or UniquePolyBuffer
 polybuffer :: Identifier -> [(Identifier, [AnnMemDecl])] -> CPPGenM [R.Definition]
@@ -394,6 +402,7 @@ polybuffer name ans  = do
   let flattened = concatMap (\(i, (n, mems)) -> zip (repeat (i,n)) mems) indexed
   at_defns                   <- catMaybes <$> mapM at_fn flattened
   safe_at_defns              <- catMaybes <$> mapM safe_at_fn flattened
+  unsafe_at_defns            <- catMaybes <$> mapM unsafe_at_fn flattened
   iterate_tag_defns          <- catMaybes <$> mapM iterate_tag_fn flattened
   fold_tag_defns             <- catMaybes <$> mapM fold_tag_fn flattened
   (tgs, types, append_defns) <- unzip3 . catMaybes <$> mapM append_fn flattened
@@ -401,8 +410,8 @@ polybuffer name ans  = do
   skip_all_tag_defns         <- catMaybes <$> mapM skip_all_fn flattened
   extra_defns                <- extra_fns tgs types
   return $ super_defn ++ copy_ctor ++ move_ctor ++ copy_assign ++ move_assign ++ dtor
-           ++ at_defns ++ safe_at_defns ++ append_defns
-          ++ iterate_tag_defns ++ fold_tag_defns ++ skip_tag_defns ++ skip_all_tag_defns ++ extra_defns
+           ++ at_defns ++ safe_at_defns ++ unsafe_at_defns ++ append_defns
+           ++ iterate_tag_defns ++ fold_tag_defns ++ skip_tag_defns ++ skip_all_tag_defns ++ extra_defns
 
   where
     is_polybuffer n = any (`isInfixOf` n) ["FlatPolyBuffer", "UniquePolyBuffer"]
@@ -410,7 +419,7 @@ polybuffer name ans  = do
 
     super_type = R.Qualified (R.Name "K3") $
                   if is_flat_polybuffer
-                  then R.Specialized [elem_type] $ R.Name "FlatPolyBuffer"
+                  then R.Specialized [elem_type, R.Named $ R.Name name] $ R.Name "FlatPolyBuffer"
                   else R.Specialized [elem_type, R.Named $ R.Name name] $ R.Name "UniquePolyBuffer"
 
     super_defn = if is_polybuffer name then
@@ -430,7 +439,7 @@ polybuffer name ans  = do
           [R.Call (R.Variable super_type) [R.Variable $ R.Name "other"]]
           False
           [ R.IfThenElse
-              (R.Project (R.Variable $ R.Name "other") (R.Name "internalized"))
+              (R.Project (R.Dereference $ R.Project (R.Variable $ R.Name "other") $ R.Name "container") $ R.Name "internalized")
               [R.Ignore $ R.Call
                 (R.Variable $ R.Qualified (R.Name "Super") (R.Name "unpack"))
                 [R.Initialization R.Unit []]
@@ -488,6 +497,7 @@ polybuffer name ans  = do
        ]
 
     at_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
+    at_fn (_, Lifted _ fname _ _ _) | "_unsafe_at" `isSuffixOf` fname = return Nothing
     at_fn (_, Lifted _ fname _ _ _) | "_safe_at" `isSuffixOf` fname = return Nothing
     at_fn (_, Lifted _ fname t _ _) | "_at" `isSuffixOf` fname = do
       let (arg1, arg2) = ("idx", "offset")
@@ -532,6 +542,29 @@ polybuffer name ans  = do
       return $ defn <$> c_safe_at_t
 
     safe_at_fn _ = return Nothing
+
+    unsafe_at_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
+    unsafe_at_fn (_, Lifted _ fname t _ _) | "_unsafe_at" `isSuffixOf` fname = do
+      let (arg1, arg2, arg3) = ("idx", "offset", "f")
+      let int_t = R.Primitive R.PInt
+      let f_t   = R.Named $ R.Name "F"
+      let unsafe_at_t = get_unsafe_at_type t
+      let typed_unsafe_at ct = R.Call
+                                (R.Variable $ suqualnm $ R.Specialized [ct, f_t] $ R.Name "template unsafe_at")
+                                (map (R.Variable . R.Name) [arg1, arg2, arg3])
+
+      let defn ct = R.TemplateDefn [("F", Nothing)] $
+                    R.FunctionDefn (R.Name fname)
+                      [(Just arg1, int_t), (Just arg2, int_t), (Just arg3, f_t)]
+                      (Just $ R.Named $ R.Name "auto")
+                      []
+                      True
+                      [R.Return $ typed_unsafe_at ct]
+
+      c_unsafe_at_t <- maybe (return Nothing) (\x -> genCType x >>= return . Just) unsafe_at_t
+      return $ defn <$> c_unsafe_at_t
+
+    unsafe_at_fn _ = return Nothing
 
     append_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe (Int, R.Type, R.Definition))
     append_fn (_, Lifted _ fname t _ danns) | "append_" `isPrefixOf` fname = do
@@ -638,7 +671,7 @@ polybuffer name ans  = do
     extra_fns :: [Int] -> [R.Type] -> CPPGenM [R.Definition]
     extra_fns [] [] = return []
     extra_fns tags types = catMaybes <$> mapM (\f -> f tags types)
-      [equalelem_fn, hashelem_fn, elemsize_fn,
+      [equalelem_fn, hashelem_fn, elemsize_fn, elemappend_fn,
        externalize_fn, internalize_fn,
        yamlencode_fn, yamldecode_fn, jsonencode_fn]
 
@@ -690,8 +723,24 @@ polybuffer name ans  = do
                         True
                         [branch_chain "tag" tags types elseStmt elemStmt]
 
-      where elemStmt _ ty = R.Return $ R.Call (R.Variable $ R.Name "sizeof") [R.ExprOnType ty]
+      where elemStmt _ RElemUnit = R.Return $ R.Literal $ R.LInt 0
+            elemStmt _ ty = R.Return $ R.Call (R.Variable $ R.Name "sizeof") [R.ExprOnType ty]
             elseStmt = R.Ignore $  R.ThrowRuntimeErr $ R.Literal $ R.LString "Invalid poly buffer tag"
+
+    elemappend_fn :: [Int] -> [R.Type] -> CPPGenM (Maybe R.Definition)
+    elemappend_fn tags types =
+      return $ Just $ R.FunctionDefn (R.Name "elemappend")
+                        [(Just "tag", tag_t), (Just "data", char_ptr_t)]
+                        (Just $ R.Void)
+                        []
+                        False
+                        [branch_chain "tag" tags types elseStmt elemStmt]
+
+      where elemStmt tg ty = R.Ignore $ R.Call
+                              (R.Variable $ suqualnm $ R.Specialized [ty] $ R.Name "template append")
+                              [R.Literal $ R.LInt tg, castExpr $ R.Pointer ty]
+            castExpr ty = R.Dereference $ R.Call (reinterpret_cast_expr ty) [R.Variable $ R.Name "data"]
+            elseStmt = R.Ignore $ R.ThrowRuntimeErr $ R.Literal $ R.LString "Invalid poly buffer tag"
 
     externalize_fn :: [Int] -> [R.Type] -> CPPGenM (Maybe R.Definition)
     externalize_fn tags types =
@@ -699,7 +748,7 @@ polybuffer name ans  = do
                         [(Just "e", R.Reference externalizer_t),
                          (Just "tag", tag_t),
                          (Just "data", char_ptr_t)]
-                        (Just $ R.Void)
+                        (Just $ R.Named $ R.Name "static void")
                         []
                         False
                         [branch_chain "tag" tags types elseStmt elemStmt]
@@ -715,7 +764,7 @@ polybuffer name ans  = do
                         [(Just "i", R.Reference internalizer_t),
                          (Just "tag", tag_t),
                          (Just "data", char_ptr_t)]
-                        (Just $ R.Void)
+                        (Just $ R.Named $ R.Name "static void")
                         []
                         False
                         [branch_chain "tag" tags types elseStmt elemStmt]
@@ -830,6 +879,10 @@ polybuffer name ans  = do
     get_safe_at_type :: K3 Type -> Maybe (K3 Type)
     get_safe_at_type (PTFun4 _ _ _ (PTFunction rt _ _) _ _ _ _ _) = Just rt
     get_safe_at_type _ = Nothing
+
+    get_unsafe_at_type :: K3 Type -> Maybe (K3 Type)
+    get_unsafe_at_type (PTFun3 _ _ (PTFunction rt _ _) _ _ _ _) = Just rt
+    get_unsafe_at_type _ = Nothing
 
     get_append_type :: K3 Type -> Maybe (K3 Type)
     get_append_type (PTFunction vt _ _) = Just vt

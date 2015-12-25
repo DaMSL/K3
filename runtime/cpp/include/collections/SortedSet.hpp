@@ -56,6 +56,11 @@ class SortedSet {
   // Functionality
   int size(const unit_t&) const { return container.size(); }
 
+  unit_t clear(const unit_t&) {
+    container.clear();
+    return unit_t();
+  }
+
   template <typename F, typename G>
   auto peek(F f, G g) const {
     auto it = container.begin();
@@ -172,7 +177,6 @@ class SortedSet {
   SortedSet<Elem> filter_lt(const Elem& bound) const {
     const auto& x = getConstContainer();
     auto it = x.lower_bound(bound);
-    if (it != x.begin()) --it;
     return SortedSet<Elem>(x.begin(), it);
   }
 
@@ -191,7 +195,6 @@ class SortedSet {
   SortedSet<Elem> filter_leq(const Elem& bound) const {
     const auto& x = getConstContainer();
     auto it = x.upper_bound(bound);
-    if (it != x.begin()) --it;
     return SortedSet<Elem>(x.begin(), it);
   }
 

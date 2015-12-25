@@ -133,21 +133,23 @@ void Engine::send(const Address& src, const Address& dst, TriggerID trig,
     // Direct enqueue for local messages
     unique_ptr<NativeValue> nv = std::make_unique<TNativeValue<T>>(std::move(value));
     auto d = getDispatcher(*it->second, std::move(nv), trig);
-#ifdef K3DEBUG
-    d->trigger_ = trig;
+    #ifdef K3MESSAGETRACE
     d->source_ = src;
     d->destination_ = dst;
-#endif
+    #endif
+    #if defined(K3MESSAGETRACE) || defined(K3TRIGGERTIMES)
+    d->trigger_ = trig;
+    #endif
     it->second->getQueue().enqueue(std::move(d));
   } else {
     // Serialize and send over the network, otherwise
     unique_ptr<PackedValue> pv = pack<T>(value, K3_INTERNAL_FORMAT);
     shared_ptr<NetworkMessage> m =
         make_shared<NetworkMessage>(trig, std::move(pv));
-#ifdef K3DEBUG
+    #ifdef K3MESSAGETRACE
     m->source_ = src;
     m->destination_ = dst;
-#endif
+    #endif
     network_manager_.sendInternal(dst, m);
   }
 }

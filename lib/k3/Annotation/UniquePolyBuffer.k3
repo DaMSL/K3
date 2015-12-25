@@ -3,11 +3,20 @@ annotation UniquePolyBuffer[variants: [labeltylit]] given type a
   provides lifted size : () -> int
     with effects \_ -> R[self]
 
+  provides lifted byte_size : () -> int
+    with effects \_ -> R[self]
+
   provides lifted clear : () -> ()
     with effects \_ -> [R[self]; W[self]]
 
   provides lifted tag_at : int -> int
     with effects \_ -> R[self]
+
+  provides lifted extend : self -> ()
+    with effects \col -> [R[self]; R[col]; W[self]]
+
+  provides lifted splitMany : int -> collection {elem: self} @Vector
+    with effects \splitSize -> [R[self]; R[splitSize]]
 
   // Iterate, fold and traverse functions arguments are: tag, tuple index, tuple offset.
   provides lifted iterate : (int -> int -> int -> ()) -> ()
@@ -21,12 +30,21 @@ annotation UniquePolyBuffer[variants: [labeltylit]] given type a
   provides lifted traverse : (int -> int -> int -> {key: int, value: int}) -> ()
     with effects \iterF -> [R[self]; ([R[content]; (((iterF none) none) none)])*]
 
+  // The traverse2 function is more flexible than traverse
+  // Returning the same value in the lambda as the one we were given causes the iterations to stop, returning
+  // our point in the polybuffer
+  provides lifted traverse2 : int -> int -> (int -> int -> int -> {key: int, value: int}) -> {key: int, value: int}
+    with effects \idx -> \offset -> \iterF -> [R[self]; R[idx]; R[offset]; ([R[content]; (((iterF none) none) none)])*]
+
   // Externalization/internalization methods.
   provides lifted repack : () -> ()
     with effects \_ -> [R[self]; W[self]]
 
   provides lifted unpack : () -> ()
     with effects \_ -> [R[self]; W[self]]
+
+  provides lifted reserve : int -> int -> int -> ()
+    with effects \tags -> \fixed -> \var -> [R[self]; R[tags]; R[fixed]; R[var]; W[self]]
 
   provides lifted load : string -> ()
     with effects \data -> [R[self]; R[data]; W[self]]
@@ -41,6 +59,9 @@ annotation UniquePolyBuffer[variants: [labeltylit]] given type a
 
     provides lifted $#[v]_safe_at : int -> int -> (() -> a) -> ($::[v] -> a) -> a
       with effects \idx -> \offset -> \f -> \g -> [R[self]; R[idx]; R[offset]; f none; g content]
+
+    provides lifted $#[v]_unsafe_at : int -> int -> ($::[v] -> a) -> a
+      with effects \idx -> \offset -> \f -> [R[self]; R[idx]; R[offset]; f content]
 
     // Skips one element starting at the given tag/index/offset.
     // Returns the next index/offset pair.

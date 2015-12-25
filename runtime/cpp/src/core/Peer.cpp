@@ -9,6 +9,10 @@
 #include <regex>
 #include <sstream>
 
+#ifdef BSL_ALLOC
+#include <bsl_iostream.h>
+#endif
+
 #include "core/Peer.hpp"
 #include "core/Engine.hpp"
 #include "core/ProgramContext.hpp"
@@ -20,7 +24,22 @@ namespace K3 {
   }
 
 Peer::Peer(shared_ptr<ContextFactory> fac, const YAML::Node& config,
-           std::function<void()> callback, const JSONOptions& opts) {
+           std::function<void()> callback, const JSONOptions& opts)
+#ifdef BSL_ALLOC
+  :
+  #ifdef BSEQ
+  mpool_()
+  #elif BPOOLSEQ
+  seqpool_(), mpool_(8, &seqpool_)
+  #elif BLOCAL
+  mpool_()
+  #elif BCOUNT
+  backing_pool_(8), mpool_(&backing_pool_)
+  #else
+  mpool_(8)
+  #endif
+#endif
+  {
   // Initialization
   address_ = serialization::yaml::meFromYAML(config);
   start_processing_ = false;
@@ -44,6 +63,20 @@ Peer::Peer(shared_ptr<ContextFactory> fac, const YAML::Node& config,
 
   // Create work to run in new thread
   auto work = [this, fac, config, callback]() {
+  #ifdef BSL_ALLOC
+    #ifdef BSEQ
+    mpool = &mpool_;
+    #elif BPOOLSEQ
+    seqpool = &seqpool_;
+    mpool = &mpool_;
+    #elif BLOCAL
+    mpool = &mpool_;
+    #elif BCOUNT
+    mpool = &mpool_;
+    #else
+    mpool = &mpool_;
+    #endif
+  #endif
     // Queue and batch are allocated on worker thread for locality
     queue_ = make_shared<Queue>();
     batch_.resize(1000);
@@ -60,9 +93,9 @@ Peer::Peer(shared_ptr<ContextFactory> fac, const YAML::Node& config,
       }
     } catch (EndOfProgramException e) {
       finished_ = true;
-#ifdef K3DEBUG
+      #ifdef K3GLOBALTRACE
       logGlobals(true);
-#endif
+      #endif
     }
     context_.reset();
     //catch (const std::exception& e) {
@@ -103,26 +136,32 @@ void Peer::processBatch() {
 
   for (int i = 0; i < num; i++) {
     auto d = std::move(batch_[i]);
-#ifdef K3DEBUG
+    #ifdef K3MESSAGETRACE
     logMessage(*d);
+    #endif
+
+    #ifdef K3TRIGGERTIMES
     TriggerID tid = d->trigger_;
     std::chrono::high_resolution_clock::time_point start_time =
         std::chrono::high_resolution_clock::now();
-#endif  // K3DEBUG
+    #endif
 
     (*d)();  // Call the dispatcher (process a message)
 
-#ifdef K3DEBUG
+    #ifdef K3TRIGGERTIMES
     statistics_[tid].total_time +=
         std::chrono::high_resolution_clock::now() - start_time;
     statistics_[tid].total_count++;
+    #endif
+
+    #ifdef K3GLOBALTRACE
     logGlobals(false);
-#endif  // K3DEBUG
+    #endif
   }
 }
 
 void Peer::logMessage(const Dispatcher& d) {
-#ifdef K3DEBUG
+  #ifdef K3MESSAGETRACE
   if (logger_->level() <= spdlog::level::debug) {
     string trig = ProgramContext::__triggerName(d.trigger_);
     logger_->debug() << "Received:: @" << trig;
@@ -142,11 +181,11 @@ void Peer::logMessage(const Dispatcher& d) {
     }
   }
   message_counter_++;
-#endif  // K3DEBUG
+  #endif
 }
 
 void Peer::logGlobals(bool final) {
-#ifdef K3DEBUG
+  #ifdef K3GLOBALTRACE
   if (logger_->level() <= spdlog::level::trace) {
     std::ostringstream oss;
     oss << "Environment: " << std::endl;
@@ -174,7 +213,7 @@ void Peer::logGlobals(bool final) {
       }
     }
   }
-#endif  // K3DEBUG
+  #endif
 }
 
 void Peer::printStatistics() {

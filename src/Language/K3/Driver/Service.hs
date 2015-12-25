@@ -1308,7 +1308,7 @@ processWorkerConn (serviceId -> wid) sv wtid wworker = do
                                       $ compileR1Block pid cSpec
         end <- liftIO getTime
         wlogM $ boxToString $ ["Worker R1 local time"] %$ (indent 2 [secs $ end - start])
-        sendC wworker $ R1BlockDone wid pid cBlocksByBID $ ST.report finalSt
+        sendC wworker $ R1BlockDone wid pid cBlocksByBID $ ST.rp0 -- ST.report finalSt
 
     processR1Block pid _ ublocksByBID _ = abortBlock R1BlockAborted pid ublocksByBID $ "Invalid worker compile stages"
 
@@ -1342,7 +1342,7 @@ processWorkerConn (serviceId -> wid) sv wtid wworker = do
     compileR1Block pid cSpec _ (blacc, st) (bid, unzip -> (ids, block)) = do
       (nblock, nst) <- debugCompileBlock pid bid block False
                         $ liftIE $ ST.runTransformM st $ ST.runDeclOptPassesBLM cSpec Nothing block
-      return (blacc ++ [(bid, zip ids nblock)], ST.mergeTransformStReport st nst)
+      return (blacc ++ [(bid, zip ids $ map stripTypeAndEffectAnns $ nblock)], ST.mergeTransformStReport st nst)
 
     compileR2Block pid dbg prog (blacc, st) (bid, unzip -> (ids, block)) = do
       let mst = MatI.prepareInitialIState dbg prog

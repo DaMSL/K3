@@ -107,7 +107,7 @@ def executorInfo(k3job, tnum, webaddr): #, jobid, binary_url, volumes=[], enviro
   if docker.privileged:
     logging.warning ("NOTE: running privileged mode")
 
-   
+
   # Create the Container
   container = mesos_pb2.ContainerInfo()
   container.type = container.DOCKER
@@ -146,10 +146,13 @@ def taskInfo(k3job, tnum, webaddr, slaveId):
       "master"           : [k3job.all_peers[0].ip, k3job.all_peers[0].port ],
       "archive_endpoint" : "%s/jobs/" % webaddr,
       "data"             : [role.inputs for p in range(len(k3task.peers))],
+      "seq_files"        : role.seq_files,
       "logging"          : k3job.logging,
       "jsonlog"          : k3job.jsonlog,
       "jsonfinal"        : k3job.jsonfinal,
-      "perfprofile"      : k3job.perfprofile,
+      "perf_profile"     : k3job.perf_profile,
+      "perf_frequency"   : k3job.perf_frequency,
+      "core_dump"        : k3job.core_dump,
       "stdout"           : k3job.stdout }
 
   # TODO:  When logging is fully implemented, remove this & update executor to accept
@@ -163,8 +166,17 @@ def taskInfo(k3job, tnum, webaddr, slaveId):
   if task_data['jsonfinal'] == False:
     del task_data['jsonfinal']
 
-  if task_data['perfprofile'] == False:
-    del task_data['perfprofile']
+  if task_data['perf_profile'] == False:
+    del task_data['perf_profile']
+
+  if task_data['core_dump'] == False:
+    del task_data['core_dump']
+
+  if task_data['perf_frequency'] == '':
+    del task_data['perf_frequency']
+
+  if task_data['seq_files'] == []:
+    del task_data['seq_files']
 
 
 
@@ -336,7 +348,10 @@ def resolve(master):
           break
       if host == '':
         host = "localhost"
+
+      logging.debug('HOST  ---> %s', host)
       return "http://%s:5050" % host
+
 
     process = subprocess.Popen(
         ['mesos-resolve', master],
@@ -356,5 +371,12 @@ def resolve(master):
 
     conn = httplib.HTTPConnection(server.strip())
     conn.request('GET', '/')
-    return server if conn.getresponse().status in [200, 201, 202] else None
+
+    status = conn.getresponse().status
+    if int(status) in [200, 201, 202]:
+      return server
+
+    else:
+      logging.warning("MESOS Master Not responding")
+      return None
 

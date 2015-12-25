@@ -93,6 +93,15 @@ declare perfStart: () -> ()
 declare perfStop: () -> ()
   with effects \_ -> io
 
+declare vmapStart : address -> ()
+with effects \_ -> io
+
+declare vmapStop : () -> ()
+with effects \_ -> io
+
+declare vmapDump : () -> ()
+with effects \_ -> io
+
 // openBuiltin: channel id -> builtin channel id -> format -> ()
 // builtin channel id is one of: stdin, stdout, stderr
 @:CArgs 3
@@ -164,6 +173,10 @@ declare random : int -> int
 declare randomFraction : () -> real
 
 declare randomWord : () -> string
+
+// Perform n trials with probability p, where n and p are the
+// first and second arguments respectively.
+declare randomBinomial : int -> real -> int
 
 // Polymorphic hash function
 declare hash : forall a . a -> int
@@ -256,4 +269,8 @@ declare drainEngine : () -> ()
 
 // Sleep the engine (milliseconds)
 declare sleep : int -> ()
+with effects  \_ -> io
+
+// Sleep the engine (microseconds)
+declare usleep : int -> ()
 with effects  \_ -> io

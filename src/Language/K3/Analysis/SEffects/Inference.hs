@@ -862,11 +862,12 @@ inferProgramEffects extInfOpt symSOpt ppenv prog =  do
     -- Globals cannot be captured in closures, so we elide them from the
     -- effect provenance bindings environment.
     globalsEff :: K3 Declaration -> FInfM (K3 Declaration)
-    globalsEff p = inferAllRcrDecls p >>= inferAllDecls
+    globalsEff p = inferAllRcrDecls p >>= inferAllDataAnnotationDecls >>= inferAllDecls
 
-    inferAllRcrDecls p = mapProgram initializeRcrDeclEffect return return Nothing p
-    inferAllDecls    p = mapProgram (inferDeclEffect extInfOpt) return return Nothing p
-    markGlobals      p = mapProgram markGlobalEffect return return Nothing p
+    inferAllRcrDecls            p = mapProgram initializeRcrDeclEffect return return Nothing p
+    inferAllDataAnnotationDecls p = mapProgram (inferDataAnnotationDeclEffect extInfOpt) return return Nothing p
+    inferAllDecls               p = mapProgram (inferDeclEffect extInfOpt) return return Nothing p
+    markGlobals                 p = mapProgram markGlobalEffect return return Nothing p
 
 
 -- | Repeat provenance inference on a global with an initializer.
@@ -935,6 +936,7 @@ inferDeclEffect extInfOpt d@(tag -> DTrigger n _ e) = do
   void $ fistoreM n u f
   return d
 
+{-
 inferDeclEffect extInfOpt d@(tag -> DDataAnnotation n _ mems) = do
   mEffs <- mapM inferMems mems
   void $ fistoreaM n $ catMaybes mEffs
@@ -951,9 +953,29 @@ inferDeclEffect extInfOpt d@(tag -> DDataAnnotation n _ mems) = do
               Just (DEffect eff) -> either return return eff
               _ -> maybe (effectsOfType [] mt) (inferEffects extInfOpt) meOpt
       return $ Just (mn, u, mf, lifted)
+-}
 
 inferDeclEffect _ d = return d
 
+inferDataAnnotationDeclEffect :: Maybe (ExtInferF a, a) -> K3 Declaration -> FInfM (K3 Declaration)
+inferDataAnnotationDeclEffect extInfOpt d@(tag -> DDataAnnotation n _ mems) = do
+  mEffs <- mapM inferMems mems
+  void $ fistoreaM n $ catMaybes mEffs
+  return d
+
+  where
+    inferMems m@(Lifted      Provides mn mt meOpt mas) = inferMember m True  mn mt meOpt mas
+    inferMems m@(Attribute   Provides mn mt meOpt mas) = inferMember m False mn mt meOpt mas
+    inferMems _ = return Nothing
+
+    inferMember mem lifted mn mt meOpt mas = do
+      u  <- memUID mem mas
+      mf <- case find isDEffect mas of
+              Just (DEffect eff) -> either return return eff
+              _ -> maybe (effectsOfType [] mt) (inferEffects extInfOpt) meOpt
+      return $ Just (mn, u, mf, lifted)
+
+inferDataAnnotationDeclEffect _ d = return d
 
 -- | Expression effect inference.
 inferExprEffects :: Maybe (ExtInferF a, a) -> K3 Expression -> FInfM (K3 Expression)
@@ -1000,6 +1022,7 @@ inferEffects extInfOpt expr = do
             BIndirection i -> srt [freshIndM e i u t rf]
             BTuple is      -> srt . (:[]) $ freshTupM e u t rf $ zip [0..length is -1] is
             BRecord ivs    -> srt . (:[]) $ freshRecM e u t rf ivs
+            BSplice _      -> errorM $ PT.boxToString $ [T.pack "Incomplete bind splice while inferring effects for "] %$ PT.prettyLines e
 
         _ -> tAnnErr e
 
@@ -1040,20 +1063,28 @@ inferEffects extInfOpt expr = do
       rt "lambda" False e mv (Just fnone, flambda i (fseq clf) (fseq $ catMaybes ef) rf)
 
     infer m (onSub -> (ef, mv)) [lrf,arf] e@(tag -> EOperate OApp) = m >> do
+      env <- get
       (appef, apprf) <- simplifyApplyM extInfOpt False (Just e) ef lrf arf
       appmv <- pmvOf e
       let nmv = appmv ++ mv
       pappef <- pruneAndSimplify "appef" (Just $ PT.prettyLines lrf %$ PT.prettyLines arf) False nmv $ Just appef
       Just papprf <- simplifyAppCh mv $ Just apprf
-      debugAppRF nmv apprf papprf $ rt "apply" True e nmv (pappef, papprf)
+      debugAppRF env nmv appef pappef apprf papprf $ rt "apply" True e nmv (pappef, papprf)
 
-      where debugAppRF x a b c = if True then c else do
-              Just nb <- pruneAndSimplify "apprf" Nothing True x $ Just b
-              flip trace c (T.unpack $ PT.boxToString $ [T.pack "AppRF"]
-                                                     %$ PT.prettyLines a
-                                                     %$ PT.prettyLines b
-                                                     %$ PT.prettyLines nb
-                                                     %$ PT.prettyLines e)
+      where debugAppRF denv x a a' b b' c = if True then c else do
+              Just nb' <- pruneAndSimplify "apprf" Nothing True x $ Just b'
+              flip trace c (T.unpack $ PT.boxToString
+                $ [T.pack "AppEF/AppRF"]
+               %$ PT.prettyLines lrf
+               %$ [T.pack "Chased lambda:"]
+               %$ (either (:[]) (concatMap PT.prettyLines) $ runExcept $ chaseLambda denv extInfOpt [] [] lrf)
+               %$ PT.prettyLines arf
+               %$ PT.prettyLines a
+               %$ (maybe [T.pack "No PAppEF"] PT.prettyLines a')
+               %$ PT.prettyLines b
+               %$ PT.prettyLines b'
+               %$ PT.prettyLines nb'
+               %$ PT.prettyLines e)
 
     infer m (onSub -> (ef, mv)) [rf] e@(tnc -> (EProject i, [esrc])) = m >> do
       psrc <- provOf esrc

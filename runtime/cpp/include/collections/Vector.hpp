@@ -1,7 +1,10 @@
 #ifndef K3_VECTOR
 #define K3_VECTOR
 
+#include <algorithm>
+#include <random>
 #include "boost/serialization/vector.hpp"
+
 #include "boost/serialization/base_object.hpp"
 
 #include "STLDataspace.hpp"
@@ -89,6 +92,14 @@ class Vector : public VectorDS<K3::Vector, Elem> {
     return old;
   }
 
+  unit_t shuffle(const unit_t&) {
+    auto& vec = Super::getContainer();
+    std::random_device rd;
+    std::mt19937 g(rd());
+    std::shuffle(vec.begin(), vec.end(), g);
+    return unit_t{};
+  }
+
   template<class Archive>
   void serialize(Archive &ar) {
     ar & yas::base_object<VectorDS<K3::Vector, Elem>>(*this);
@@ -151,22 +162,22 @@ class Vector<R_elem<bool>> : public VectorDS<K3::Vector, bool> {
   using const_iterator = bool_iterator<std::vector<bool>::const_iterator>;
 
   iterator begin() {
-    auto c = Super::getContainer();
+    auto &c = Super::getContainer();
     return iterator(c.begin());
   }
 
   iterator end() {
-    auto c = Super::getContainer();
+    auto &c = Super::getContainer();
     return iterator(c.end());
   }
 
   const_iterator begin() const {
-    auto c = Super::getConstContainer();
+    auto const &c = Super::getConstContainer();
     return const_iterator(c.begin());
   }
 
   const_iterator end() const {
-    auto c = Super::getConstContainer();
+    auto const &c = Super::getConstContainer();
     return const_iterator(c.end());
   }
 

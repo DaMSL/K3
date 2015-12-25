@@ -1269,6 +1269,8 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
             void $  unifyWithOverrideM ch1T (tlower $ [trec $ flip zip jtvs $ map fst ijs]) $ bindErr e "record"
             mapM_ (uncurry monoBinding) $ flip zip jtvs $ map snd ijs
 
+          BSplice _ -> errorM $ bindErr e "splice" $ T.pack "Incomplete bind splice"
+
         return [iu]
 
       where
@@ -1437,6 +1439,7 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
         BIndirection i -> modify $ \env -> tidele env i
         BTuple ids     -> modify $ \env -> foldl tidele env ids
         BRecord ijs    -> modify $ \env -> foldl tidele env $ map snd ijs
+        BSplice _      -> return ()
       return $ ("bind-as",) $ rebuildE n ch .+ bqt
 
     -- First child unification has already been performed in sidewaysBinding
@@ -1507,7 +1510,9 @@ inferExprTypes expr = mapIn1RebuildTree lambdaBinding sidewaysBinding inferQType
       (T.append $ T.unlines [ T.pack "Invalid function application:", PT.pretty fnqt
                             , T.pack "and", PT.pretty (tfun argqt retqt), T.pack ":"])
 
-    lookupError j reason      = errorM $ T.unwords [T.pack "No type environment binding for ", T.pack j, T.pack ":", reason]
+    lookupError j reason      = errorM $ PT.boxToString
+                                $ [T.unwords [T.pack "No type environment binding for ", T.pack j, T.pack ":", reason]]
+                                ++ [T.pack "On ["] ++ PT.prettyLines expr ++ [T.pack "]"]
     lambdaBindingErr i reason = errorM $ T.unwords [T.pack "Could not find typevar for lambda binding: ", T.pack i, reason]
     polyLambdaBindingErr      = errorM $ T.pack "Invalid forall type in lambda binding"
 

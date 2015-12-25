@@ -1,4 +1,5 @@
 include "Annotation/Collection.k3"
+include "Annotation/Vector.k3"
 include "Annotation/FlatPolyBuffer.k3"
 include "Core/Builtins.k3"
 
@@ -61,5 +62,7 @@ sink csink: string = file "poly_c.out" binary raw
 sink dsink: string = file "poly_d.out" binary raw
 sink esink: string = file "poly_e.out" binary raw
 
-source load : FPB = polyfile fpaths binary raw inorder
+declare rebatch : mut int = 0
+
+source load : FPB = polyfile fpaths binary raw inorder rebatch
 feed load |> tload

@@ -146,6 +146,7 @@ data Binder
     = BIndirection Identifier
     | BTuple       [Identifier]
     | BRecord      [(Identifier, Identifier)]
+    | BSplice      Identifier
   deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Annotations on expressions.

@@ -4,14 +4,16 @@ namespace K3 {
 
 #ifdef BSL_ALLOC
 	#ifdef BSEQ
-	BloombergLP::bdlma::SequentialAllocator mpool;
+	thread_local BloombergLP::bdlma::SequentialAllocator* mpool;
 	#elif BPOOLSEQ
-	BloombergLP::bdlma::SequentialAllocator seqpool;
-	BloombergLP::bdlma::MultipoolAllocator mpool(8, seqpool);
+	thread_local BloombergLP::bdlma::SequentialAllocator* seqpool;
+	thread_local BloombergLP::bdlma::MultipoolAllocator* mpool;
 	#elif BLOCAL
-	BloombergLP::bdlma::LocalSequentialAllocator<lsz> mpool;
+	thread_local BloombergLP::bdlma::LocalSequentialAllocator<lsz>* mpool;
+    #elif BCOUNT
+    thread_local BloombergLP::bdlma::CountingAllocator* mpool;
 	#else
-	BloombergLP::bdlma::MultipoolAllocator mpool;
+	thread_local BloombergLP::bdlma::MultipoolAllocator* mpool;
 	#endif
 #endif
 

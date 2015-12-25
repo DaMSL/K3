@@ -34,10 +34,10 @@ noRefsTransConfig  = defaultTransConfig { optRefs = False }
 noMovesTransConfig :: TransformConfig
 noMovesTransConfig  = defaultTransConfig { optMoves = False }
 
--- | Substitute all occurrences of a variable with an expression in the specified target expression.
-substituteImmutBinding :: Identifier -> K3 Expression -> K3 Expression -> K3 Expression
-substituteImmutBinding i iExpr expr =
-    runIdentity $ biFoldMapTree pruneSubs rebuild [(i, iExpr)] EC.unit expr
+-- | Returns whether all occurrences of a binding can be substituted in a target expression.
+fullySubstitutable :: Identifier -> K3 Expression -> K3 Expression -> Bool
+fullySubstitutable i iExpr expr =
+    runIdentity $ biFoldMapTree pruneSubs substitutable [(i, (iExpr, freeVariables iExpr))] True expr
   where
     pruneSubs subs (tag -> ELambda j) = return $ pruneBinding subs [j] [True]
     pruneSubs subs (tag -> ELetIn  j) = return $ pruneBinding subs [j] [False, True]
@@ -46,10 +46,36 @@ substituteImmutBinding i iExpr expr =
     pruneSubs subs n = return $ (subs, replicate (length $ children n) subs)
 
     pruneBinding subs ids oldOrNew =
-      let newSubs = foldl removeAssoc subs ids
+      let newSubs = foldl cleanSubs subs ids
       in (subs, map (\useNew -> if useNew then newSubs else subs) oldOrNew)
 
-    rebuild subs _  n@(tag -> EVariable j) = return $ maybe n id $ lookup j subs
+    cleanSubs acc j = filter (\(_, (_, freevars)) -> j `notElem` freevars) nsubs
+      where nsubs = removeAssoc acc j
+
+    substitutable subs _  (tag -> EVariable j) | i == j = return $ maybe False (const True) $ lookup j subs
+    substitutable _    _  (Node _ []) = return True
+    substitutable _    ch _ = return $ and ch
+
+
+-- | Substitute all occurrences of a variable with an expression in the specified target expression.
+substituteImmutBinding :: Identifier -> K3 Expression -> K3 Expression -> K3 Expression
+substituteImmutBinding i iExpr expr =
+    runIdentity $ biFoldMapTree pruneSubs rebuild [(i, (iExpr, freeVariables iExpr))] EC.unit expr
+  where
+    pruneSubs subs (tag -> ELambda j) = return $ pruneBinding subs [j] [True]
+    pruneSubs subs (tag -> ELetIn  j) = return $ pruneBinding subs [j] [False, True]
+    pruneSubs subs (tag -> EBindAs b) = return $ pruneBinding subs (bindingVariables b) [False, True]
+    pruneSubs subs (tag -> ECaseOf j) = return $ pruneBinding subs [j] [False, True, False]
+    pruneSubs subs n = return $ (subs, replicate (length $ children n) subs)
+
+    pruneBinding subs ids oldOrNew =
+      let newSubs = foldl cleanSubs subs ids
+      in (subs, map (\useNew -> if useNew then newSubs else subs) oldOrNew)
+
+    cleanSubs acc j = filter (\(_, (_, freevars)) -> j `notElem` freevars) nsubs
+      where nsubs = removeAssoc acc j
+
+    rebuild subs _  n@(tag -> EVariable j) = return $ maybe n fst $ lookup j subs
     rebuild _    _  n@(tag -> EConstant _) = return $ n
     rebuild _    ch n@(tag -> ETuple)      = return $ if null $ children n then n else replaceCh n ch
     rebuild _    ch   (Node t _)           = return $ Node t ch

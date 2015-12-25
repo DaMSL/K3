@@ -177,13 +177,25 @@ class IntMap {
     return unit_t();
   }
 
-  unit_t update(const R& rec1, R& rec2) {
+  unit_t update(const R& rec1, const R& rec2) {
     mapi* m = get_mapi();
     if (m->size > 0) {
       auto existing = mapi_find(m, rec1.key);
       if (existing != nullptr) {
         mapi_erase(m, rec1.key);
-        mapi_insert(m, &rec2);
+        mapi_insert(m, const_cast<void*>(static_cast<const void*>(&rec2)));
+      }
+    }
+    return unit_t();
+  }
+
+  unit_t update_key(int key, const R& rec2) {
+    mapi* m = get_mapi();
+    if (m->size > 0) {
+      auto existing = mapi_find(m, key);
+      if (existing != nullptr) {
+        mapi_erase(m, key);
+        mapi_insert(m, const_cast<void*>(static_cast<const void*>(&rec2)));
       }
     }
     return unit_t();
@@ -195,6 +207,33 @@ class IntMap {
       auto existing = mapi_find(m, rec.key);
       if (existing != nullptr) {
         mapi_erase(m, rec.key);
+      }
+    }
+    return unit_t();
+  }
+
+  unit_t erase_key(int key) {
+    mapi* m = get_mapi();
+    if (m->size > 0) {
+      auto existing = mapi_find(m, key);
+      if (existing != nullptr) {
+        mapi_erase(m, key);
+      }
+    }
+    return unit_t();
+  }
+
+  template <typename F, typename G>
+  RT<G,R> erase_with(int key, F f, G g) {
+    mapi* m = get_mapi();
+    if (m->size > 0) {
+      auto existing = mapi_find(m, key);
+      if (existing != nullptr) {
+        auto t = g(std::move(*static_cast<R*>(existing)));
+	mapi_erase(m, key);
+	return t;
+      } else {
+        return f(unit_t{});
       }
     }
     return unit_t();
@@ -439,6 +478,23 @@ class IntMap {
       }
     }
     return result;
+  }
+
+  // Mosaic-specific functionality.
+
+  template<class Other, class OtherKeyFun, class Folder, class Acc>
+  Acc equijoinkf_kv(const Collection<Other>& other, OtherKeyFun keyf, Folder f, Acc acc) const
+  {
+    mapi* m = get_mapi();
+    // Probe and accumulate.
+    for (const auto& otherelem : other.getConstContainer()) {
+      RT<OtherKeyFun, Other> key(keyf(otherelem));
+      auto e = mapi_find(m, key);
+      if (e != nullptr) {
+        acc = f(std::move(acc), *static_cast<R*>(e), otherelem);
+      }
+    }
+    return acc;
   }
 
   bool operator==(const IntMap& other) const {

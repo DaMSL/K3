@@ -85,6 +85,11 @@ class SortedMap {
   // Functionality
   int size(unit_t) const { return container.size(); }
 
+  unit_t clear(const unit_t&) {
+    container.clear();
+    return unit_t();
+  }
+
   template<typename F, typename G>
   auto peek(F f, G g) const {
     auto it = container.begin();
@@ -248,7 +253,6 @@ class SortedMap {
   SortedMap<R> filter_lt(const R& k) const {
     const auto& x = getConstContainer();
     auto it = x.lower_bound(k.key);
-    if (it != x.begin()) --it;
     return SortedMap<R>(x.begin(), it);
   }
 
@@ -267,7 +271,6 @@ class SortedMap {
   SortedMap<R> filter_leq(const R& k) const {
     const auto& x = getConstContainer();
     auto it = x.upper_bound(k.key);
-    if (it != x.begin()) --it;
     return SortedMap<R>(x.begin(), it);
   }
 

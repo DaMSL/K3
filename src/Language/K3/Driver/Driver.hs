@@ -80,7 +80,7 @@ transformM cstages prog = foldM processStage (prog, []) cstages
     processStage (p,lg) SCGPrepare             = trace "Running SCGPrepare stage."       $ chainLog   lg $ ST.runCGPreparePassesM p
     processStage (p,lg) (SMaterialization dbg) = trace "Running SMaterialization stage." $ chainLog   lg $ ST.materializationPass dbg ST.mz0 (MatI.prepareInitialIState dbg p) p
     processStage (p,lg) (SCodegen mzfs)        = trace "Running SCodegen stage."         $ chainLog   lg $ ST.runCGPassesM mzfs p
-    processStage (p,lg) (SDeclOpt cSpec)       = wrapReport lg $ ST.runDeclOptPassesM cSpec Nothing p
+    processStage (p,lg) (SDeclOpt cSpec)       = trace "Running SDeclOpt stage."         $ wrapReport lg $ ST.runDeclOptPassesM cSpec Nothing p
 
     chainLog   lg m = m >>= return . (,lg)
     wrapReport lg m = m >>= \np -> get >>= \st -> return (np, lg ++ (prettyLines $ ST.report st))
@@ -180,8 +180,9 @@ metaprogram opts p = if noMP $ input opts
 
     mkOpts Nothing = Just $ defaultMPEvalOptions
     mkOpts (Just mpo) =
-      Just $ defaultMPEvalOptions { mpInterpArgs  = (unpair $ interpreterArgs mpo)
-                                  , mpSearchPaths = (moduleSearchPath mpo) }
+      Just $ defaultMPEvalOptions { mpInterpArgs  = unpair $ interpreterArgs mpo
+                                  , mpSearchPaths = moduleSearchPath mpo
+                                  , mpSerial      = serialMetaprogram mpo }
 
     unpair = concatMap (\(x,y) -> [x,y])
     spliceError = "Could not process metaprogram: "

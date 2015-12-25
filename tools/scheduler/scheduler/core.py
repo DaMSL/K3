@@ -44,6 +44,7 @@ class Role:
     self.volumes    = kwargs.get("volumes", [])
     self.envars     = kwargs.get("envars", [])
     self.inputs     = kwargs.get("inputs", [])
+    self.seq_files  = kwargs.get("seq_files", [])
 
   def to_string(self):
     print ("  ROLE ")
@@ -80,24 +81,26 @@ class Task:
 
 class Job:
   def __init__(self, **kwargs):
-    # self.archive    = kwargs.get("archive", None)
-    self.binary_url  = kwargs.get("binary", None)
-    self.appName     = kwargs.get("appName", 'None')
-    self.appUID      = kwargs.get("appUID", 'None')
-    self.jobId       = kwargs.get("jobId", '1000')
-    roleFile         = kwargs.get("rolefile", None)
-    self.logging     = kwargs.get("logging", False)
-    self.jsonlog     = kwargs.get("jsonlog", False)
-    self.jsonfinal   = kwargs.get("jsonfinal", False)
-    self.perfprofile = kwargs.get("perfprofile", False)
-    self.stdout      = kwargs.get("stdout", False)
-    self.roles       = {}
-    self.tasks       = []
-    self.status      = None
-    self.all_peers   = None
-    self.master      = None
-    self.start_ts    = None
-    self.time_limit  = kwargs.get("timelimit", 20 * 60)
+    # self.archive      = kwargs.get("archive", None)
+    self.binary_url     = kwargs.get("binary", None)
+    self.appName        = kwargs.get("appName", 'None')
+    self.appUID         = kwargs.get("appUID", 'None')
+    self.jobId          = kwargs.get("jobId", '1000')
+    roleFile            = kwargs.get("rolefile", None)
+    self.logging        = kwargs.get("logging", False)
+    self.jsonlog        = kwargs.get("jsonlog", False)
+    self.jsonfinal      = kwargs.get("jsonfinal", False)
+    self.perf_profile   = kwargs.get("perf_profile", False)
+    self.core_dump      = kwargs.get("core_dump", False)
+    self.perf_frequency = kwargs.get("perf_frequency", '10')
+    self.stdout         = kwargs.get("stdout", False)
+    self.roles          = {}
+    self.tasks          = []
+    self.status         = None
+    self.all_peers      = None
+    self.master         = None
+    self.start_ts       = None
+    self.time_limit     = kwargs.get("timelimit", 20 * 60)
 
     if self.binary_url == None:
       logging.error("[FLASKWEB] Error. No binary provided to Job")
@@ -134,6 +137,7 @@ class Job:
       volumes = doc.get('volumes', [])
       envars = doc.get('envars', [])
       inputs = doc.get('k3_data', [])
+      seq_files = doc.get('k3_seq_files', [])
 
       # Parameters:  Just add additional parameters here to receive them
       #  from YAML -- the dispather will need to handle them
@@ -155,7 +159,7 @@ class Job:
       # self.inputs.extend(inputs)
 
       r = Role(peers=peers, variables=globalVars, peerVars=peerVars, hostmask=mask,
-               volumes=volumes, params=params, envars=envars, inputs=inputs)
+               volumes=volumes, params=params, envars=envars, inputs=inputs, seq_files=seq_files)
       self.roles[name] = r
 
 

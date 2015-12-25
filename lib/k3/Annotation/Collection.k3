@@ -3,7 +3,6 @@ annotation Collection given type a, b, c, d
   provides lifted size : () -> int
     with effects \_ -> R[self]
 
-  // Erases the data structure without removing backing storage
   provides lifted clear : () -> ()
     with effects \_ -> [R[self]; W[self]]
 

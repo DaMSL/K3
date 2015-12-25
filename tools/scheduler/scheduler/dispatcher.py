@@ -3,7 +3,7 @@ import os
 import sys
 import math
 import time
-import threading
+from threading import Thread, Event
 import socket
 from collections import deque, OrderedDict
 
@@ -24,6 +24,8 @@ import logging
 DEFAULT_MEM = 4 * 1024
 
 OFFER_HOLD = 5
+
+heartBeat = Event()
 
 
 class Dispatcher(mesos.interface.Scheduler):
@@ -331,6 +333,7 @@ class Dispatcher(mesos.interface.Scheduler):
 
     # For now, return Mesos URL to Framework:
     master = resolve(self.mesosmaster).strip()
+
     url = master + '/#/frameworks/' + self.frameworkId.value
     return url
 
@@ -410,9 +413,12 @@ class Dispatcher(mesos.interface.Scheduler):
   # If there is a pending job, add all offers to self.offers
   # Then see if pending jobs can be launched with the offers accumulated so far
   def resourceOffers(self, driver, offers):
+
+    heartBeat.set()
     # logging.info("[DISPATCHER] Got %d resource offers. %d jobs in the queue" % (len(offers), len(self.pending)))
     ts = time.time()
     self.killStragglers(ts, driver)
+
 
     # Heart Beat logging
     # if ts > self.idle:
@@ -456,14 +462,33 @@ but is neither pending nor active. Killing it now." % job)
           del self.offers[offer.id.value]
         self.offerRelease = ts + offer_wait
       else:
+
+        def clearOffers():
+          logging.debug("[DISPATCHER] I'm waiting for a heartbeat in case there are no offers.")
+          heartbeat = heartBeat.wait(float(offer_wait))
+          if not heartbeat:
+            logging.info("[DISPATCHER] Heartbeat Timeout holding offers (NO OFFERS). I've waited %s seconds and cannot lauch. Releasing all offers", offer_wait)
+            for offer in offers:
+              driver.declineOffer(offer.id)
+              del self.offers[offer.id.value]
+            self.offerRelease = ts + offer_wait
+          else:
+            logging.debug("[DISPATCHER] Heartbeat was alive. No need to clear offers.")
+
+        heartBeat.clear()
+        logging.info("[DISPATCHER] Insufficient Offers, I will wait a bit for more offers")
+        nulloffer = Thread(target=clearOffers)
+        nulloffer.start()
+
         logging.info("[DISPATCHER]  HOLDING %d Offers for %s Jobs and waiting for more offers", len(self.offers), len(self.pending))
 
 
 
+
   def offerRescinded(self, driver, offer):
-    logging.warning("[DISPATCHER] Previous offer '%d' invalidated" % offer.id.value)
-    if offer.id in self.offers:
-      del self.offers[offer.id.value]
+    logging.warning("[DISPATCHER] Previous offer '%s' invalidated", str(offer.value))
+    if offer.value in self.offers:
+      del self.offers[offer.value]
 
 
   def kill(self, driver):

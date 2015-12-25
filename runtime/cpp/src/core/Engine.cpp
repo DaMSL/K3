@@ -66,11 +66,11 @@ void Engine::join() {
       it.second->join();
     }
   }
-#ifdef K3DEBUG
+  #ifdef K3TRIGGERTIMES
   for (auto& it : *peers_) {
     it.second->printStatistics();
   }
-#endif
+  #endif
   network_manager_.stop();
   network_manager_.join();
   running_ = false;

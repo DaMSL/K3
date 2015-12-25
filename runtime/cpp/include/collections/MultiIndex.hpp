@@ -28,12 +28,15 @@
 #include <yas/serializers/std_types_serializers.hpp>
 #include <yas/serializers/boost_types_serializers.hpp>
 
+#include "types/BaseString.hpp"
+
 #ifdef BSL_ALLOC
 #include <bsl_memory.h>
 #include <bsls_blockgrowth.h>
 #include <bdlma_multipoolallocator.h>
 #include <bdlma_sequentialallocator.h>
 #include <bdlma_localsequentialallocator.h>
+#include <bdlma_countingallocator.h>
 #endif
 
 namespace K3 {
@@ -547,15 +550,17 @@ public:
 // Allocators.
 #ifdef BSL_ALLOC
   #ifdef BSEQ
-  extern BloombergLP::bdlma::SequentialAllocator mpool;
+  extern thread_local BloombergLP::bdlma::SequentialAllocator* mpool;
   #elif BPOOLSEQ
-  extern BloombergLP::bdlma::SequentialAllocator seqpool;
-  extern BloombergLP::bdlma::MultipoolAllocator mpool;
+  extern thread_local BloombergLP::bdlma::SequentialAllocator* seqpool;
+  extern thread_local BloombergLP::bdlma::MultipoolAllocator* mpool;
   #elif BLOCAL
   constexpr size_t lsz = 2<<14;
-  extern BloombergLP::bdlma::LocalSequentialAllocator<lsz> mpool;
+  extern thread_local BloombergLP::bdlma::LocalSequentialAllocator<lsz>* mpool;
+  #elif BCOUNT
+  extern thread_local BloombergLP::bdlma::CountingAllocator* mpool;
   #else
-  extern BloombergLP::bdlma::MultipoolAllocator mpool;
+  extern thread_local BloombergLP::bdlma::MultipoolAllocator* mpool;
   #endif
 #endif
 
@@ -585,25 +590,27 @@ class MultiIndexVMap
 
   typedef typename Container::iterator iterator;
 
-  Container container;
-
   // Allocators.
   #ifdef BSL_ALLOC
-    bsl::allocator<VElem<R, Version>> oalloc;
-    bsl::allocator<std::pair<Version, R>> ialloc;
+    using IAlloc = bsl::allocator<std::pair<Version, R>>;
+    using OAlloc = bsl::allocator<VElem<R, Version>>;
+    IAlloc ialloc;
+    OAlloc oalloc;
   #else
-    std::allocator<VElem<R, Version>> oalloc;
     std::allocator<std::pair<Version, R>> ialloc;
+    std::allocator<VElem<R, Version>> oalloc;
   #endif
 
   vmap_alloc<Version, R> scialloc;
   midx_alloc<R, Version> scoalloc;
 
+  Container container;
+
  public:
   MultiIndexVMap() :
     #ifdef BSL_ALLOC
-      oalloc(&mpool),
-      ialloc(&mpool),
+      ialloc(mpool),
+      oalloc(mpool),
     #endif
     scialloc(ialloc),
     scoalloc(oalloc, scialloc),
@@ -705,7 +712,6 @@ class MultiIndexVMap
         if ( vit != vmap.end() ) {
           vmap.erase(vit);
           do_insert = true;
-        } else {
         }
       });
       if ( do_insert ) {
@@ -745,9 +751,9 @@ class MultiIndexVMap
         auto& vmap = std::get<1>(elem);
         auto vexisting = vmap.find(v);
         if ( vexisting == vmap.end() ) {
-          vmap[v] = rec;
+	        vmap.insert(vexisting, std::make_pair(v, rec));
         } else {
-          vmap[v] = f(std::move(vexisting->second), rec);
+	        vexisting->second = f(std::move(vexisting->second), rec);
         }
       });
     }
@@ -767,9 +773,9 @@ class MultiIndexVMap
         auto& vmap = std::get<1>(elem);
         auto vexisting = vmap.find(v);
         if ( vexisting == vmap.end() ) {
-          vmap[v] = f(unit_t {});
+	        vmap.insert(vexisting, std::make_pair(v, f(unit_t{})));
         } else {
-          vmap[v] = g(std::move(vexisting->second));
+          vexisting->second = g(std::move(vexisting->second));
         }
       });
     }
@@ -831,9 +837,9 @@ class MultiIndexVMap
         auto& vmap = std::get<1>(elem);
         auto vit = vmap.upper_bound(v);
         if ( vit == vmap.end() ) {
-          vmap[v] = f(unit_t {});
+	        vmap.insert(vit, std::make_pair(v, f(unit_t{})));
         } else {
-          vmap[v] = g(std::move(vit->second));
+          vit->second = g(std::move(vit->second));
         }
       });
     }
@@ -876,7 +882,7 @@ class MultiIndexVMap
     return unit_t();
   }
 
-  // Inclusive update greater than a given version.
+  // Update (strictly) greater than a given version.
   template <class F>
   unit_t update_after(const Version& v, const R& rec, F f) {
     auto it = container.find(rec.key);
@@ -886,7 +892,7 @@ class MultiIndexVMap
         auto vstart = vmap.begin();
         auto vlteq  = vmap.lower_bound(v);
         for (; vstart != vlteq; vstart++) {
-          vmap[vstart->first] = f(vstart->first, std::move(vstart->second));
+          vstart->second = f(vstart->first, std::move(vstart->second));
         }
       });
     }
@@ -1236,20 +1242,45 @@ class MultiIndexVMap
   template<class Archive>
   void serialize(Archive &ar) const {
     ar.write(container.size());
-    for (const auto& elem : container) {
-      ar & elem;
+    for (const auto& tup: container) {
+      // Write the key
+      const Key& k = std::get<0>(tup);
+      ar & k;
+
+      // Write the inner map: a size, then individual keys and values
+      const auto& map = std::get<1>(tup);
+      ar.write(map.size());
+      for (const auto& elem : map) {
+        ar & elem.first;
+	ar & elem.second;
+      }
     }
   }
 
   template<class Archive>
   void serialize(Archive &ar) {
-    size_t sz = 0;
-    ar.read(sz);
-    while ( sz > 0 ) {
-      Elem elem;
-      ar & elem;
-      container.emplace(elem);
-      sz--;
+    size_t out_sz = 0;
+    ar.read(out_sz);
+    while ( out_sz > 0 ) {
+      // Read the key
+      Key k;
+      ar & k;
+
+      // Read the Inner Map
+      size_t in_sz = 0;
+      ar.read(in_sz);
+      VMap inner;
+      while (in_sz > 0) {
+        typename VMap::key_type k;
+        typename VMap::mapped_type v;
+	ar & k;
+	ar & v;
+	auto pair = std::make_pair(std::move(k), std::move(v));
+	inner.insert(std::move(pair));
+	in_sz--;
+      }
+      container.emplace(std::make_tuple<Key, VMap>(std::move(k), std::move(inner)));
+      out_sz--;
     }
   }
 

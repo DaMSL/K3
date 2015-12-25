@@ -10,6 +10,7 @@
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE ViewPatterns #-}
+
 -- | K3 Parser.
 module Language.K3.Parser {-(
   K3Parser,
@@ -303,16 +304,23 @@ dControlAnnotation = namedIdentifier "control annotation" "control" $ rule
         body           = (,) <$> some cpattern <*> (extensions $ keyword "shared")
         cpattern       = (,,) <$> patternE <*> (symbol "=>" *> rewriteE) <*> (extensions $ symbol "+>")
 
-        extensions :: K3Parser a -> K3Parser [K3 Declaration]
+        extensions :: K3Parser a -> K3Parser [Either MPRewriteDecl (K3 Declaration)]
         extensions pfx = concat <$> option [] (try $ pfx *> braces (many extensionD))
         rewriteE       = cleanExpr =<< parseInMode Splice expr
         patternE       = cleanExpr =<< parseInMode SourcePattern expr
-        extensionD     = mapM cleanDecl =<< parseInMode Splice declaration
+        extensionD     = mapM cleanDecl =<< parseInMode Splice (    try ((\mpd -> [Left mpd]) <$> rewriteDecl)
+                                                                <|> try (map Right <$> declaration))
+
+        rewriteDecl :: K3Parser MPRewriteDecl
+        rewriteDecl = mpRewriteDecl <$> (keyword "for" *> parseInMode Normal identifier)
+                                    <*> (keyword "in" *> svTerm <* colon)
+                                    <*> (concat <$> some declaration)
 
         mkCtrlAnn n svars (rw, exts) = DC.generator $ mpCtrlAnnotation n svars rw exts
 
         cleanExpr e = return $ stripEUIDSpan e
-        cleanDecl d = return $ stripDUIDSpan d
+        cleanDecl (Left (MPRewriteDecl i c ds)) = return $ Left $ MPRewriteDecl i c $ map stripDUIDSpan ds
+        cleanDecl (Right d) = return $ Right $ stripDUIDSpan d
 
 
 dTypeAlias :: K3Parser (Maybe (K3 Declaration))
@@ -372,6 +380,7 @@ tTermOrFun = TSpan <-> mkTermOrFun <$> (TUID # tTerm) <*> optional (symbol "->" 
         mkTermOrFun t Nothing   = clean t
         clean t                 = stripAnnot isTSpan $ stripAnnot isTUID t
         stripAnnot f t          = maybe t (t @-) $ t @~ f
+
 tPrimitive :: TypeParser
 tPrimitive = tPrimError $ choice $ map tConst [ ("bool",    TC.bool)
                                               , ("int",     TC.int)
@@ -476,9 +485,8 @@ eTerm = do
     eProject :: K3Parser ((String, Maybe (K3 Type)), [Annotation Expression])
     eProject = prjWithAnnotations $ dot *> identifier
 
-    -- attachProjection :: _
     attachProjection e (((i, tOpt), anns), sp) =
-      EUID # (return $ foldl (@+) (EC.project i e) $ [ESpan sp] ++ maybe [] ((:[]) . EPType) tOpt ++ anns)
+      EUID # (return $ foldl (@+) (EC.project i e) $ [ESpan sp] ++ maybe [] ((:[]) . EPType . stripTUIDSpan) tOpt ++ anns)
 
     eWithProperties    p = withProperties "" False eProperties p
 
@@ -493,7 +501,7 @@ eTerm = do
       _ -> ctor <$> p
 
     attachPType :: K3 Expression -> Maybe (K3 Type) -> K3 Expression
-    attachPType e tOpt = maybe e ((e @+) . EPType) tOpt
+    attachPType e tOpt = maybe e ((e @+) . EPType . stripTUIDSpan) tOpt
 
     wrapInComments p = (\c1 e c2 -> (//) attachComment (c1++c2) e) <$> comment False <*> p <*> comment True
     attachComment e cmt = e @+ (ESyntax cmt)
@@ -653,16 +661,10 @@ eBind = exprError "bind" $ EC.bindAs <$> (nsPrefix "bind")
                                      <*> (keyword "as" *> eBinder) <*> (ePrefix "in")
 
 eBinder :: BinderParser
-eBinder = exprError "binder" $ choice [bindInd, bindTup, bindRec]
-
-bindInd :: K3Parser Binder
-bindInd = BIndirection <$> iPrefix "ind"
-
-bindTup :: K3Parser Binder
-bindTup = BTuple <$> parens idList
-
-bindRec :: K3Parser Binder
-bindRec = BRecord <$> braces idPairList
+eBinder = exprError "binder" $ parserWithPMode $ \mode -> choice $ (++ [bindInd, bindTup, bindRec]) $
+            case mode of
+              Normal -> []
+              _ -> [bindSplice]
 
 eAddress :: ExpressionParser
 eAddress = exprError "address" $ EC.address <$> ipAddress <* colon <*> port
@@ -865,11 +867,12 @@ tProperties = nproperties $ TProperty . Left
 
 {- Metaprogramming -}
 stTerm :: K3Parser SpliceType
-stTerm = choice $ map try [ stLabel, stType, stExpr, stDecl, stLiteral
+stTerm = choice $ map try [ stLabel, stBinder, stType, stExpr, stDecl, stLiteral
                           , stLabelType, stLabelExpr, stLabelLit, stLTL
                           , stRecord, stList ]
   where
     stLabel     = STLabel     <$ keyword "label"
+    stBinder    = STBinder    <$ keyword "binder"
     stType      = STType      <$ keyword "type"
     stExpr      = STExpr      <$ keyword "expr"
     stDecl      = STDecl      <$ keyword "decl"
@@ -897,10 +900,11 @@ svTerm :: K3Parser SpliceValue
 svTerm = choice $ map try [ sVar
                           , svTypeDict, svExprDict, svLiteralDict, svTylitDict
                           , svNamedTypeDict, svNamedExprDict, svNamedLiteralDict, svNamedTermDict
-                          , sLabel, sType, sExpr, sDecl, sLiteral, sLabelType, sRecord, sList, sLitRange ]
+                          , sLabel, sBinder, sType, sExpr, sDecl, sLiteral, sLabelType, sRecord, sList, sLitRange ]
   where
     sVar        = SVar                  <$> identifier
     sLabel      = SLabel                <$> wrap "[#"  "]"  identifier
+    sBinder     = SBinder               <$> wrap "[~!" "]"  eBinder
     sType       = SType . stripTUIDSpan <$> wrap "[:"  "]"  typeExpr
     sExpr       = SExpr . stripEUIDSpan <$> wrap "[$"  "]"  expr
     sLiteral    = SLiteral              <$> wrap "[$#" "]"  literal
@@ -977,11 +981,11 @@ spliceParameter :: K3Parser (Maybe (Identifier, SpliceValue))
 spliceParameter = try ((\a b -> Just (a,b)) <$> identifier <* symbol "=" <*> parseInMode Splice svTerm)
 
 contextualizedSpliceParameter :: Maybe SpliceEnv -> K3Parser (Maybe (Identifier, SpliceValue))
-contextualizedSpliceParameter sEnvOpt = choice [try fromContext, spliceParameter]
+contextualizedSpliceParameter sEnvOpt = choice [try fromContextVar, try fromContext, spliceParameter]
   where
-    fromContext = mkCtxtVal sEnvOpt <$> identifier <*> optional (symbol "=" *> contextParams)
-    contextParams = try (Left <$> identifier) <|> try (Right <$> (brackets $ commaSep1 identifier))
-      -- ^ TODO: this prevents us from matching against an SVar. Generalize.
+    fromContextVar = (\a b -> Just (a,b)) <$> identifier <*> (symbol ":=" *> parseInMode Splice svTerm)
+    fromContext    = mkCtxtVal sEnvOpt <$> identifier <*> optional (symbol "=" *> contextParams)
+    contextParams  = try (Left <$> identifier) <|> try (Right <$> (brackets $ commaSep1 identifier))
 
     mkCtxtVal Nothing _ _                     = Nothing
     mkCtxtVal (Just sEnv) a Nothing           = mkCtxtLt sEnv a >>= return . (a,)
@@ -1184,12 +1188,20 @@ filemux = mkFMuxSrc <$> syms ["filemxsq", "filemux"] <*> eVariable <*> textOrBin
       else fail "Invalid file mux kind"
 
 polyfile :: K3Parser EndpointBuilder
-polyfile = mkPFSrc <$> try (symbol "polyfile") <*> eVariable <*> textOrBinary <*> format <*> eTerminal
+polyfile = mkPFSrc <$> syms ["polyfileseq", "polyfile"] <*> eVariable <*> textOrBinary <*> format <*> eTerminal <*> eVariable
   where
     textOrBinary = (symbol "text" *> return True) <|> (symbol "binary" *> return False)
-    mkPFSrc sym argE asTxt formatE orderE n t = do
-      s <- (\a f o -> PolyFileMuxEP a asTxt f o) <$> S.exprS argE <*> S.symbolS formatE <*> S.exprS orderE
+    syms l = choice $ map (try . symbol) l
+
+    mkPFSrc sym argE asTxt formatE orderE rbsizeE n t = do
+      s <- (\a f o sv -> (ctorOfSym sym) a asTxt f o sv)
+              <$> S.exprS argE <*> S.symbolS formatE <*> S.exprS orderE <*> S.exprS rbsizeE
       return $ endpointMethods True s argE formatE n t
+
+    ctorOfSym s =
+      if s == "polyfile" then PolyFileMuxEP
+      else if s == "polyfileseq" then PolyFileMuxSeqEP
+      else fail "Invalid poly file kind"
 
 
 network :: Bool -> K3Parser EndpointBuilder

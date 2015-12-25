@@ -957,11 +957,12 @@ inferProgramProvenance symSOpt prog = do
     inferWithSimplify np = inferPlain np >>= simplifyProgramProvenance
 
     globalsProv :: K3 Declaration -> PInfM (K3 Declaration)
-    globalsProv p = inferAllRcrDecls p >>= inferAllDecls
+    globalsProv p = inferAllRcrDecls p >>= inferAllDataAnnotationDecls >>= inferAllDecls
 
-    inferAllRcrDecls p = mapProgram initializeRcrDeclProv return return Nothing p
-    inferAllDecls    p = mapProgram inferDeclProv return return Nothing p
-    markAllGlobals   p = mapProgram markGlobalProv return return Nothing p
+    inferAllRcrDecls            p = mapProgram initializeRcrDeclProv return return Nothing p
+    inferAllDataAnnotationDecls p = mapProgram inferDataAnnotationDeclProv return return Nothing p
+    inferAllDecls               p = mapProgram inferDeclProv return return Nothing p
+    markAllGlobals              p = mapProgram markGlobalProv return return Nothing p
 
 
 -- | Repeat provenance inference on a global with an initializer.
@@ -1039,6 +1040,7 @@ inferDeclProv d@(tag -> DTrigger n _ e) = do
   void $ pistoretM n u $ (tisdup ti, pglobal n p')
   return d
 
+{-
 inferDeclProv d@(tag -> DDataAnnotation n _ mems) = do
   mProvs <- mapM inferMemsProv mems
   void $ pistoreatM n $ catMaybes mProvs
@@ -1055,8 +1057,29 @@ inferDeclProv d@(tag -> DDataAnnotation n _ mems) = do
                     Just (DProvenance prv) -> declProvWithTI prv
                     _ -> initProvWithTI mt meOpt
       return $ Just (mn,u,mp,lifted,ti)
+-}
 
 inferDeclProv d = return d
+
+inferDataAnnotationDeclProv :: K3 Declaration -> PInfM (K3 Declaration)
+inferDataAnnotationDeclProv d@(tag -> DDataAnnotation n _ mems) = do
+  mProvs <- mapM inferMemsProv mems
+  void $ pistoreatM n $ catMaybes mProvs
+  return d
+
+  where
+    inferMemsProv m@(Lifted    Provides mn mt meOpt mas) = inferMemberProv m True  mn mt meOpt mas
+    inferMemsProv m@(Attribute Provides mn mt meOpt mas) = inferMemberProv m False mn mt meOpt mas
+    inferMemsProv _ = return Nothing
+
+    inferMemberProv mem lifted mn mt meOpt mas = do
+      u  <- memUID mem mas
+      (ti, mp) <- case find isDProvenance mas of
+                    Just (DProvenance prv) -> declProvWithTI prv
+                    _ -> initProvWithTI mt meOpt
+      return $ Just (mn,u,mp,lifted,ti)
+
+inferDataAnnotationDeclProv d = return d
 
 -- | Compute a provenance tree in a single pass, tracking expression-provenance associations.
 --   Then, apply a second pass to attach associated provenances to each expression node.
@@ -1111,6 +1134,8 @@ inferProvenance expr = do
 
         BRecord ivs    -> srt td [(uidInt u, length ivs)] . (:[])
                             $ mapM_ (\(src,dest) -> freshM dest u (tisdup pti) $ precord src p) ivs
+
+        BSplice _      -> errorM $ PT.boxToString $ [T.pack "Incomplete bind splice while inferring provenance for "] %$ PT.prettyLines e
 
     sideways td _ _ (children -> ch) = tdm td >> srt td ul ml
       where (ul, ml) = unzip $ replicate (length ch - 1) ((scuid td, 0), iu)

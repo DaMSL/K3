@@ -41,8 +41,9 @@ class StorageManager {
       return std::move(*unpack<T>(std::move(pval)));
     }
     catch (std::ios_base::failure e) {
-      logger_->error ("ERROR Reading from {}", id);
-      throw std::runtime_error ("File I/O Error. Program is Halting.");
+      logger_->error ("ERROR: Reading from {}", id);
+      throw e;
+      //throw std::runtime_error ("File I/O Error. Program is Halting.");
     }
   }
 
@@ -62,8 +63,8 @@ class StorageManager {
       }
     }
     catch (std::exception e)  {
-      logger_->error ("ERROR Reading from {}", id);
-      throw std::runtime_error ("File I/O Error. Program is Halting.");
+      logger_->error ("ERROR: Reading from {}", id);
+      throw e;
     }
     return std::move(vals);
   }

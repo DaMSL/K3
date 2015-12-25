@@ -73,7 +73,7 @@ evalMetaprogram evalOpts analyzeFOpt repairFOpt prog =
       pWithDADecls   <- modifyGDeclsF $ \gd -> addDecls gd pWithMDataAnns
       analyzedP      <- analyzeF pWithDADecls
       localLog $ debugAnalysis analyzedP
-      pWithMCtrlAnns <- applyCAnnGens analyzedP
+      pWithMCtrlAnns <- generatorWithEvalOptions (flip applyCAnnGens analyzedP)
       pWithCADecls   <- modifyGDeclsF $ \gd -> addDecls gd pWithMCtrlAnns
       pRepaired      <- repairF pWithCADecls
       if pRepaired == mp then return pRepaired
@@ -243,16 +243,24 @@ applyDAnnGens mp = mapProgram applyDAnnDecl applyDAnnMemDecl applyDAnnExprTree (
         spliceLookupErr n = throwG $ unwords ["Could not find data macro", n]
 
 
-applyCAnnGens :: K3 Declaration -> GeneratorM (K3 Declaration)
-applyCAnnGens mp = mapExpression applyCAnnExprTree mp
+applyCAnnGens :: MPEvalOptions -> K3 Declaration -> GeneratorM (K3 Declaration)
+applyCAnnGens opts mp = foldExpression applyCAnnExprTree False mp >>= return . snd
   where
-    applyCAnnExprTree e = mapTree applyCAnnExpr e
+    applyCAnnExprTree changed e = foldMapRebuildTree (applyCAnnExpr $ mpSerial opts) changed e
 
     -- TODO: think about propagation of annotations between rewrites.
     -- Currently we do not preserve any annotations.
-    applyCAnnExpr ch (Node (t :@: anns) _) =
+    applyCAnnExpr True chChanged ch (Node (t :@: anns) _) =
+      if or chChanged
+        then return (True, Node (t :@: anns) ch)
+        else let (appAnns, rest) = partition isEApplyGen anns in
+             case appAnns of
+               h:tl -> eApplyAnn (Node (t :@: (tl ++ rest)) ch) h >>= return . (True,)
+               [] -> return (False, Node (t :@: rest) ch)
+
+    applyCAnnExpr False _ ch (Node (t :@: anns) _) =
       let (appAnns, rest) = partition isEApplyGen anns
-      in foldM eApplyAnn (Node (t :@: rest) ch) appAnns
+      in foldM eApplyAnn (Node (t :@: rest) ch) appAnns >>= return . (False,)
 
     eApplyAnn e (EApplyGen True n senv) = applyCAnnotation e n senv
     eApplyAnn e _ = return e
@@ -294,8 +302,17 @@ applyCAnnotation targetE cAnnId sEnv = do
 
 evalBindings :: SpliceContext -> SpliceEnv -> GeneratorM SpliceEnv
 evalBindings sctxt senv = evalMap (generateInSpliceCtxt sctxt) senv
-  where eval sv@(SVar  _)   = let csv = chase sv in if csv == sv then return sv else eval csv
+  where eval (SVar i) = do
+          sv <- expectEmbeddingSplicer i
+          case sv of
+            SLabel j | i == j -> eval_var $ SVar j
+            SVar j -> eval_var sv
+            _ -> return sv
+
+          where eval_var sv@(chase -> csv) = if csv == sv then return sv else eval csv
+
         eval (SLabel   i)   = spliceIdentifier i  >>= return . SLabel
+        eval (SBinder  b)   = spliceBinder b      >>= return . SBinder
         eval (SType    t)   = spliceType t        >>= return . SType
         eval (SExpr    e)   = spliceExpression e  >>= return . SExpr
         eval (SDecl    d)   = spliceDeclaration d >>= return . SDecl
@@ -341,7 +358,7 @@ annotationSplicer :: Identifier -> [TypedSpliceVar] -> [TypeVarDecl] -> [Either 
 annotationSplicer n spliceParams typeParams mems = Splicer $ \spliceEnv -> SRGenDecl $ do
   let vspliceEnv = validateSplice spliceParams spliceEnv
   nmems <- generateInSpliceEnv vspliceEnv $ mapM (either spliceMPAnnMem (\m -> spliceAnnMem m >>= return . (:[]))) mems
-  if isContentDependent n
+  if isContentDependent
     then return $ SGContentDependent $ \t -> withGUID n vspliceEnv (Just t) $ onGenerated nmems
     else withGUID n vspliceEnv Nothing $ onGenerated nmems
 
@@ -349,7 +366,7 @@ annotationSplicer n spliceParams typeParams mems = Splicer $ \spliceEnv -> SRGen
   onGenerated _     (Left i)  = SGNamed $ concat [n, "_", show i]
   onGenerated nmems (Right i) = SGDecl $ DC.dataAnnotation (concat [n, "_", show i]) typeParams $ concat nmems
 
-  isContentDependent n' = any (`isInfixOf` n) ["VMapIndex", "MapE", "SortedMapE", "MapCE"]
+  isContentDependent = any (`isInfixOf` n) ["VMapIndex", "MapE", "SortedMapE", "MapCE"]
 
 
 exprSplicer :: K3 Expression -> K3Generator
@@ -382,7 +399,7 @@ spliceDecl d = case d of
   (Node (tg :@: _) ch) ->
     newAnns d () >>= \(_,nanns) -> return $ Node (tg :@: nanns) ch
  where
-  newAnns d v = mapM spliceDAnnotation (annotations d) >>= return . (v,)
+  newAnns d' v = mapM spliceDAnnotation (annotations d') >>= return . (v,)
 
 spliceMPAnnMem :: MPAnnMemDecl -> GeneratorM [AnnMemDecl]
 spliceMPAnnMem (MPAnnMemDecl i c mems) = spliceWithValue c
@@ -423,6 +440,9 @@ spliceExpression = mapTree doSplice
     doSplice ch e@(tag -> EProject i)            = expectIdSplicer i        >>= newAnns e >>= \(nid, nanns)  -> return $ Node (EProject nid  :@: nanns) ch
     doSplice ch e@(tag -> EAssign i)             = expectIdSplicer i        >>= newAnns e >>= \(nid, nanns)  -> return $ Node (EAssign  nid  :@: nanns) ch
     doSplice ch e@(tag -> ELambda i)             = expectIdSplicer i        >>= newAnns e >>= \(nid, nanns)  -> return $ Node (ELambda  nid  :@: nanns) ch
+    doSplice ch e@(tag -> ELetIn i)              = expectIdSplicer i        >>= newAnns e >>= \(nid, nanns)  -> return $ Node (ELetIn   nid  :@: nanns) ch
+    doSplice ch e@(tag -> ECaseOf i)             = expectIdSplicer i        >>= newAnns e >>= \(nid, nanns)  -> return $ Node (ECaseOf  nid  :@: nanns) ch
+    doSplice ch e@(tag -> EBindAs b)             = expectBindSplicer b      >>= newAnns e >>= \(nb, nanns)   -> return $ Node (EBindAs  nb   :@: nanns) ch
     doSplice ch e@(tag -> EConstant (CEmpty ct)) = spliceType ct            >>= newAnns e >>= \(nct, nanns)  -> return $ Node (EConstant (CEmpty nct) :@: nanns) ch
     doSplice ch e@(Node (tg :@: _) _) = newAnns e () >>= \(_,nanns) -> return $ Node (tg :@: nanns) ch
 
@@ -445,6 +465,12 @@ spliceLiteral = mapTree doSplice
 
 spliceIdentifier :: Identifier -> GeneratorM Identifier
 spliceIdentifier i = expectIdSplicer i
+
+spliceBinder :: Binder -> GeneratorM Binder
+spliceBinder (BIndirection i) = spliceIdentifier i >>= return . BIndirection
+spliceBinder (BTuple i) = mapM spliceIdentifier i >>= return . BTuple
+spliceBinder (BRecord ijs) = mapM (\(i,j) -> (,) <$> spliceIdentifier i <*> spliceIdentifier j) ijs >>= return . BRecord
+spliceBinder (BSplice i) = spliceIdentifier i >>= return . BSplice
 
 spliceDAnnotation :: Annotation Declaration -> DeclAnnGenerator
 spliceDAnnotation (DProperty (Left  (n, Just l))) = spliceLiteral l >>= return . DProperty . Left  . (n,) . Just
@@ -474,6 +500,9 @@ expectEmbeddingSplicer i = generatorWithSCtxt $ \sctxt -> do
     e <- liftParser i idFromParts
     either (evalSumEmbedding i sctxt) (return . SLabel) e
 
+expectBindSplicer :: Binder -> GeneratorM Binder
+expectBindSplicer (BSplice i) = generatorWithSCtxt $ \sctxt -> liftParser i bindEmbedding >>= evalBindSplice sctxt
+expectBindSplicer b = return b
 
 evalIdPartsSplice :: SpliceContext -> Either [MPEmbedding] Identifier -> GeneratorM Identifier
 evalIdPartsSplice sctxt (Left ml) = evalSumEmbedding "identifier" sctxt ml >>= \case
@@ -505,6 +534,13 @@ evalLiteralSplice sctxt (Left ml) = evalSumEmbedding "literal" sctxt ml >>= \cas
     _ -> spliceFail $ "Invalid splice literal value " ++ show ml
 
 evalLiteralSplice _ (Right l) = return l
+
+evalBindSplice :: SpliceContext -> Either [MPEmbedding] Binder -> GeneratorM Binder
+evalBindSplice sctxt (Left ml) = evalSumEmbedding "binder" sctxt ml >>= \case
+    SBinder b  -> return b
+    _ -> spliceFail $ "Invalid splice binder value " ++ show ml
+
+evalBindSplice _ (Right b) = return b
 
 evalSumEmbedding :: String -> SpliceContext -> [MPEmbedding] -> GeneratorM SpliceValue
 evalSumEmbedding tg sctxt l = maybe sumError return =<< foldM concatSpliceVal Nothing l
@@ -566,6 +602,14 @@ matchExpr e patE = matchTree matchTag e patE emptySpliceEnv
           in do
               localLog $ debugMatchPVar i
               matchTypesAndAnnotations (annotations e1) (annotations e2) nsEnv >>= return . (True,)
+
+    matchTag sEnv e1@(tag -> EBindAs b) e2@(tag -> EBindAs (BSplice i))
+      | isPatternVariable i =
+          let nrEnv = spliceRecord [(spliceVBSym, SBinder b)]
+              nsEnv = maybe sEnv (\n -> if null n then sEnv else addSpliceE n nrEnv sEnv) $ patternVariable i
+          in do
+              localLog $ debugMatchPVar i
+              matchTypesAndAnnotations (annotations e1) (annotations e2) nsEnv >>= return . (False,)
 
     matchTag sEnv e1@(tag -> EConstant (CEmpty t1)) e2@(tag -> EConstant (CEmpty t2)) =
       let (anns1, anns2) = (annotations e1, annotations e2) in
@@ -676,7 +720,7 @@ matchAnnotations :: (Eq (Annotation a), Show (Annotation a))
 matchAnnotations a2FilterF a1 a2 = all (`elem` a1) $ filter a2FilterF a2
 
 
-exprPatternMatcher :: [TypedSpliceVar] -> [PatternRewriteRule] -> [K3 Declaration] -> K3Generator
+exprPatternMatcher :: [TypedSpliceVar] -> [PatternRewriteRule] -> [Either MPRewriteDecl (K3 Declaration)] -> K3Generator
 exprPatternMatcher spliceParams rules extensions = ExprRewriter $ \expr spliceEnv ->
     let vspliceEnv  = validateSplice spliceParams spliceEnv
         matchResult = foldl (tryMatch expr) Nothing rules
@@ -691,11 +735,12 @@ exprPatternMatcher spliceParams rules extensions = ExprRewriter $ \expr spliceEn
     exprDeclSR spliceEnv (sEnv, rewriteE, ruleExts) =
       let msenv = mergeSpliceEnv spliceEnv sEnv in
       SRRewrite . (, msenv) $ generateInSpliceEnv msenv $
-        (,) <$> spliceExpression rewriteE <*> mapM spliceNonAnnotationTree (extensions ++ ruleExts)
+        (\ a b -> (a, concat b)) <$> spliceExpression rewriteE <*> mapM spliceNonAnnotationTree (extensions ++ ruleExts)
 
     tryMatch _ acc@(Just _) _ = acc
-    tryMatch expr Nothing (pat, rewrite, ruleExts) =
-      (localLogAction (tryMatchLogger expr pat) $ matchExpr expr pat) >>= return . (, rewrite, ruleExts)
+    tryMatch expr Nothing (pat, rewrite, ruleExts) = do
+      nsEnv <- (localLogAction (tryMatchLogger expr pat) $ matchExpr expr pat)
+      return (nsEnv, rewrite, ruleExts)
 
     tryMatchLogger expr pat = maybe (Just $ debugMatchStep expr pat) (Just . debugMatchStepResult expr pat)
 
@@ -708,7 +753,25 @@ exprPatternMatcher spliceParams rules extensions = ExprRewriter $ \expr spliceEn
 
     debugMatchResult opt = unwords ["Match result", show opt]
 
-    spliceNonAnnotationTree d = mapTree spliceNonAnnotationDecl d
+    spliceNonAnnotationTree (Left (MPRewriteDecl i c decls)) = spliceWithValue c
+      where
+        spliceWithValue c' = case c' of
+          SVar v -> generatorWithSCtxt $ \sctxt -> do
+                      sv <- expectEmbeddingSplicer v
+                      case sv of
+                        SLabel v' -> maybe (lookupErr v') spliceWithValue $ lookupSCtxt v' sctxt
+                        _ -> spliceWithValue sv
+
+          SList svs -> do
+            dll <- forM svs $ \sv -> generateInExtendedSpliceEnv i sv $
+                     forM decls $ \d -> mapTree (spliceNonAnnotationDecl) d
+            return $ concat dll
+
+          v -> throwG $ boxToString $ ["Invalid splice value in member generator "] %+ prettyLines v
+
+        lookupErr v = throwG $ "Invalid loop target in rewrite declaration generator: " ++ show v
+
+    spliceNonAnnotationTree (Right d) = mapTree spliceNonAnnotationDecl d >>= return . (:[])
 
     spliceNonAnnotationDecl ch d@(tag -> DGlobal  n t eOpt) =
       spliceDeclParts n t eOpt >>= \(nn, nt, neOpt) ->

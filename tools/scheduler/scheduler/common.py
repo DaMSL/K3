@@ -28,17 +28,10 @@ def getUID():
 
 roleParameters = ['peers_per_host', 'mem', 'cpu']
 
-
-
-
-
 CompileServiceState = enum.Enum('Service', 'DOWN INIT DISPATCH MASTER_WAIT WORKER_WAIT UP')
 
 CompileState = enum.Enum('CompileState', 'INIT DISPATCH CLIENT_WAIT SUBMIT COMPILE UPLOAD COMPLETE FAILED KILLED')
 compileTerminatedStates = ['COMPLETE', 'FAILED', 'KILLED']
-
-
-
 
 compileStageValues = ['both', 'cpp', 'bin']
 class CompileStage(Enum):

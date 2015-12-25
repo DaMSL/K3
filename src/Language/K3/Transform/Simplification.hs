@@ -131,10 +131,10 @@ data FusionAccTClass = IdTr     -- Identity transform
 type FusionAccSpec = (FusionAccFClass, FusionAccTClass)
 
 pFusionSpec :: FusionAccSpec -> Annotation Expression
-pFusionSpec spec = inferredEProp "FusionSpec" $ Just . LC.string $ show spec
+pFusionSpec spec = persistentEProp "FusionSpec" $ Just . LC.string $ show spec
 
 pFusionLineage :: String -> Annotation Expression
-pFusionLineage s = inferredEProp "FusionLineage" $ Just $ LC.string s
+pFusionLineage s = persistentEProp "FusionLineage" $ Just $ LC.string s
 
 pHierarchicalGroupBy :: Annotation Expression
 pHierarchicalGroupBy = inferredEProp "HGroupBy" Nothing
@@ -593,27 +593,29 @@ betaReductionDelta env expr = foldMapTree reduce ([], False) expr >>= return . f
       ieRO <- readOnly False ie
       eRO  <- noWritesOn True env i u e
       let numOccurs = length $ filter (== i) $ freeVariables e
-      (simple, doReduce) <- reducibleTarget numOccurs ie
+      (simple, doReduce) <- reducibleTarget numOccurs i ie e
       if debugCondition ieRO eRO n $ (simple || (ieRO && eRO)) && doReduce
         then return ([substituteImmutBinding i (cleanExpr ie) e], True)
         else return ([n], False)
 
     reduceOnOccurrences _ _ _ _ _ = Left "Invalid UID for reduceOnOccurrences"
 
-    reducibleTarget numOccurs ie =
+    reducibleTarget numOccurs i ie e =
       case (tag ie, ie @~ isEType, ie @~ isEQualified) of
         (_, Nothing, _)       -> Left "No type found on target during beta reduction"
         (_, _, Just EMutable) -> Right (False, False)
-        (EVariable _, _, _)   -> Right (True, True)
+        (EVariable _, _, _)   -> Right (True, fullySubstitutable i ie e)
 
         -- Collections can be modified in place with insert/update/delete,
         -- thus we can only substitute single uses.
         -- TODO: we can actually substitute provided the collection is not
         -- written in the body. Use effects to determine this.
-        (_, Just (EType (tag -> TCollection)), _) -> Right (False, numOccurs <= 1)
+        (_, Just (EType (tag -> TCollection)), _) -> Right (False, numOccurs <= 1 && fullySubstitutable i ie e)
 
-        (EConstant _, _, _) -> Right (True, True)
-        _ -> Right $ (False, numOccurs == 1)
+        {- EConstant case must be handled after collections to address empty collections. -}
+        (EConstant _, _, _)   -> Right (True, True)
+
+        _ -> Right (False, numOccurs == 1 && fullySubstitutable i ie e)
 
     onSub ch = (concat *** any id) $ unzip ch
 
@@ -822,7 +824,7 @@ instance Pretty CandidateTree where
       ++ (indent 2 $ concatMap prettyCandidates cands)
       ++ drawSubTrees ch
 
-    where prettyCandidates (e, cnt) = [show cnt ++ " "] %+ prettyLines e
+    where prettyCandidates (e, cnt) = [show cnt ++ " "] %+ (prettyLines $ stripECompare e)
 
 commonProgramSubexprElim :: Maybe ParGenSymS -> K3 Declaration -> Either String (Maybe ParGenSymS, K3 Declaration)
 commonProgramSubexprElim cseCntOpt prog = foldExpression commonSubexprElim cseCntOpt prog
@@ -865,7 +867,7 @@ commonSubexprElim cseCntOpt expr = do
                        EBindAs b -> [[], bindingVariables b]
                        _         -> repeat []
 
-              filteredCands = nub $ concatMap filterOpenCandidates $ zip bnds subAcc
+              filteredCands = nub $ concatMap pruneOpenCandidates $ zip bnds subAcc
               localCands    = sortBy ((flip compare) `on` snd) $
                                 foldl (addCandidateIfLCA subAcc) [] filteredCands
 
@@ -883,8 +885,8 @@ commonSubexprElim cseCntOpt expr = do
         _ -> uidError n
 
       where
-        filterOpenCandidates ([], cands) = cands
-        filterOpenCandidates (bnds, cands) =
+        pruneOpenCandidates ([], cands) = cands
+        pruneOpenCandidates (bnds, cands) =
           filter (\e -> null $ freeVariables e `intersect` bnds) cands
 
     leafTreeAccumulator :: K3 Expression
@@ -946,7 +948,7 @@ commonSubexprElim cseCntOpt expr = do
 
         foldSubstitutions :: ParGenSymS -> [Substitution] -> Either String (ParGenSymS, [NamedSubstitution])
         foldSubstitutions startsymS subs = do
-          (nsymS,namedSubs) <- foldM nameSubstitution (startsymS, []) subs
+          (nsymS, namedSubs) <- foldM nameSubstitution (startsymS, []) subs
           nnsubs <- foldM (\subAcc sub -> mapM (closeOverSubstitution sub) subAcc) namedSubs namedSubs
           return (nsymS, nnsubs)
 
@@ -956,9 +958,16 @@ commonSubexprElim cseCntOpt expr = do
 
         closeOverSubstitution :: NamedSubstitution -> NamedSubstitution -> Either String NamedSubstitution
         closeOverSubstitution (uid, n, e, _) (uid2, n2, e2, i2)
-          | uid == uid2 && n == n2 = return $ (uid, n, e2, i2)
-          | e2 `covers` e          = return $ (uid2, n2, substituteExpr e (EC.variable n) e2, i2)
-          | otherwise              = return $ (uid2, n2, e2, i2)
+          | uid == uid2 && n == n2           = return $ (uid, n, e2, i2)
+          | e2 `covers` e && e2 `hasUID` uid = return $ (uid2, n2, substituteExpr e (EC.variable n) e2, i2)
+          | otherwise                        = return $ (uid2, n2, e2, i2)
+
+        hasUID :: K3 Expression -> UID -> Bool
+        hasUID e u = runIdentity $ foldMapTree checkUID False e
+          where checkUID (or -> inCh) n =
+                  case n @~ isEUID of
+                    Just (EUID u2) -> return $ inCh || u == u2
+                    _ -> return $ inCh
 
         substituteAtUID :: K3 Expression -> NamedSubstitution -> Either String (K3 Expression)
         substituteAtUID targetE (uid, n, e, _) = mapTree (letAtUID uid n e) targetE
@@ -2303,6 +2312,35 @@ inferThreadReturns :: Identifier -> K3 Expression -> (Bool, K3 Expression)
 inferThreadReturns i expr = mapThreadReturns annotateFoldE i expr
   where annotateFoldE e = e @+ (inferredEProp "ThreadFoldReturn" Nothing)
 
+
+{- Mosaic compilation passes -}
+mosaicWarmupMapRewrites :: K3 Declaration -> Either String (K3 Declaration)
+mosaicWarmupMapRewrites prog = rewriteIndexConstruction prog
+  where
+    rewriteIndexConstruction p = do
+      (init_exprs, np) <- foldProgram extractIndexCtor idF idF Nothing [] p
+      mapNamedDeclExpression "compute_warmup_maps" (injectIndexCtor init_exprs) np
+
+    extractIndexCtor acc d@(tag -> DGlobal n@(isSuffixOf "_init_index" -> True) t eOpt) =
+      debugExtract n (acc ++ [EC.applyMany (EC.variable n) [EC.unit]], d)
+
+    extractIndexCtor acc d = return (acc, d)
+
+    injectIndexCtor exprs e@(PLam i bodyE as) = debugInject exprs $ PLam i (foldl (flip $ EC.binop OSeq) bodyE exprs) as
+    injectIndexCtor _ e = Left $ boxToString $ ["Invalid Mosaic warmup map initialization function: "]
+                                            %$ prettyLines e
+
+    debugExtract n (nacc,d) = if True then return (nacc, d)
+                              else flip trace (return (nacc,d))
+                                     $ boxToString $ ["Mosaic idx: "]
+                                                  %$ concatMap (indent 2 . prettyLines) nacc
+
+    debugInject exprs r = if True then return r
+                          else flip trace (return r) $ boxToString $ ["Mosaic inject idx: "]
+                                                    %$ (concatMap (indent 2 . prettyLines) $ map stripECompare exprs)
+                                                    %$ (indent 2 $ prettyLines $ stripECompare r)
+
+    idF a b = return (a,b)
 
 -- Helper patterns for fusion
 pattern PVar     i           iAs   = Node (EVariable i   :@: iAs)   []

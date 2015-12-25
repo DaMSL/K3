@@ -1,4 +1,5 @@
 include "Annotation/Map.k3"
+include "Annotation/Vector.k3"
 include "Core/Barrier.k3"
 include "Core/Builtins.k3"
 
@@ -122,5 +123,211 @@ control CollectProfile[lbls: [label], coordinator: expr, nodes: expr, next: expr
       )); $[next]
       ) @OnCounter(id=[# global_profiles_done], eq=[$ $[nodes].size()], reset=[$ false], profile=[$ false])
     )
+  }
+}
+
+// Mosaic profiling.
+// This expects a 'mosaic_event_sink' to be defined.
+
+control MosaicPreEvent[lbl:label, tl:expr, ve:expr, ce:expr]
+{
+  ?e @:Flush => ($[lbl]_event_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
+                ($[lbl]_event_buffer.clear());
+                $.[e]
+  +> {}
+
+  ?e => (if ($[lbl]_event_sample_mod == 0 or $[ve] % $[lbl]_event_sample_mod == 0)
+         then (
+          ($[lbl]_event_buffer.insert {etag: $[tl], evid: $[ve], pcomponent: $[ce], t: now_int()});
+          (if $[lbl]_event_buffer.size() >= $[lbl]_event_buffer_batch_sz
+            then ($[lbl]_event_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
+                  $[lbl]_event_buffer.clear()
+            else ())
+        ) else ());
+        $.[e]
+  +> {}
+  shared {
+    declare $[lbl]_event_buffer : collection {etag: int, evid: int, pcomponent: int, t: int} @Vector
+    declare $[lbl]_event_buffer_batch_sz : mut int = 1000
+    declare $[lbl]_event_sample_mod      : mut int = 5
+  }
+}
+
+control MosaicPostEvent[lbl:label, tl:expr, ve:expr, ce:expr]
+{
+  ?e @:Flush => ($[lbl]_event_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
+                ($[lbl]_event_buffer.clear());
+                $.[e]
+  +> {}
+
+  ?e => ( $.[e] );
+        (if ($[lbl]_event_sample_mod == 0 or $[ve] % $[lbl]_event_sample_mod == 0)
+         then (
+          ($[lbl]_event_buffer.insert {etag: $[tl], evid: $[ve], pcomponent: $[ce], t: now_int()});
+          (if $[lbl]_event_buffer.size() >= $[lbl]_event_buffer_batch_sz
+            then ($[lbl]_event_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
+                  $[lbl]_event_buffer.clear()
+            else ())
+        ) else ())
+  +> {}
+  shared {
+    declare $[lbl]_event_buffer : collection {etag:int, evid:int, pcomponent:int, t:int} @Vector
+    declare $[lbl]_event_buffer_batch_sz : mut int = 1000
+    declare $[lbl]_event_sample_mod      : mut int = 5
+  }
+}
+
+control MosaicSendPoly[lbl:label, ce1:expr, ce2:expr, ce3:expr]
+{
+  ?e @:Flush => ($[lbl]_sendpoly_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
+                ($[lbl]_sendpoly_buffer.clear());
+                $.[e]
+  +> {}
+
+  ?e => ( $.[e] );
+        (if ($[lbl]_sendpoly_sample_mod == 0 or $[ce1] % $[lbl]_sendpoly_sample_mod == 0)
+         then (
+          ($[lbl]_sendpoly_buffer.insert {etag: 17, evid: $[ce1], pcomponent: $[ce2], t: $[ce3].byte_size() });
+          ($[lbl]_sendpoly_buffer.insert {etag: 18, evid: $[ce1], pcomponent: $[ce2], t: 1 });
+
+          (if $[lbl]_sendpoly_buffer.size() >= $[lbl]_sendpoly_buffer_batch_sz
+            then ($[lbl]_sendpoly_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
+                  $[lbl]_sendpoly_buffer.clear()
+            else ())
+        ) else ())
+  +> {}
+  shared {
+    declare $[lbl]_sendpoly_buffer : collection {etag:int, evid:int, pcomponent:int, t:int} @Vector
+    declare $[lbl]_sendpoly_buffer_batch_sz : mut int = 2 * 1000
+    declare $[lbl]_sendpoly_sample_mod      : mut int = 10
+  }
+}
+
+control MosaicSendUPoly[lbl:label, ce1:expr, ce2:expr, ce3:expr, ce4:expr]
+{
+  ?e @:Flush => ($[lbl]_sendupoly_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
+                ($[lbl]_sendupoly_buffer.clear());
+                $.[e]
+  +> {}
+
+  ?e => ( $.[e] );
+        (if ($[lbl]_sendupoly_sample_mod == 0 or $[ce1] % $[lbl]_sendupoly_sample_mod == 0)
+         then (
+          ($[lbl]_sendupoly_buffer.insert {etag: 14, evid: $[ce1], pcomponent: $[ce2], t: $[ce3].byte_size() });
+          ($[lbl]_sendupoly_buffer.insert {etag: 15, evid: $[ce1], pcomponent: $[ce2], t: $[ce4].byte_size() });
+          ($[lbl]_sendpoly_buffer.insert  {etag: 16, evid: $[ce1], pcomponent: $[ce2], t: 1 });
+
+          (if $[lbl]_sendupoly_buffer.size() >= $[lbl]_sendupoly_buffer_batch_sz
+            then ($[lbl]_sendupoly_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
+                  $[lbl]_sendupoly_buffer.clear()
+            else ())
+        ) else ())
+  +> {}
+  shared {
+    declare $[lbl]_sendupoly_buffer : collection {etag:int, evid:int, pcomponent:int, t:int} @Vector
+    declare $[lbl]_sendupoly_buffer_batch_sz : mut int = 3 * 1000
+    declare $[lbl]_sendupoly_sample_mod      : mut int = 10
+  }
+}
+
+control MosaicMsgCounts[lbl:label, tl:expr, ve:expr, ce1:expr, ce2:expr]
+{
+  ?e @:Flush => ($[lbl]_msgcount_buffer.iterate (\r -> (mosaic_msgcount_sink, me) <- r));
+                ($[lbl]_msgcount_buffer.clear());
+                $.[e]
+  +> {}
+
+  ?e => (if ($[lbl]_msgcount_sample_mod == 0 or $[ve] % $[lbl]_msgcount_sample_mod == 0)
+         then (
+          ($[lbl]_msgcount_buffer.insert {etag: $[tl], evid: $[ve], msgempty: $[ce1], msgfull: $[ce2]});
+          (if $[lbl]_msgcount_buffer.size() >= $[lbl]_msgcount_buffer_batch_sz
+            then ($[lbl]_msgcount_buffer.iterate (\r -> (mosaic_msgcount_sink, me) <- r));
+                  $[lbl]_msgcount_buffer.clear()
+            else ())
+        ) else ());
+        $.[e]
+  +> {}
+  shared {
+    declare $[lbl]_msgcount_buffer : collection {etag:int, evid:int, msgempty:int, msgfull:int} @Vector
+    declare $[lbl]_msgcount_buffer_batch_sz : mut int = 1000
+    declare $[lbl]_msgcount_sample_mod      : mut int = 10
+  }
+}
+
+control MosaicPushBarrier[lbl:label, tl:expr, ve:expr, ce1:expr, ce2:expr]
+{
+  ?e @:Flush => ($[lbl]_push_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
+                ($[lbl]_push_buffer.clear());
+                $.[e]
+  +> {}
+
+  ?e => ( $.[e] );
+        (if ($[lbl]_push_sample_mod == 0 or $[ve] % $[lbl]_push_sample_mod == 0)
+         then (
+          ($[lbl]_push_buffer.insert {etag: $[tl], evid: $[ve], pcomponent: $[ce1], t: $[ce2]});
+          (if $[lbl]_push_buffer.size() >= $[lbl]_push_buffer_batch_sz
+            then ($[lbl]_push_buffer.iterate (\r -> (mosaic_event_sink, me) <- r));
+                  $[lbl]_push_buffer.clear()
+            else ())
+        ) else ())
+  +> {}
+  shared {
+    declare $[lbl]_push_buffer : collection {etag:int, evid:int, pcomponent:int, t:int} @Vector
+    declare $[lbl]_push_buffer_batch_sz : mut int = 1000
+    declare $[lbl]_push_sample_mod      : mut int = 10
+  }
+}
+
+control MosaicFetchRoute[lbl:label, tl:expr, ve:expr, ce1:expr, ce2:expr, ce3:expr, ce4:expr]
+{
+  ?e @:Flush => ($[lbl]_route_buffer.iterate (\r -> (mosaic_routelog_sink, me) <- r));
+                ($[lbl]_route_buffer.clear());
+                $.[e]
+  +> {}
+
+  ?e => ( $.[e] );
+        (if ($[lbl]_route_sample_mod == 0 or $[ve] % $[lbl]_route_sample_mod == 0)
+         then (
+          ($[lbl]_route_buffer.insert {etag: $[tl], evid: $[ve], pcomponent: $[ce1],
+                                       rkey: (toJson $[ce2]), rrbucket: $[ce3], rrnode: $[ce4]});
+          (if $[lbl]_route_buffer.size() >= $[lbl]_route_buffer_batch_sz
+            then ($[lbl]_route_buffer.iterate (\r -> (mosaic_routelog_sink, me) <- r));
+                  $[lbl]_route_buffer.clear()
+            else ())
+        ) else ())
+  +> {}
+  shared {
+    declare $[lbl]_route_buffer : collection {etag: int, evid: int, pcomponent: int,
+                                              rkey: string, rrbucket: int, rrnode: int} @Vector
+
+    declare $[lbl]_route_buffer_batch_sz : mut int = 1000
+    declare $[lbl]_route_sample_mod      : mut int = 10
+  }
+}
+
+control MosaicSendPut[lbl:label, tl:expr, ve:expr, ce1:expr, ce2:expr, ce3:expr]
+{
+  ?e @:Flush => ($[lbl]_sendput_buffer.iterate (\r -> (mosaic_routelog_sink, me) <- r));
+                ($[lbl]_sendput_buffer.clear());
+                $.[e]
+  +> {}
+
+  ?e => ( $.[e] );
+        (if ($[lbl]_sendput_sample_mod == 0 or $[ve] % $[lbl]_sendput_sample_mod == 0)
+         then (
+          ($[lbl]_sendput_buffer.insert {etag: $[tl], evid: $[ve], pcomponent: $[ce1],
+                                         rkey: "", rrbucket: $[ce2], rrnode: $[ce3]});
+          (if $[lbl]_sendput_buffer.size() >= $[lbl]_sendput_buffer_batch_sz
+            then ($[lbl]_sendput_buffer.iterate (\r -> (mosaic_routelog_sink, me) <- r));
+                  $[lbl]_sendput_buffer.clear()
+            else ())
+        ) else ())
+  +> {}
+  shared {
+    declare $[lbl]_sendput_buffer : collection {etag: int, evid: int, pcomponent: int,
+                                                rkey: string, rrbucket: int, rrnode: int} @Vector
+
+    declare $[lbl]_sendput_buffer_batch_sz : mut int = 1000
+    declare $[lbl]_sendput_sample_mod      : mut int = 10
   }
 }

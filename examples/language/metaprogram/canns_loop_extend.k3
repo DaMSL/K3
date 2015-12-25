@@ -1,0 +1,11 @@
+control Foo [ lbls : [label] ] {
+  () => ()
+  +> {
+    for i in lbls:
+      declare x_$[i] : mut int = 0
+  }
+}
+
+trigger t : () = \_ -> (
+  () @Foo(lbls=[* [# a], [# b], [# c] ])
+)

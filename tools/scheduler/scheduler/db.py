@@ -200,13 +200,26 @@ VALUES ('%(jobId)d', '%(appName)s', '%(appUID)s', '%(user)s', '%(time)s', '%(tag
   return jobId, getTS_est(time)
 
 def getJobs(**kwargs):
+  print ("GETTING JOBS")
+  for i in kwargs:
+    print (i)
   appName = kwargs.get('appName', None)
   jobId = kwargs.get('jobId', None)
-  filter = ("" if not appName and not jobId
+
+  filt = ("" if not appName and not jobId
             else (" WHERE appName='%s'" % appName if appName
                   else " WHERE jobId='%s'" % jobId))
+
+  # Filter to only the previous numdays
+  if 'numdays' in kwargs:
+    numdays = int(kwargs.get('numdays'))
+    cutoff = dt.datetime.now(timezone('UTC')) - dt.timedelta(days=numdays)
+    filt  = ' WHERE' if filt == '' else filt + ' AND'
+    filt += " submit > '%s' " % cutoff.strftime(TS_FMT)
+
+
   cur = getConnection().cursor()
-  cur.execute("SELECT * from jobs " + filter + " ORDER BY jobID DESC;")
+  cur.execute("SELECT * from jobs " + filt + " ORDER BY jobID DESC;")
   return [dict(jobId=r[0], appName=r[1], hash=r[2], user=r[3],
                time=r[4], complete=r[5], tag=r[6], status=r[7]) for r in cur.fetchall()]
 

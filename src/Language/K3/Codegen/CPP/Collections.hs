@@ -64,6 +64,7 @@ composite name ans content_ts = do
 
     let addnSpecializations n = if "Array" `isInfixOf` n then arraySize $ lookup n ans
                                 else if "MultiIndex" `isInfixOf` n then indexTypes
+                                else if "FlatPolyBuffer" `isInfixOf` n then [selfType]
                                 else if "UniquePolyBuffer" `isInfixOf` n then [selfType]
                                 else []
 
