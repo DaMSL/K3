@@ -690,7 +690,7 @@ declTransforms stSpec extInfOpt n = topLevel
 
       , mkT $ mkSeq "Decl-Fuse-NoBR" lowLevel $ fP [ "Decl-FE-NoBR"
                                                    , "typEffI"
-                                                   , "Decl-FT" ]
+                                                   ]
       ]) `Map.union` lowLevel
 
     lowLevel = Map.fromList $ fPf fst $ [
