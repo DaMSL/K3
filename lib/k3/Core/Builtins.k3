@@ -87,10 +87,16 @@ with effects \_ -> io
 declare pcmStop: () -> ()
 with effects \_ -> io
 
-declare perfStart: () -> ()
+declare perfRecordStart: () -> ()
   with effects \_ -> io
 
-declare perfStop: () -> ()
+declare perfRecordStop: () -> ()
+  with effects \_ -> io
+
+declare perfStatStart: () -> ()
+  with effects \_ -> io
+
+declare perfStatStop: () -> ()
   with effects \_ -> io
 
 declare vmapStart : address -> ()
