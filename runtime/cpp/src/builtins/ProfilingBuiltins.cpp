@@ -129,11 +129,11 @@ unit_t ProfilingBuiltins::jemallocDump(unit_t) {
   return unit_t{};
 }
 
-  unit_t ProfilingBuiltins::perfStart(unit_t) {
-#ifndef K3_PERF
-    std::cout << "K3_PERF not set, continuing without perf." << std::endl;
+  unit_t ProfilingBuiltins::perfRecordStart(unit_t) {
+#ifndef K3_PERF_RECORD
+    std::cout << "K3_PERF_RECORD not set, continuing without perf." << std::endl;
 #else
-    std::cout << "K3_PERF set, starting perf record..." << std::endl;
+    std::cout << "K3_PERF_RECORD set, starting perf record..." << std::endl;
     auto pid_stream = std::stringstream {};
     pid_stream << ::getpid();
 
@@ -146,10 +146,59 @@ unit_t ProfilingBuiltins::jemallocDump(unit_t) {
       dup2(fd, 1);
       dup2(fd, 2);
 
-      auto freq = std::getenv("K3_PERF_FREQUENCY");
+      auto freq = std::getenv("K3_PERF_RECORD_FREQUENCY");
 
       exit(execl("/usr/bin/perf", "perf", "record", "-a", "--call-graph", "dwarf", "-F", (freq ? freq : "10"), "-o", "perf.data", "-p", pid_stream.str().c_str(), nullptr));
     }
+#endif
+
+    return unit_t {};
+  }
+
+  unit_t ProfilingBuiltins::perfRecordStop(unit_t) {
+#ifndef K3_PERF_RECORD
+    std::cout << "K3_PERF_RECORD not set, ignoring call to stop perf." << std::endl;
+#else
+    std::cout << "K3_PERF_RECORD set, stopping perf record..." << std::endl;
+    kill(pid, SIGINT);
+    waitpid(pid, nullptr, 0);
+#endif
+
+    return unit_t {};
+  }
+
+  unit_t ProfilingBuiltins::perfStatStart(unit_t) {
+#ifndef K3_PERF_STAT
+    std::cout << "K3_PERF_STAT not set, continuing without perf." << std::endl;
+#else
+    std::cout << "K3_PERF_STAT set, starting perf stat..." << std::endl;
+    auto pid_stream = std::stringstream {};
+    pid_stream << ::getpid();
+
+    std::cout << pid_stream.str() << std::endl;
+
+    pid = fork();
+
+    if (pid == 0) {
+      auto fd = open("/dev/null", O_RDWR);
+      dup2(fd, 1);
+      dup2(fd, 2);
+
+      exit(execl("/usr/bin/perf", "perf", "stat", "-e", "cache-misses,cache-references",
+                 "-o", "perf.data", "-p", pid_stream.str().c_str(), nullptr));
+    }
+#endif
+
+    return unit_t {};
+  }
+
+  unit_t ProfilingBuiltins::perfStatStop(unit_t) {
+#ifndef K3_PERF_STAT
+    std::cout << "K3_PERF_STAT not set, ignoring call to stop perf." << std::endl;
+#else
+    std::cout << "K3_PERF_STAT set, stopping perf stat..." << std::endl;
+    kill(pid, SIGINT);
+    waitpid(pid, nullptr, 0);
 #endif
 
     return unit_t {};
@@ -185,16 +234,4 @@ unit_t ProfilingBuiltins::vmapDump(unit_t) {
 #endif
     return unit_t{};
 }
-
-  unit_t ProfilingBuiltins::perfStop(unit_t) {
-#ifndef K3_PERF
-    std::cout << "K3_PERF not set, ignoring call to stop perf." << std::endl;
-#else
-    std::cout << "K3_PERF set, stopping perf record..." << std::endl;
-    kill(pid, SIGINT);
-    waitpid(pid, nullptr, 0);
-#endif
-
-    return unit_t {};
-  }
 }  // namespace K3

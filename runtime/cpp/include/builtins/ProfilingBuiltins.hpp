@@ -93,8 +93,11 @@ class ProfilingBuiltins: public __heap_profiler {
   unit_t jemallocStop(unit_t);
   unit_t jemallocDump(unit_t);
 
-  unit_t perfStart(unit_t);
-  unit_t perfStop(unit_t);
+  unit_t perfRecordStart(unit_t);
+  unit_t perfRecordStop(unit_t);
+
+  unit_t perfStatStart(unit_t);
+  unit_t perfStatStop(unit_t);
 
   // BSL Allocator
   unit_t vmapStart(const Address& addr);
