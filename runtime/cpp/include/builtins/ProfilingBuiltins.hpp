@@ -116,7 +116,7 @@ class ProfilingBuiltins: public __heap_profiler {
   shared_ptr<SystemCounterState> pcm_initial_state_;
 #endif
 
-#ifdef K3_PERF
+#if defined(K3_PERF_STAT) || defined(K3_PERF_RECORD)
   pid_t pid;
 #endif
 };
