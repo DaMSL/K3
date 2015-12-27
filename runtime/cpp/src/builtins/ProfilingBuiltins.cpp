@@ -175,17 +175,15 @@ unit_t ProfilingBuiltins::jemallocDump(unit_t) {
     auto pid_stream = std::stringstream {};
     pid_stream << ::getpid();
 
-    std::cout << pid_stream.str() << std::endl;
-
     pid = fork();
 
     if (pid == 0) {
-      auto fd = open("/dev/null", O_RDWR);
+      auto fd = open("perf.stat", O_RDWR | O_CREAT);
       dup2(fd, 1);
       dup2(fd, 2);
 
       exit(execl("/usr/bin/perf", "perf", "stat", "-e", "cache-misses,cache-references",
-                 "-o", "perf.data", "-p", pid_stream.str().c_str(), nullptr));
+                 "-p", pid_stream.str().c_str(), nullptr));
     }
 #endif
 
