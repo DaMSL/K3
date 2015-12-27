@@ -184,7 +184,7 @@ unit_t ProfilingBuiltins::jemallocDump(unit_t) {
       dup2(fd, 1);
       dup2(fd, 2);
 
-      exit(execl("/usr/bin/perf", "perf", "stat", "-e", "cache-misses,cache-references",
+      exit(execl("/usr/bin/perf", "perf", "stat", "-a", "-e", "cache-misses,cache-references",
                  "-o", "perf.data", "-p", pid_stream.str().c_str(), nullptr));
     }
 #endif
