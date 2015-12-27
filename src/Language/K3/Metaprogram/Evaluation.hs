@@ -306,7 +306,7 @@ evalBindings sctxt senv = evalMap (generateInSpliceCtxt sctxt) senv
           sv <- expectEmbeddingSplicer i
           case sv of
             SLabel j | i == j -> eval_var $ SVar j
-            SVar j -> eval_var sv
+            SVar _ -> eval_var sv
             _ -> return sv
 
           where eval_var sv@(chase -> csv) = if csv == sv then return sv else eval csv
@@ -613,7 +613,7 @@ matchExpr e patE = matchTree matchTag e patE emptySpliceEnv
 
     matchTag sEnv e1@(tag -> EConstant (CEmpty t1)) e2@(tag -> EConstant (CEmpty t2)) =
       let (anns1, anns2) = (annotations e1, annotations e2) in
-      if matchAnnotations (\x -> ignoreUIDSpan x && ignoreTypes x) anns1 anns2
+      if matchAnnotationsE (\x -> ignoreUIDSpan x && ignoreTypes x) anns1 anns2
         then matchType t1 t2 >>= return . (True,) . mergeSpliceEnv sEnv
         else debugMismatchAnns anns1 anns2 Nothing
 
@@ -634,11 +634,11 @@ matchExpr e patE = matchTree matchTag e patE emptySpliceEnv
                              -> Maybe SpliceEnv
     matchTypesAndAnnotations anns1 anns2 sEnv = case (find isEType anns1, find isEPType anns2) of
       (Just (EType ty), Just (EPType pty)) ->
-          if   matchAnnotations (\x -> ignoreUIDSpan x && ignoreTypes x) anns1 anns2
+          if   matchAnnotationsE (\x -> ignoreUIDSpan x && ignoreTypes x) anns1 anns2
           then matchType ty pty >>= return . mergeSpliceEnv sEnv
           else debugMismatchAnns anns1 anns2 Nothing
 
-      (_, _) -> if matchAnnotations (\x -> ignoreUIDSpan x && ignoreTypes x) anns1 anns2
+      (_, _) -> if matchAnnotationsE (\x -> ignoreUIDSpan x && ignoreTypes x) anns1 anns2
                 then Just sEnv else debugMismatchAnns anns1 anns2 Nothing
 
     bindIdentifier :: SpliceEnv -> (Identifier, Identifier) -> Maybe SpliceEnv
@@ -701,7 +701,7 @@ matchType t patT = matchTree matchTag t patT emptySpliceEnv
 
         matchTypeMetadata t1 t2 = matchTypeAnnotations t1 t2 && matchMutability t1 t2
 
-        matchTypeAnnotations t1 t2 = matchAnnotations isTAnnotation (annotations t1) (annotations t2)
+        matchTypeAnnotations t1 t2 = matchAnnotationsT isTAnnotation (annotations t1) (annotations t2)
         matchMutability t1 t2 = (t1 @~ isTQualified) == (t2 @~ isTQualified) || isNothing (t2 @~ isTQualified)
 
         debugMismatch p1 p2 r =
@@ -715,9 +715,21 @@ matchType t patT = matchTree matchTag t patT emptySpliceEnv
 --   rather it ensures that the second set of annotations are a subset of the first.
 --   Thus matching acts as a constraint on the presence of annotation and properties
 --   in any rewrite rules fired.
-matchAnnotations :: (Eq (Annotation a), Show (Annotation a))
-                 => (Annotation a -> Bool) -> [Annotation a] -> [Annotation a] -> Bool
-matchAnnotations a2FilterF a1 a2 = all (`elem` a1) $ filter a2FilterF a2
+matchAnnotationsE :: (Annotation Expression -> Bool) -> [Annotation Expression] -> [Annotation Expression] -> Bool
+matchAnnotationsE a2FilterF a1 a2 = all match $ filter a2FilterF a2
+  where match (EProperty (ePropertyName -> n)) = any (matchPropertyByName n) a1
+        match a = a `elem` a1
+
+        matchPropertyByName n (EProperty (ePropertyName -> n2)) = n == n2
+        matchPropertyByName _ _ = False
+
+matchAnnotationsT :: (Annotation Type -> Bool) -> [Annotation Type] -> [Annotation Type] -> Bool
+matchAnnotationsT a2FilterF a1 a2 = all match $ filter a2FilterF a2
+  where match (TProperty (tPropertyName -> n)) = any (matchPropertyByName n) a1
+        match a = a `elem` a1
+
+        matchPropertyByName n (TProperty (tPropertyName -> n2)) = n == n2
+        matchPropertyByName _ _ = False
 
 
 exprPatternMatcher :: [TypedSpliceVar] -> [PatternRewriteRule] -> [Either MPRewriteDecl (K3 Declaration)] -> K3Generator
@@ -764,7 +776,9 @@ exprPatternMatcher spliceParams rules extensions = ExprRewriter $ \expr spliceEn
 
           SList svs -> do
             dll <- forM svs $ \sv -> generateInExtendedSpliceEnv i sv $
-                     forM decls $ \d -> mapTree (spliceNonAnnotationDecl) d
+                     forM decls $ \d -> do
+                       nd <- mapTree (spliceNonAnnotationDecl) d
+                       generatorWithSCtxt $ \sctxt -> bindDAnnVars sctxt nd
             return $ concat dll
 
           v -> throwG $ boxToString $ ["Invalid splice value in member generator "] %+ prettyLines v

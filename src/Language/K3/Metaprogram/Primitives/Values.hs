@@ -283,6 +283,7 @@ partitionConstraint :: SpliceValue -> SpliceValue -> SpliceValue
 partitionConstraint (SExpr e1) (SExpr e2) = SLiteral $ LC.string $ show [(e1, e2)]
 partitionConstraint _ _ = error "Invalid initPartition argument"
 
+-- TODO: outer join on missing matches
 propagatePartition :: SpliceValue -> SpliceValue
 propagatePartition (SExpr e) = SExpr $ runIdentity $ do
     (rels,ne) <- biFoldMapRebuildTree mkBindings propagate ([],[]) [] e
@@ -298,7 +299,7 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
     mkMapT elem_t = (TC.collection elem_t) @+ TAnnotation "Map"
     mkMapEmpty elem_t = (EC.empty elem_t) @+ EAnnotation "Map"
 
-    shortNames l = Set.toList $ foldl (\acc x -> let c = candidates acc x in Set.insert (head c) acc) Set.empty l
+    shortNames l = snd $ foldl (\(sacc,lacc) x -> let c = candidates sacc x in (Set.insert (head c) sacc, lacc++[head c])) (Set.empty, []) l
       where candidates acc x = [pfx | pfx <- (map (filter isAlphaNum) $ tail $ inits x), pfx `Set.notMember` acc && any isAlpha pfx]
 
     accumByMaxRel relWeights (acc, rem) (l,r) =
@@ -321,9 +322,8 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
     joinOrderProperty relts (filter (not . isConstantConstraint) -> cl) =
         if not $ (null remConstraints && null jremConstraints)
           then error "Found unhandled constraints"
-          else let codedOrder = show $ map (\(n,(_, _, (_, (_, _, s, _, _, _, _)))) -> (n,s)) joinOrderSchemas in
-               let nCodedOrder = show joinOrderParams
-               in EProperty (Left ("JoinOrder", Just $ LC.string $ nCodedOrder))
+          else let codedOrder = show $ SList joinOrderParams
+               in EProperty (Left ("JoinOrder", Just $ LC.string $ codedOrder))
 
       where
         mkName l = intercalate "_" $ shortNames l
@@ -341,18 +341,40 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
         accumJOSchema (n, (jc, nSchema, nPfx)) (acc, dsSchema) = (elem:acc, nub $ jcSchema ++ dsSchema)
           where jcSchema = maybe [] concat $ mapM (\(l,r) -> ((\a b -> [a,b]) <$> extractCRelAttr l <*> extractCRelAttr r)) jc
                 (roSchema, loSchema) = partition ((n ==) . fst) dsSchema
-                (riSchema, liSchema) = partition ((n ==) . fst) $ jcSchema ++ dsSchema
+                (riSchema, liSchema) = partition ((n ==) . fst) $ nub $ jcSchema ++ dsSchema
                 (rkSchema, lkSchema) = partition ((n ==) . fst) $ jcSchema
                 schemas = (mkAttrs liSchema, mkAttrs loSchema, mkAttrs lkSchema,
                            mkAttrs riSchema, mkAttrs roSchema, mkAttrs rkSchema,
-                           mkAttrs dsSchema)
+                           debugDS dsSchema $ mkAttrs dsSchema)
                 elem = (n, (jc, nPfx, (nSchema, schemas)))
 
-        joinOrderParams = if length joinOrderSchemas <= 1
+                debugDS x y = if True then y
+                              else flip trace y $ boxToString $ ["DS"] ++ [show x] ++ [show y]
+
+        joinOrderParams = debugJoinOrderSchemas $ if length joinOrderSchemas <= 1
                             then []
                             else (\(a,_,_) -> a) $ foldl accJOParams (initParam $ head joinOrderSchemas) $ tail joinOrderSchemas
 
+          where debugJoinOrderSchemas r = if True then r
+                                          else flip trace r $ boxToString $ map prettySchemas joinOrderSchemas
+
+        prettySchemas (_, (_, _, (_, (li, lo, lk, ri, ro, rk, ds)))) = boxToString $ ["JOS:"] ++ map show [li, lo, lk, ri, ro, rk, ds]
+
         origSchema l = map (snd . fst) l
+        origRelSchema reln l = map (snd . fst) $ filter (\((r,_),_) -> r == reln) l
+
+        renamedSchema l = map snd l
+        renamedRelSchema reln l = map snd $ filter (\((r,_),_) -> r == reln) l
+
+        schemaExprTypes asDerived rel_t sch = do
+            idts <- fieldTypes (origSchema sch) rel_t
+            return (fields, zip (renamedSchema sch) $ map snd idts)
+          where fields = map (mkField asDerived) sch
+
+        schemaRelExprTypes asDerived reln rel_t sch = do
+            idts <- fieldTypes (origRelSchema reln sch) rel_t
+            return (fields, zip (renamedRelSchema reln sch) $ map snd idts)
+          where fields = map (mkField asDerived) sch
 
         mkField derived ((_, a), da) = let na = if derived then da else a
                                        in (da, EC.project na $ EC.project "key" $ EC.variable "x")
@@ -360,8 +382,9 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
         initParam (reln, (_, relpfx, schemas)) = ([], resultKeySchema, Left resultValSchema)
           where (_, (_, _, _, _, _, _, oSchema)) = schemas
                 resultKeySchema = maybe [] id $ do
-                  rel_t <- lookup reln relts
-                  fieldTypes (origSchema oSchema) rel_t
+                  (rel_t, _) <- lookup reln relts
+                  (_, sch) <- schemaRelExprTypes False reln rel_t oSchema
+                  return sch
 
                 resultValSchema = map (\i -> ("part_"++i, TC.int)) $ relpfx ++ [reln]
 
@@ -370,7 +393,7 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
           where
             (nSchema, (liSchema, loSchema, lkSchema, riSchema, roSchema, rkSchema, oSchema)) = schemas
             (param_list, kSchema, vSchema) = maybe ([],[],Right []) id $ do
-                rel_t <- lookup reln relts
+                (rel_t, _) <- lookup reln relts
 
                 let pn = mkName $ relpfx
                 let sn = mkName $ relpfx ++ [reln]
@@ -397,11 +420,10 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
                 let mkJoinFields derived l = map (\(i, (n,t), x) -> ("k" ++ show i,) $ snd $ mkField derived x)
                                                      $ zip3 [0..] join_key_t l
 
-                let rvfields = map (mkField False) riSchema
-                rvfields_t <- fieldTypes (origSchema riSchema) rel_t
-
                 let lvfields = map (mkField lvAsDerived) liSchema
                 let lvfields_t = prevKeySchema
+
+                (rvfields, rvfields_t) <- schemaExprTypes False rel_t riSchema
 
                 let lval_t = either TC.record TC.record prevValSchemaE
                 let ljoin_val_t = TC.record [("key", TC.record lvfields_t), ("value", mkColT lval_t)]
@@ -418,14 +440,19 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
                 let lnst_e = mkColEmpty lval_t
                 let luke_e = EC.record [("key", EC.record lvfields), ("value", lnst_e)]
 
+                let slval l = case l of
+                                     [(n,_)] -> EC.record [(n, EC.project "value" $ EC.variable "x")]
+                                     _ -> error "Invalid singleton identifier for join base"
+
+                let lval_e = either slval (const $ error "Invalid lval_e") prevValSchemaE
+
                 let lnew_base_e = EC.lambda "_" $ EC.letIn "z" lnst_e $
-                                    EC.binop OSeq (EC.applyMany (EC.project "insert" $ EC.variable "z") [EC.project "value" $ EC.variable "x"])
+                                    EC.binop OSeq (EC.applyMany (EC.project "insert" $ EC.variable "z") [lval_e])
                                                   (EC.record [("key", EC.record lvfields), ("value", EC.variable "z")])
 
                 let lnew_derv_e = EC.lambda "_" $ (EC.record [("key", EC.record lvfields), ("value", EC.project "value" $ EC.variable "x")])
 
-                let lupd_base_e = EC.lambda "y" $ EC.binop OSeq (EC.applyMany (EC.project "insert" $ EC.project "value" $ EC.variable "y")
-                                                                   [EC.record $ map (\(n,_) -> (n, EC.project n $ EC.variable "x")) $ either id id prevValSchemaE])
+                let lupd_base_e = EC.lambda "y" $ EC.binop OSeq (EC.applyMany (EC.project "insert" $ EC.project "value" $ EC.variable "y") [lval_e])
                                                                 (EC.variable "y")
 
                 let lupd_derv_e = EC.lambda "y" $ EC.binop OSeq (EC.applyMany (EC.project "extend" $ EC.project "value" $ EC.variable "y")
@@ -469,7 +496,9 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
                 let orfields_it = map (\((i,((r, a), da)), (n,t)) -> (i, (r, a, da, t))) $ zip orfields orfields_t
 
                 let result_id = "out_" ++ sn
-                let resultKeySchema = map (\(_, (_, _, da, t)) -> (da, t)) $ sortBy (compare `on` fst) $ olfields_it ++ orfields_it
+                let resultKeySchema = case olfields_it ++ orfields_it of
+                                        [] -> [("ra", TC.unit)]
+                                        l -> map (\(_, (_, _, da, t)) -> (da, t)) $ sortBy (compare `on` fst) l
                 let resultValSchema = map (\i -> ("part_"++i, TC.int)) $ relpfx ++ [reln]
 
                 let result_elem_key_t = TC.record resultKeySchema
@@ -496,7 +525,10 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
 
 
                 -- Join probe
-                let rkeys_e = EC.record $ map (\((r, _), da) -> (da, EC.project da $ EC.project "key" $ EC.variable $ if r == reln then "x" else "y")) oSchema
+                let rkeys_e = case oSchema of
+                                [] -> EC.record [("ra", EC.unit)]
+                                l -> EC.record $ map (\((r, _), da) -> (da, EC.project da $ EC.project "key" $ EC.variable $ if r == reln then "x" else "y")) l
+
                 let rvals_e = EC.record $ (map (\i -> ("part_"++i, EC.project ("part_" ++ i) $ EC.variable "lcp")) relpfx)
                                             ++ [("part_" ++ reln, EC.project ("part_" ++ reln) $ EC.variable "rcp")]
 
@@ -507,30 +539,35 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
                                                     (EC.variable "cpacc")
 
                 let lhs_lcplam_e = EC.lambda "cpacc" $ EC.lambda "lcp" $
-                                      EC.applyMany (EC.project "fold" $ EC.project "value" $ EC.variable "y") [lhs_rcplam_e, EC.variable "cpacc"]
+                                      EC.applyMany (EC.project "fold" $ EC.project "value" $ EC.variable "x") [lhs_rcplam_e, EC.variable "cpacc"]
 
                 let lhs_cpz_e = mkColEmpty result_elem_val_t
 
+                let lhs_cpnval_e = EC.applyMany (EC.project "fold" $ EC.project "value" $ EC.variable "y") [lhs_lcplam_e, lhs_cpz_e]
                 let lhs_cpnlam_e = EC.lambda "y"  $
                                       EC.applyMany (EC.project "insert" $ EC.variable result_id)
                                         [EC.record
                                           [("key", rkeys_e),
-                                           ("value", EC.applyMany (EC.project "fold" $ EC.project "value" $ EC.variable "x") [lhs_lcplam_e, lhs_cpz_e])]]
+                                           ("value", lhs_cpnval_e)]]
 
                 let lhs_cplam_e  = EC.lambda "x"  $ EC.applyMany (EC.project "iterate" $ EC.project "value" $ EC.variable "lv") [lhs_cpnlam_e]
                 let lhs_pplam_e  = EC.lambda "lv" $ EC.applyMany (EC.project "iterate" $ EC.project "value" $ EC.variable "rv") [lhs_cplam_e]
-                let lhs_probe_e  = EC.lambda "rv" $ EC.applyMany (EC.project "lookup" $ EC.variable ht_lbl) [lhs_pmlam_e, lhs_pplam_e]
+                let lhs_prkey_e  = EC.record [("key", EC.project "key" $ EC.variable "rv"), ("value", mkMapEmpty $ ljoin_val_t)]
+                let lhs_probe_e  = EC.lambda "rv" $ EC.applyMany (EC.project "lookup" $ EC.variable ht_lbl) [lhs_prkey_e, lhs_pmlam_e, lhs_pplam_e]
 
                 return ([("i", SLabel reln)]
-                          ++ [("lhs_ht_id",       SLabel $ ht_lbl)]
-                          ++ [("lhs_query",       SExpr    lquery_e)]
-                          ++ [("rhs_query",       SExpr    rquery_e)]
-                          ++ [("lhs_ht_ty",       SType  $ mkMapT lhs_ht_elem_t)]
-                          ++ [("rhs_ht_ty",       SType  $ mkMapT rhs_ht_elem_t)]
-                          ++ [("lhs_insert_with", SExpr    lhs_insert_e)]
-                          ++ [("lhs_probe",       SExpr    lhs_probe_e)]
-                          ++ [("result_id",       SLabel   result_id)]
-                          ++ [("result_ty",       SType  $ result_t)],
+                          ++ [("lhs_ht_id",        SLabel   ht_lbl)]
+                          ++ [("lhs_query",        SExpr    lquery_e)]
+                          ++ [("rhs_query",        SExpr    rquery_e)]
+                          ++ [("lhs_ht_ty",        SType    lhs_ht_elem_t)]
+                          ++ [("rhs_ht_ty",        SType    rhs_ht_elem_t)]
+                          ++ [("lhs_insert_with",  SExpr    lhs_insert_e)]
+                          ++ [("lhs_probe",        SExpr    lhs_probe_e)]
+                          ++ [("result_id",        SLabel   result_id)]
+                          ++ [("result_ty",        SType    result_t)]
+                          ++ [("lhs_query_clear",  SExpr    EC.unit)]
+                          ++ [("rhs_query_clear",  SExpr    EC.unit)]
+                          ++ [("lhs_ht_clear",     SExpr    EC.unit)],
                         resultKeySchema, Right resultValSchema)
 
 
@@ -548,22 +585,22 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
         relationRecord relts acc rel attrs = acc ++ [spliceRecord param_list]
           where
             param_list = maybe [] id $ do
-              rel_t <- lookup rel relts
+              (rel_t, rel_eopt) <- lookup rel relts
               base_rel_t <- relType rel_t
               key_t <- TC.record <$> fieldTypes attrs rel_t
               val_t <- relElemType rel_t
 
               let elem_t = TC.record [("key", key_t), ("value", base_rel_t)]
-              let map_t  = mkMapT elem_t
-              let map_e  = mkMapEmpty elem_t
 
-              -- TODO: acc_e needs a nested insert
               let gbf_e  = EC.lambda "x" $ EC.record $ map (\i -> (i, EC.project i $ EC.variable "x")) attrs
-              let acc_e  = EC.lambda "acc" $ EC.lambda "x" $
-                             EC.binop OSeq (EC.applyMany (EC.project "insert" $ EC.variable "acc") [EC.variable "x"])
-                                           (EC.variable "acc")
+              let acc_e  = case rel_eopt of
+                             Nothing ->
+                               EC.lambda "acc" $ EC.lambda "x" $
+                                 EC.binop OSeq (EC.applyMany (EC.project "insert" $ EC.variable "acc") [EC.variable "x"])
+                                               (EC.variable "acc")
+                             Just e -> e
 
-              let query_e = EC.applyMany (EC.project "group_by" $ EC.variable rel) [gbf_e, acc_e, map_e]
+              let query_e = EC.applyMany (EC.project "group_by" $ EC.variable rel) [gbf_e, acc_e, mkColEmpty val_t]
 
               let q_param = [("query", SExpr query_e)]
               let c_param = [("clear", SExpr EC.unit)]
@@ -607,8 +644,8 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
         (chpp, nch) = first concat $ unzip $ map (rebuildCh bnds) ch
 
         nrels = (++ concat rels) $ case n of
-                  PFRelation nt ijs -> [nt]
-                  PGRelation nt ijs -> [nt]
+                  PFRelation nte ijs -> [nte]
+                  PGRelation nte ijs -> [nte]
                   _ -> []
 
         debugConstraint r =
@@ -655,12 +692,18 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
 
 propagatePartition _ = error "Invalid expr arg for propagatePartition"
 
-relOrIndexId :: K3 Expression -> Maybe (Identifier, K3 Type)
-relOrIndexId n@(tag &&& (@~ isConstantRelation) -> (ELetIn i, Just _)) = (,) <$> Just i <*> relationType n
-relOrIndexId n@(tag &&& (@~ isBaseOrMaterializedRelation) -> (EVariable i, Just _)) = (,) <$> Just i <*> relationType n
+relOrIndexId :: K3 Expression -> Maybe (Identifier, (K3 Type, Maybe (K3 Expression)))
+relOrIndexId n@(tag &&& (@~ isConstantRelation) -> (ELetIn i, Just _)) = (\t -> (i, (t, Nothing))) <$> relationType n
+relOrIndexId n@(tag &&& (@~ isBaseOrMaterializedRelation) -> (EVariable i, Just _)) = (\t -> (i, (t, Nothing))) <$> relationType n
+
 relOrIndexId (PPrjApp3 n@(tag -> EVariable (("_index" `isSuffixOf`) -> True)) "lookup" _ _ _ _ _ _ _) =
-  case n @~ hasRelationName of
-    Just (EProperty (ePropertyValue -> Just (tag -> LString s))) -> (,) <$> Just s <*> relationType n
+  case (n @~ hasRelationName, n @~ hasProjectionAccExpr) of
+    ( Just (EProperty (ePropertyValue -> Just (tag -> LString s))), Just (EProperty (ePropertyValue -> Just (tag -> LString s2))) )
+      -> (\t -> (s, (t,Just ((read s2) :: K3 Expression)))) <$> relationType n
+
+    ( Just (EProperty (ePropertyValue -> Just (tag -> LString s))), Nothing )
+      -> (\t -> (s, (t,Nothing))) <$> relationType n
+
     _ -> Nothing
 
 relOrIndexId _ = Nothing
@@ -668,6 +711,10 @@ relOrIndexId _ = Nothing
 hasRelationName :: Annotation Expression -> Bool
 hasRelationName (EProperty (ePropertyName -> "RelationName")) = True
 hasRelationName _ = False
+
+hasProjectionAccExpr :: Annotation Expression -> Bool
+hasProjectionAccExpr (EProperty (ePropertyName -> "ProjectionAccExpr")) = True
+hasProjectionAccExpr _ = False
 
 isConstantRelation :: Annotation Expression -> Bool
 isConstantRelation (EProperty (ePropertyName -> "ConstantRelation")) = True
@@ -723,33 +770,41 @@ mosaicGMRFlatten (SType t@(tag -> (TRecord ids))) s = SExpr $ EC.record $ map (\
                                                                          ++ [(last ids, EC.project "value" $ EC.variable s)]
 
 mosaicExtractRelations :: SpliceValue -> SpliceValue
-mosaicExtractRelations (SExpr e) = maybe notFoundError extract $ e @~ isERelationProp
+mosaicExtractRelations sv = maybe notFoundError id $ mosaicTryExtractRelations sv
+  where notFoundError = error $ boxToString $ ["Could not extract relations from"] %$ prettyLines sv
+
+mosaicTryExtractRelations :: SpliceValue -> Maybe SpliceValue
+mosaicTryExtractRelations (SExpr e) = maybe Nothing (Just . extract) $ e @~ isERelationProp
   where isERelationProp (EProperty (ePropertyName -> n)) = n == "Relations"
         isERelationProp _ = False
 
         extract (EProperty ( (ePropertyName &&& ePropertyValue) -> ("Relations", Just (tag -> LString s)) )) = (read s) :: SpliceValue
         extract _ = notFoundError
 
-        notFoundError = boxToString $ ["Could not extract relations from"] %$ prettyLines e
+        notFoundError = error $ boxToString $ ["Could not extract relations from"] %$ prettyLines e
 
-mosaicExtractRelations _ = error "Invalid expression argument for mosaicExtractRelations"
+mosaicTryExtractRelations sv = error $ boxToString $ ["Invalid expression argument for mosaicExtractRelations"] %$ prettyLines sv
 
 mosaicExtractJoinOrder :: SpliceValue -> SpliceValue
-mosaicExtractJoinOrder (SExpr e) = maybe notFoundError extract $ e @~ isERelationProp
-  where isERelationProp (EProperty (ePropertyName -> n)) = n == "JoinOrder"
-        isERelationProp _ = False
+mosaicExtractJoinOrder sv = maybe notFoundError id $ mosaicTryExtractJoinOrder sv
+  where notFoundError = error $ boxToString $ ["Could not extract join order from"] %$ prettyLines sv
+
+mosaicTryExtractJoinOrder :: SpliceValue -> Maybe SpliceValue
+mosaicTryExtractJoinOrder (SExpr e) = maybe Nothing (Just . extract) $ e @~ isEJoinOrderProp
+  where isEJoinOrderProp (EProperty (ePropertyName -> n)) = n == "JoinOrder"
+        isEJoinOrderProp _ = False
 
         extract (EProperty ( (ePropertyName &&& ePropertyValue) -> ("JoinOrder", Just (tag -> LString s)) )) = (read s) :: SpliceValue
         extract _ = notFoundError
 
-        notFoundError = boxToString $ ["Could not extract join order from"] %$ prettyLines e
+        notFoundError = error $ boxToString $ ["Could not extract join order from"] %$ prettyLines e
 
-mosaicExtractJoinOrder _ = error "Invalid expression argument for mosaicExtractJoinOrder"
+mosaicTryExtractJoinOrder sv = error $ boxToString $ ["Invalid expression argument for mosaicExtractJoinOrder"] %$ prettyLines sv
 
 
-mosaicStartMultiExchange :: SpliceValue -> String -> SpliceValue
-mosaicStartMultiExchange (SList relations) addrVar = SExpr $ foldl exchangeRelation EC.unit relations
-  where exchangeRelation acc (SRecord rr) = EC.binop OSeq acc (EC.send (exchangeTrigger rr) (EC.variable addrVar) EC.unit)
+mosaicStartMultiExchange :: SpliceValue -> K3 Expression -> SpliceValue
+mosaicStartMultiExchange (SList relations) addrE = SExpr $ foldl exchangeRelation EC.unit relations
+  where exchangeRelation acc (SRecord rr) = EC.binop OSeq acc (EC.send (exchangeTrigger rr) addrE EC.unit)
         exchangeRelation _ _ = error "Invalid relation record for mosaic"
 
         exchangeTrigger rr = case rr Map.! "i" of
@@ -792,7 +847,7 @@ mosaicGlobalNextMultiwayJoin (SLabel lbl) (SList svs) (SRecord current) masterAd
   if null svs
     then error "Invalid join order list"
     else case pickNext of
-           (True, _) -> SExpr $ EC.send (EC.variable $ lbl ++ "_mjoin_done") (EC.variable masterAddrVar) (EC.variable "me") EC.unit
+           (True, _) -> SExpr $ EC.send (EC.variable $ lbl ++ "_mjoin_done") (EC.variable masterAddrVar) EC.unit
            (False, Just rsv) -> rsv
 
   where pickNext = foldl (pickNextAcc $ maybe nameError labelStr $ Map.lookup "i" current) (False, Nothing) svs
@@ -810,12 +865,12 @@ mosaicGlobalNextMultiwayJoin (SLabel lbl) (SList svs) (SRecord current) masterAd
 
         nameError = error "Invalid join order name in mosaicGlobalNextMultiwayJoin"
 
-mosaicGlobalNextMultiwayJoin _ _ _ = error "Invalid arguments to mosaicGlobalNextMultiwayJoin"
+mosaicGlobalNextMultiwayJoin _ _ _ _ = error "Invalid arguments to mosaicGlobalNextMultiwayJoin"
 
 mosaicFetchPartitionBarrierKeyType :: SpliceValue -> SpliceValue
-mosaicFetchPartitionBarrierKeyType (SList relsvs) = TC.record $ map relationPartitionKeyElem relsvs
+mosaicFetchPartitionBarrierKeyType (SList relsvs) = SType $ TC.record $ map relationPartitionKeyElem relsvs
   where relationPartitionKeyElem (SRecord nsvs) = case Map.lookup "i" nsvs of
-                                                    SLabel i -> ("part_" ++ i, TC.int)
+                                                    Just (SLabel i) -> ("part_" ++ i, TC.int)
                                                     _ -> error "Invalid relation label in mosaicFetchPartitionBarrierKeyType"
 
         relationPartitionKeyElem _ = error "Invalid relation param record in mosaicFetchPartitionBarrierKeyType"
@@ -852,46 +907,58 @@ mosaicFetchPartition (SList relsvs) keyVar = SExpr $ foldl fetchAcc EC.unit rels
 mosaicFetchPartition _ _ = error "Invalid relations in mosaicFetchPartition"
 
 
-mosaicAssignInputPartitions :: SpliceValue -> String -> String -> SpliceValue
-mosaicAssignInputPartitions (mosaicExtractRelations -> SList relsvs) partIdVar partMapSuffix currentPartSuffix = map assign relsvs
+mosaicAssignInputPartitions :: SpliceValue -> String -> String -> String -> SpliceValue
+mosaicAssignInputPartitions (SList relsvs) partIdVar partMapSuffix currentPartSuffix =
+    SExpr $ foldl (\accE rsv -> EC.binop OSeq (assign rsv) accE) EC.unit relsvs
+
   where assign (SRecord nsvs) = case (Map.lookup "i" nsvs, Map.lookup "val_type" nsvs) of
                                   (Just (SLabel i), Just (SType ty))
                                     -> EC.applyMany (EC.project "lookup" $ EC.variable $ i ++ partMapSuffix)
                                          [ EC.record [ ("key", EC.project ("part_" ++ i) $ EC.variable partIdVar)
-                                                     , ("value", (EC.constant $ CEmpty elem_t) @+ EAnnotation "Collection" )]
+                                                     , ("value", (EC.constant $ CEmpty ty) @+ EAnnotation "Collection" )]
                                          , EC.lambda "_" EC.unit
                                          , EC.lambda "part" $ EC.assign (i ++ currentPartSuffix) $ EC.project "value" $ EC.variable "part" ]
 
                                   _ -> error "Invalid relation name param in mosaicAssignInputPartitions"
         assign _ = error "Invalid relation param record in mosaicAssignInputPartitions"
 
-mosaicAssignInputPartitions _ _ = error "Invalid expression for mosaicAssignInputPartitions"
+mosaicAssignInputPartitions _ _ _ _ = error "Invalid expression for mosaicAssignInputPartitions"
 
 
 mosaicAccumulatePartition :: SpliceValue -> SpliceValue -> SpliceValue -> SpliceValue
 mosaicAccumulatePartition (SLabel v) (SExpr e) (SType ty) =
   case tnc ty of
-    (TCollection, [tnc -> (TRecord ids, tch)])
-      -> case ty @~ isTAnnotation of
-           (TAnnotation "Collection") ->
-             EC.binop OSeq
+    (TCollection, [telem@(tnc -> (TRecord ids, tch))])
+      -> case (ty @~ isTAnnotation, ty @~ isMultiIndexVMap) of
+           (Just (TAnnotation "Collection"), _) ->
+             let vgb_e = EC.applyMany (EC.project "group_by" $ EC.variable v)
+                           [ EC.lambda "x" $ EC.record $ map (\i -> (i, EC.project i $ EC.variable "x")) $ init ids
+                           , EC.lambda "acc" $ EC.lambda "x" $ EC.binop OAdd (EC.variable "acc") $ EC.project (last ids) $ EC.variable "x"
+                           , either error id $ defaultExpression $ last tch]
+
+                 vcolacc_e = EC.lambda "acc" $ EC.lambda "x" $ EC.binop OSeq
+                               (EC.applyMany (EC.project "insert" $ EC.variable "acc")
+                                 [EC.record $ (map (\i -> (i, EC.project i $ EC.project "key" $ EC.variable "x")) $ init ids)
+                                                ++ [(last ids, EC.project "value" $ EC.variable "x")]])
+                               (EC.variable "acc")
+                 vcolz_e = (EC.constant $ CEmpty telem) @+ EAnnotation "Collection"
+                 vcol_e = EC.applyMany (EC.project "fold" vgb_e) [vcolacc_e, vcolz_e]
+             in
+             SExpr $ EC.binop OSeq
                (EC.applyMany (EC.project "iterate" e)
                  [EC.lambda "x" $ EC.applyMany (EC.project "insert" $ EC.variable v) [EC.variable "x"]])
-               (EC.assign v $ EC.applyMany (EC.project "group_by" $ EC.variable v)
-                 [ EC.lambda "x" $ EC.record $ map (\i -> (i, EC.project i $ EC.variable "x")) $ init ids
-                 , EC.lambda "acc" $ EC.lambda "x" $ EC.binop OAdd (EC.variable "acc)" $ EC.project (last ids) $ EC.variable "x"
-                 , defaultExpression $ last tch])
+               (EC.assign v vcol_e)
 
-           (TAnnotation "Map") ->
-             EC.applyMany (EC.project "iterate" e)
+           (Just (TAnnotation "Map"), _) ->
+             SExpr $ EC.applyMany (EC.project "iterate" e)
               [EC.lambda "x" $ EC.applyMany (EC.project "insert_with" $ EC.variable v)
                 [ EC.variable "x"
                 , EC.lambda "old" $ EC.lambda "new" $
                     EC.record [ ("key", EC.project "key" $ EC.variable "old")
                               , ("value", EC.binop OAdd (EC.project "value" $ EC.variable "old") $ EC.project "value" $ EC.variable "new")] ]]
 
-           (TAnnotation ("MultiIndexVMap" `isInfixOf` -> True)) ->
-             EC.applyMany (EC.project "iterate" e)
+           (_, Just (TAnnotation "MultiIndexVMap")) ->
+             SExpr $ EC.applyMany (EC.project "iterate" e)
               [EC.lambda "x" $ EC.applyMany (EC.project "insert_with" $ EC.variable v)
                 [ EC.constant $ CInt 0
                 , EC.variable "x"
@@ -901,24 +968,29 @@ mosaicAccumulatePartition (SLabel v) (SExpr e) (SType ty) =
 
            _ -> error $ boxToString $ ["Invalid partition collection in mosaicAccumulatePartition: "] %$ prettyLines ty
 
-    TInt  -> EC.assign v $ EC.binop OAdd (EC.variable v) e
-    TReal -> EC.assign v $ EC.binop OAdd (EC.variable v) e
+    (TInt, [])  -> SExpr $ EC.assign v $ EC.binop OAdd (EC.variable v) e
+    (TReal, []) -> SExpr $ EC.assign v $ EC.binop OAdd (EC.variable v) e
     _ -> error "Invalid accumulator type in mosaicAccumulatePartition"
+
+  where isMultiIndexVMap (TAnnotation "MultiIndexVMap") = True
+        isMultiIndexVMap _ = False
 
 mosaicAccumulatePartition _ _ _ = error "Invalid arguments for mosaicAccumulatePartition"
 
 mosaicDistributedPlanner :: SpliceValue -> SpliceValue
 mosaicDistributedPlanner sv@(SExpr e) =
   case (relsvs, josvs) of
-    ([], []) -> error "Invalid empty relation and join order parameters"
+    ([], []) -> SExpr e
     ([_], []) -> SExpr $ e @+ (EApplyGen True "MosaicExecuteSingleton" singletonParams)
     (_, _) -> SExpr $ e @+ (EApplyGen True "MosaicExecuteJoin" joinParams)
 
-  where (SList relsvs) = mosaicExtractRelations sv
-        (SList josvs) = mosaicExtractJoinOrder sv
+  where (SList relsvs) = maybe (SList []) id $ mosaicTryExtractRelations sv
+        (SList josvs) = maybe (SList []) id $ mosaicTryExtractJoinOrder sv
         lbl = case tnc e of
                 (EOperate OSeq, [tnc -> (EAssign i, [asgne]), snde]) -> i
                 _ -> error "Invalid mosaic planner attachment point"
 
-        singletonParams = Map.fromList [ ("lbl", lbl), ("relations", SList relsvs) ]
-        joinParams = Map.fromList [ ("lbl", lbl), ("relations", SList relsvs), ("joinOrder", SList josvs) ]
+        singletonParams = Map.fromList [ ("lbl", SLabel lbl), ("relations", SList relsvs) ]
+        joinParams = Map.fromList [ ("lbl", SLabel lbl), ("relations", SList relsvs), ("joinOrder", SList josvs) ]
+
+mosaicDistributedPlanner sv = error $ boxToString $ ["Invalid mosaicDistributedPlanner argument:"] %$ prettyLines sv
