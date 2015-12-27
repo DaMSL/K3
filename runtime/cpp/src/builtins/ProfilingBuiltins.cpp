@@ -180,11 +180,11 @@ unit_t ProfilingBuiltins::jemallocDump(unit_t) {
     pid = fork();
 
     if (pid == 0) {
-      auto fd = open("perf_stat.out", O_RDWR);
+      auto fd = open("/dev/null", O_RDWR);
       dup2(fd, 1);
       dup2(fd, 2);
 
-      exit(execl("/usr/bin/perf", "perf", "stat", "-a", "-e", "cache-misses,cache-references",
+      exit(execl("/usr/bin/perf", "perf", "stat", "-e", "cache-misses,cache-references",
                  "-o", "perf.data", "-p", pid_stream.str().c_str(), nullptr));
     }
 #endif
