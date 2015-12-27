@@ -150,6 +150,10 @@ control MosaicDistribute {
   ?E => $[| mosaicDistributedPlanner 'E.expr |]
 }
 
+control MosaicLogStaging[id: label, op: label] {
+  ?E => $[| mosaicLogStaging 'id 'op 'E.expr |]
+}
+
 // Create stages and materialized intermediates for Mosaic warmup expressions.
 control MosaicMaterialization[lbl : label, cnt : expr, finaltrg : expr]
 {
@@ -162,17 +166,21 @@ control MosaicMaterialization[lbl : label, cnt : expr, finaltrg : expr]
 
   // Materialization base cases with base relations
   (?v = ((?e @:BaseRelation).fold ?accF ?z)); (?dest, me) <- ()
-  => ((($#[v] = $.[e].fold $.[accF] $.[z]); ($.[dest], me) <- ()) @MosaicInferPartition)
+  => ((($#[v] = (($.[e].fold $.[accF] $.[z]) @MosaicLogStaging(id=[# $#[v] ], op=[# foldscan])));
+       ($.[dest], me) <- ()) @MosaicInferPartition)
 
   (?v = ((?e @:BaseRelation).group_by ?groupF ?accF ?z)); (?dest, me) <- ()
-  => ((($#[v] = $.[e].group_by $.[groupF] $.[accF] $.[z]); ($.[dest], me) <- ()) @MosaicInferPartition)
+  => ((($#[v] = (($.[e].group_by $.[groupF] $.[accF] $.[z]) @MosaicLogStaging(id=[# $#[v]], op=[# gbscan])));
+       ($.[dest], me) <- ()) @MosaicInferPartition)
 
   // Materialization base cases with constant relations
   (?v = ((let ?c = ?e in ?rc).fold ?accF ?z)); (?dest, me) <- ()
-  => ((($#[v] = ((let $#[c] = $.[e] in $.[rc]) @:ConstantRelation).fold $.[accF] $.[z]); ($.[dest], me) <- ()) @MosaicInferPartition)
+  => ((($#[v] = ((((let $#[c] = $.[e] in $.[rc]) @:ConstantRelation).fold $.[accF] $.[z]) @MosaicLogStaging(id=[# $#[v] ], op=[# foldconst])));
+       ($.[dest], me) <- ()) @MosaicInferPartition)
 
   (?v = ((let ?c = ?e in ?rc).group_by ?groupF ?accF ?z)); (?dest, me) <- ()
-  => ((($#[v] = ((let $#[c] = $.[e] in $.[rc]) @:ConstantRelation).group_by $.[groupF] $.[accF] $.[z]); ($.[dest], me) <- ()) @MosaicInferPartition)
+  => ((($#[v] = ((((let $#[c] = $.[e] in $.[rc]) @:ConstantRelation).group_by $.[groupF] $.[accF] $.[z]) @MosaicLogStaging(id=[# $#[v]], op=[# gbconst])));
+       ($.[dest], me) <- ()) @MosaicInferPartition)
 
   // Materialization staging
   ?v = ((?e : ?t).fold ?accF ?z)
@@ -183,7 +191,7 @@ control MosaicMaterialization[lbl : label, cnt : expr, finaltrg : expr]
     declare $[lbl]_$[| labelExpr 'cnt |] : mut $::[t]
 
     trigger $[lbl]_stage$[| labelExpr 'cnt|] : () = \_ -> (
-      ((($#[v] = ($[lbl]_$[| labelExpr 'cnt |] @:MaterializedRelation).fold $.[accF] $.[z]);
+      ((($#[v] = (($[lbl]_$[| labelExpr 'cnt |] @:MaterializedRelation).fold $.[accF] $.[z]) @MosaicLogStaging(id=[# $#[v] ], op=[# fold ]));
         ($[finaltrg], me) <- ()
        ) @MosaicInferPartition)
     )
@@ -197,7 +205,7 @@ control MosaicMaterialization[lbl : label, cnt : expr, finaltrg : expr]
     declare $[lbl]_$[| labelExpr 'cnt |] : mut $::[t]
 
     trigger $[lbl]_stage$[| labelExpr 'cnt|] : () = \_ -> (
-      ((($#[v] = ($[lbl]_$[| labelExpr 'cnt |] @:MaterializedRelation).fold $.[accF] $.[z]);
+      ((($#[v] = (($[lbl]_$[| labelExpr 'cnt |] @:MaterializedRelation).fold $.[accF] $.[z]) @MosaicLogStaging(id=[# $#[v] ], op=[# fold ]));
         ($.[dest], me) <- ()
       ) @MosaicInferPartition)
     )
@@ -211,7 +219,7 @@ control MosaicMaterialization[lbl : label, cnt : expr, finaltrg : expr]
     declare $[lbl]_$[| labelExpr 'cnt |] : mut $::[t]
 
     trigger $[lbl]_stage$[| labelExpr 'cnt|] : () = \_ -> (
-      ((($#[v] = ($[lbl]_$[| labelExpr 'cnt |] @:MaterializedRelation).group_by $.[groupF] $.[accF] $.[z]);
+      ((($#[v] = (($[lbl]_$[| labelExpr 'cnt |] @:MaterializedRelation).group_by $.[groupF] $.[accF] $.[z]) @MosaicLogStaging(id=[# $#[v] ], op=[# group_by ]));
         ($[finaltrg], me) <- ()
       ) @MosaicInferPartition)
     )
@@ -225,7 +233,7 @@ control MosaicMaterialization[lbl : label, cnt : expr, finaltrg : expr]
     declare $[lbl]_$[| labelExpr 'cnt |] : mut $::[t]
 
     trigger $[lbl]_stage$[| labelExpr 'cnt|] : () = \_ -> (
-      ((($#[v] = ($[lbl]_$[| labelExpr 'cnt |] @:MaterializedRelation).group_by $.[groupF] $.[accF] $.[z]);
+      ((($#[v] = (($[lbl]_$[| labelExpr 'cnt |] @:MaterializedRelation).group_by $.[groupF] $.[accF] $.[z]) @MosaicLogStaging(id=[# $#[v] ], op=[# group_by ]));
        ($.[dest], me) <- ()
       ) @MosaicInferPartition)
     )

@@ -994,3 +994,6 @@ mosaicDistributedPlanner sv@(SExpr e) =
         joinParams = Map.fromList [ ("lbl", SLabel lbl), ("relations", SList relsvs), ("joinOrder", SList josvs) ]
 
 mosaicDistributedPlanner sv = error $ boxToString $ ["Invalid mosaicDistributedPlanner argument:"] %$ prettyLines sv
+
+mosaicLogStaging :: SpliceValue -> SpliceValue -> SpliceValue -> SpliceValue
+mosaicLogStaging (SLabel lbl) (SLabel op) (SExpr e) = trace (unwords ["Stage", lbl, "op:", op]) $ SExpr e
