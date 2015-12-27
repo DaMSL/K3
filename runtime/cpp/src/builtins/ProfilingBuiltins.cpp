@@ -180,7 +180,7 @@ unit_t ProfilingBuiltins::jemallocDump(unit_t) {
     pid = fork();
 
     if (pid == 0) {
-      auto fd = open("/dev/null", O_RDWR);
+      auto fd = open("perf_stat.out", O_RDWR);
       dup2(fd, 1);
       dup2(fd, 2);
 
