@@ -2,6 +2,12 @@ include "Annotation/Maps/MapE.k3"
 include "Core/Barrier.k3"
 include "Core/Messaging.k3"
 
+declare index_by_hash : forall a. a -> int = (\s -> (
+  let n = peers.size() in
+  let h = (hash s) in
+  ((h % n) + n) % n
+))
+
 control MosaicLoader
 {
     ?loader ?paths (?Col : collection ?T)  => $.[loader] $.[paths] $.[Col];
@@ -13,21 +19,23 @@ control MosaicLoader
 }
 
 // Create base relation indexes for Mosaic warmup map accesses.
-control MosaicIndex[ lbl          : label
-                   , relation     : label
-                   , key_type     : type
-                   , lookup_probe : expr
-                   , index_probe  : expr
-                   , missing_fn   : expr
-                   , present_fn   : expr
-                   , index_key    : [labeltype]
-                   , index_value  : [labeltype]]
+control MosaicIndex [ lbl          : label
+                    , relation     : label
+                    , key_type     : type
+                    , lookup_probe : expr
+                    , index_probe  : expr
+                    , missing_fn   : expr
+                    , present_fn   : expr
+                    , index_key    : [labeltype]
+                    , index_value  : [labeltype]]
 {
   // Slice materialization
   ((?e.filter ?filterF)
-      .fold   ?foldF (?acc1 : ?t1)
+      .fold   ?FoldF (?acc1 : ?t1)
   )
-  => (($[lbl]_index @:{RelationName "$[|literalLabel 'relation|]"}).lookup $[lookup_probe] (\_ -> $.[acc1]) (\r -> r.value)
+  => (($[lbl]_index @:{RelationName "$[|literalLabel 'relation|]",
+                       ProjectionAccExpr "$[|literalExpr 'FoldF.expr |]"}
+       ).lookup $[lookup_probe] (\_ -> $.[acc1]) (\r -> r.value)
       ) @:{PartitionConstraint "$[|partitionConstraint 'lookup_probe 'index_probe|]"}
   +> {
     declare $[lbl]_index : mut collection {key: $[key_type], value: $::[t1]} @MapE(key:=index_key, value:=index_value)
@@ -36,6 +44,24 @@ control MosaicIndex[ lbl          : label
       $.[e].iterate (\t -> $[lbl]_index.upsert_with $[index_probe] $[missing_fn] $[present_fn])
     )
   }
+}
+
+control MosaicIndex2[ lbl          : label
+                    , relation     : label
+                    , key_type     : type
+                    , lookup_probe : expr
+                    , index_probe  : expr
+                    , missing_fn   : expr
+                    , present_fn   : expr
+                    , index_key    : [labeltype]
+                    , index_value  : [labeltype]]
+{
+  // Skip indexing for distributed execution.
+  ((?e.filter ?filterF)
+      .fold   ?foldF (?acc1 : ?t1)
+  )
+  => ($.[e].fold $.[foldF] $.[acc1]
+     ) @:{PartitionConstraint "$[|partitionConstraint 'lookup_probe 'index_probe|]"}
 }
 
 // For use with Mosaic's fold encoding.
@@ -121,7 +147,7 @@ control MosaicInferPartition {
 // An annotation that plans the distributed execution scheme by inspecting the inferred query properties.
 // This attaches the appropriate distributed execution rewrite annotation onto the expression E.
 control MosaicDistribute {
-  ?E => $[| mosaicDistributedPlanner 'E |]
+  ?E => $[| mosaicDistributedPlanner 'E.expr |]
 }
 
 // Create stages and materialized intermediates for Mosaic warmup expressions.
@@ -227,7 +253,7 @@ control MosaicMultiExchange [ lbl : label
                             , next : expr ]
 {
 	() => peers.iterate (\p ->
-          $[| mosaicStartMultiExchange 'relations "p.addr" |]
+          $[| mosaicStartMultiExchange 'relations (EC.project "addr" (EC.variable "p")) |]
             // Generate a send to each relation's exchange trigger
         )
 
@@ -242,40 +268,40 @@ control MosaicMultiExchange [ lbl : label
                   , reset=[$ false], profile=[$ false] )
     )
 
-    for r in relations:
-      declare $[r.i]_offset : mut int = 0
-      declare $[r.i]_stride : mut int = 0
-      declare $[r.i]_cnt    : mut int = 0
+    for R in relations:
+      declare $[R.i]_offset : mut int = 0
+      declare $[R.i]_stride : mut int = 0
+      declare $[R.i]_cnt    : mut int = 0
 
-      declare $[r.i]_next_bucket : () -> int = \_ -> (
-        $[r.i]_cnt = $[r.i]_cnt + 1;
-        $[r.i]_offset + ($[r.i]_stride * $[r.i]_cnt)
+      declare $[R.i]_next_bucket : () -> int = \_ -> (
+        $[R.i]_cnt = $[R.i]_cnt + 1;
+        $[R.i]_offset + ($[R.i]_stride * $[R.i]_cnt)
       )
 
-      declare $[r.i]_pidx  : collection {key : $[r.key_type], value: int} @Map
-      declare $[r.i]_parts : collection {key : int, value: collection $[r.val_type] @Collection} @Map
+      declare $[R.i]_pidx  : collection {key : $[R.key_type], value: int} @Map
+      declare $[R.i]_parts : collection {key : int, value: collection $[R.val_type] @Collection} @Map
 
-      trigger $[r.i]_exchange : () = \_ -> (
-        ((ignore $[r.query])
+      trigger $[R.i]_exchange : () = \_ -> (
+        ((ignore $[R.query])
           @PartitionShuffleWithMissing(
-            lbl           = [# $[r.i]_exchange]
-          , dest_trg      = [$ $[r.i]_process_exchange]
+            lbl           = [# $[R.i]_exchange]
+          , dest_trg      = [$ $[R.i]_process_exchange]
           , nodes         = [$ peers ]
           , send_extra_fn = [$ \x -> x]
-          , send_ty       = [: $[|specializeMapTypeByKV 'elem_type|] ]
+          , send_ty       = [: $[|specializeMapTypeByKV 'R.elem_type|] ]
           ));
-          $[r.clear]
+          $[R.clear]
       )
 
-      trigger $[r.i]_process_exchange : $[|specializeMapTypeByKV 'elem_type|] = \vals -> (
+      trigger $[R.i]_process_exchange : $[|specializeMapTypeByKV 'R.elem_type|] = \vals -> (
         (vals.iterate (\v ->
-          $[r.i]_pidx.lookup {key: v.key, value: 0}
-            (\_ -> let bucket_id = $[r.i]_next_bucket ()
-                   in (($[r.i]_pidx.insert  {key: v.key,     value: bucket_id});
-                       ($[r.i]_parts.insert {key: bucket_id, value: v.value})))
-            (\bucket_id -> $[r.i]_parts.insert_with {key: bucket_id, value: v.value} (\old -> \new -> old.combine new)));
+          $[R.i]_pidx.lookup {key: v.key, value: 0}
+            (\_ -> let bucket_id = $[R.i]_next_bucket ()
+                   in (($[R.i]_pidx.insert  {key: v.key,     value: bucket_id});
+                       ($[R.i]_parts.insert {key: bucket_id, value: v.value})))
+            (\bucket_kv -> $[R.i]_parts.insert_with {key: bucket_kv.value, value: v.value} (\old -> \new -> (old.value.extend new.value; old))));
         ( ( $[lbl]_global_barrier, master ) <- ()
-        ) @OnCounter(id=[# $[r.i]_exchange_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+        ) @OnCounter(id=[# $[R.i]_exchange_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
         )
       )
   }
@@ -312,6 +338,7 @@ control MosaicMultiwayJoin [ lbl : label
     trigger $[lbl]_mjoin_done : () = \_ -> (
       () @MosaicFetchPartitions( lbl        = lbl
                                , relations  = relations
+                               , joinOrder  = joinOrder
                                , partitions = [$ $[| mosaicMultiwayJoinResult 'joinOrder |] ]
                                , barrier_kt = [: $[| mosaicFetchPartitionBarrierKeyType 'relations |] ]
                                , next       = next )
@@ -370,12 +397,26 @@ control MosaicMultiwayJoin [ lbl : label
 }
 
 
-control MosaicFetchPartitions [ relations : [{ i : label
+control MosaicFetchPartitions [ lbl : label
+                              , relations : [{ i : label
                                              , key_type  : type
                                              , val_type  : type
                                              , elem_type : type
                                              , query     : expr
                                              , clear     : expr }]
+                              , joinOrder : [{ i                : label
+                                             , lhs_ht_id        : label
+                                             , lhs_query        : expr
+                                             , lhs_query_clear  : expr
+                                             , rhs_query        : expr
+                                             , rhs_query_clear  : expr
+                                             , lhs_ht_ty        : type
+                                             , rhs_ht_ty        : type
+                                             , lhs_insert_with  : expr
+                                             , lhs_probe        : expr
+                                             , result_id        : label
+                                             , result_ty        : type
+                                             , lhs_ht_clear     : expr }]
                               , partitions   : expr
                               , barrier_kt   : type
                               , next         : expr
@@ -387,25 +428,31 @@ control MosaicFetchPartitions [ relations : [{ i : label
 
     trigger $[lbl]_fetch_partitions : () = \_ -> (
       $[partitions].iterate (\part_ids ->
-        part_ids.value.iterate (\pid ->
+        part_ids.value.iterate (\pid -> (
           $[lbl]_fetch_barriers.insert {key: pid, value: $[|mosaicFetchPartitionBarrierSize 'relations|]};
           $[| mosaicFetchPartition 'relations "pid" |]
-        )
+        ))
       )
     )
 
     trigger $[lbl]_fetches_complete : () = \_ -> (
-      ( $[next]
-      ) @OnCounter(lbl=[# $[lbl]_fetch_done], eq=[$ peers.size() ], reset=[$ false], profile=[$ false])
+      ( peers.iterate (\p -> ($[lbl]_execute, p.addr) <- ())
+      ) @OnCounter(id=[# $[lbl]_fetch_done], eq=[$ peers.size() ], reset=[$ false], profile=[$ false])
+    )
+
+    trigger $[lbl]_execute : () = \_ -> (
+      ($[next]) @MosaicExecutePartitions(lbl=lbl, relations=relations, joinOrder=joinOrder)
     )
 
     for r in relations:
+      declare $[r.i]_exec_part : mut collection $[r.val_type] @Collection
+
       declare $[r.i]_exec_parts : collection {key : int, value: collection $[r.val_type] @Collection} @Map
 
       trigger $[r.i]_fetch_part : {part_id: int, dest : address, barrier_key: $[barrier_kt]} = \x -> (
         $[r.i]_parts.lookup {key: x.part_id, value: empty $[r.val_type] @Collection}
           (\_ -> ())
-          (\partition -> ($[r.i]_recv_part, x.dest) <- {key: x.barrier_key, value: {key: x.part_id, value: partition}})
+          (\partition -> ($[r.i]_recv_part, x.dest) <- {key: x.barrier_key, value: partition})
       )
 
       trigger $[r.i]_recv_part : {key: $[barrier_kt], value: {key: int, value: collection $[r.val_type] @Collection}} = \fetch -> (
@@ -424,6 +471,44 @@ control MosaicFetchPartitions [ relations : [{ i : label
   }
 }
 
+
+control MosaicExecutePartitions [ lbl : label
+                                , relations : [{ i : label
+                                               , key_type  : type
+                                               , val_type  : type
+                                               , elem_type : type
+                                               , query     : expr
+                                               , clear     : expr }]
+                                , joinOrder : [{ i                : label
+                                               , lhs_ht_id        : label
+                                               , lhs_query        : expr
+                                               , lhs_query_clear  : expr
+                                               , rhs_query        : expr
+                                               , rhs_query_clear  : expr
+                                               , lhs_ht_ty        : type
+                                               , rhs_ht_ty        : type
+                                               , lhs_insert_with  : expr
+                                               , lhs_probe        : expr
+                                               , result_id        : label
+                                               , result_ty        : type
+                                               , lhs_ht_clear     : expr }]
+                                ]
+{
+  (?V = (?E : ?T); (?dest, me) <- ())
+    =>
+      $[| mosaicMultiwayJoinResult 'joinOrder |].iterate (\part_ids ->
+        part_ids.value.iterate (\pid -> (
+          // We can skip assigning to partitions when the partition id is -1 (used to encode outer joins).
+          $[| mosaicAssignInputPartitions 'relations "pid" "_exec_parts" "_exec_part" |];
+
+          // Execute query over partitions and merge with assignment target.
+          $[| mosaicAccumulatePartition 'V.identifier 'E.expr 'T.typ |]
+        ))
+      );
+
+      // Signal the next stage to execute at the master.
+      ($.[dest], master) <- ()
+}
 
 //////////////////////////////////////
 //
@@ -465,33 +550,12 @@ control MosaicExecuteJoin[ lbl : label
                                         , result_ty        : type
                                         , lhs_ht_clear     : expr }]]
 {
-  (?v = (?E : ?T); (?dest, me) <- ())
+  ?E
   => (() @MosaicMultiExchange(
              lbl         = lbl
            , relations   = relations
            , joinOrder   = joinOrder
-           , next        = [$ peers.iterate (\p -> ($#[v]_execute, p.addr) <- ()) ])
-     ) @OnCounter(lbl=[# $#[v]], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+           , next        = [$ $.[E] ])
+     ) @OnCounter(id=lbl, eq=[$ peers.size()], reset=[$ false], profile=[$ false])
           // Barrier on the completion of the previous phase (or system ready)
-
-  +>
-  {
-    trigger $#[v]_execute : () = \_ -> (
-      $[| mosaicMultiwayJoinResult 'joinOrder |].iterate (\part_ids ->
-        part_ids.value.iterate (\pid ->
-          // We can skip assigning to partitions when the partition id is -1 (used to encode outer joins).
-          $[| mosaicAssignInputPartitions 'E "pid" "_exec_parts" "_exec_part" |]
-
-          // Execute query over partitions and merge with assignment target.
-          $[| mosaicAccumulatePartition 'v 'E 'T |]
-        )
-      )
-
-      // Signal the next stage to execute at the master.
-      ($.[dest], master) <- ()
-    )
-
-    for r in relations:
-      declare $[r.i]_exec_part : collection $[r.val_type] @Collection
-  }
 }
