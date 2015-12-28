@@ -322,6 +322,7 @@ def main()
     opts.on("-s", "--submit", "Submit binary") { $options[:submit] = true }
     opts.on("-g", "--gather", "Gather results from remote server") { $options[:gather] = true }
     opts.on("-l", "--list", "List matching workloads") { $options[:list] = true }
+    opts.on("-p", "--post-process", "Post-process gathered timing results.") { $options[:post_process] = true }
 
     opts.on("-w", "--workdir [PATH]",    String,  "Working Directory") { |s| $options[:workdir]      = s    }
     opts.on("-r", "--role-dir [PATH]",   String,  "Role Directory")    { |r| $options[:role_dir]     = r    }
@@ -362,6 +363,9 @@ def main()
   if $options[:gather]
     statuses = poll(jobs, "Getting status of previously submitted jobs.")
     folders = harvest(statuses, workdir)
+  end
+
+  if $options[:post_process]
     postprocess()
   end
 
