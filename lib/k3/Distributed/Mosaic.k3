@@ -247,17 +247,23 @@ control MosaicMultiExchange [ lbl : label
                                            , elem_type : type
                                            , query     : expr
                                            , clear     : expr }]
-                            , joinOrder   : [{ i                : label
-                                             , lhs_ht_id        : label
-                                             , lhs_query        : expr
-                                             , lhs_query_clear  : expr
-                                             , rhs_query        : expr
-                                             , rhs_query_clear  : expr
-                                             , lhs_ht_ty        : type
-                                             , rhs_ht_ty        : type
-                                             , lhs_insert_with  : expr
-                                             , lhs_probe        : expr
-                                             , lhs_ht_clear     : expr }]
+                            , joinOrder   : [{ i                 : label
+                                             , lhs_ht_id         : label
+                                             , lhs_query         : expr
+                                             , lhs_query_clear   : expr
+                                             , rhs_query         : expr
+                                             , rhs_query_clear   : expr
+                                             , lhs_ht_ty         : type
+                                             , rhs_ht_ty         : type
+                                             , lhs_insert_with   : expr
+                                             , lhs_nonmatch_id   : label
+                                             , lhs_nonmatch_ty   : type
+                                             , lhs_nonmatch_eval : expr
+                                             , lhs_nonmatch_rels : [label]
+                                             , lhs_probe         : expr
+                                             , result_id         : label
+                                             , result_ty         : type
+                                             , lhs_ht_clear      : expr }]
                             , next : expr ]
 {
 	() => peers.iterate (\p ->
@@ -323,19 +329,23 @@ control MosaicMultiwayJoin [ lbl : label
                                            , elem_type : type
                                            , query     : expr
                                            , clear     : expr }]
-                           , joinOrder : [{ i                : label
-                                          , lhs_ht_id        : label
-                                          , lhs_query        : expr
-                                          , lhs_query_clear  : expr
-                                          , rhs_query        : expr
-                                          , rhs_query_clear  : expr
-                                          , lhs_ht_ty        : type
-                                          , rhs_ht_ty        : type
-                                          , lhs_insert_with  : expr
-                                          , lhs_probe        : expr
-                                          , result_id        : label
-                                          , result_ty        : type
-                                          , lhs_ht_clear     : expr }]
+                           , joinOrder : [{ i                 : label
+                                          , lhs_ht_id         : label
+                                          , lhs_query         : expr
+                                          , lhs_query_clear   : expr
+                                          , rhs_query         : expr
+                                          , rhs_query_clear   : expr
+                                          , lhs_ht_ty         : type
+                                          , rhs_ht_ty         : type
+                                          , lhs_insert_with   : expr
+                                          , lhs_nonmatch_id   : label
+                                          , lhs_nonmatch_ty   : type
+                                          , lhs_nonmatch_eval : expr
+                                          , lhs_nonmatch_rels : [label]
+                                          , lhs_probe         : expr
+                                          , result_id         : label
+                                          , result_ty         : type
+                                          , lhs_ht_clear      : expr }]
                            , next : expr
                            ]
 {
@@ -355,6 +365,7 @@ control MosaicMultiwayJoin [ lbl : label
     for J in joinOrder:
       declare $[J.lhs_ht_id] : mut $[|specializeMapTypeByKV 'J.lhs_ht_ty|]
       declare $[J.result_id] : mut $[J.result_ty]
+      declare $[J.lhs_nonmatch_id] : mut $[J.lhs_nonmatch_ty]
 
       trigger $[J.i]_lhs_redistribute : () = \_ -> (
         ((ignore $[J.lhs_query])
@@ -370,7 +381,8 @@ control MosaicMultiwayJoin [ lbl : label
 
       trigger $[J.i]_lhs_process_redistribute : $[|specializeMapTypeByKV 'J.lhs_ht_ty|] = (\vals ->
       ((vals.iterate (\v -> $[J.lhs_ht_id].insert_with v $[J.lhs_insert_with]));
-        ( peers.iterate (\p -> ($[J.i]_rhs_redistribute, p.addr) <- ())
+        ( ($[J.lhs_nonmatch_id] = $[J.lhs_nonmatch_eval]);
+          peers.iterate (\p -> ($[J.i]_rhs_redistribute, p.addr) <- ())
         ) @OnCounter(id=[# $[J.i]_peer_build_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false]))
       )
 
@@ -412,19 +424,23 @@ control MosaicFetchPartitions [ lbl : label
                                              , elem_type : type
                                              , query     : expr
                                              , clear     : expr }]
-                              , joinOrder : [{ i                : label
-                                             , lhs_ht_id        : label
-                                             , lhs_query        : expr
-                                             , lhs_query_clear  : expr
-                                             , rhs_query        : expr
-                                             , rhs_query_clear  : expr
-                                             , lhs_ht_ty        : type
-                                             , rhs_ht_ty        : type
-                                             , lhs_insert_with  : expr
-                                             , lhs_probe        : expr
-                                             , result_id        : label
-                                             , result_ty        : type
-                                             , lhs_ht_clear     : expr }]
+                              , joinOrder : [{ i                 : label
+                                             , lhs_ht_id         : label
+                                             , lhs_query         : expr
+                                             , lhs_query_clear   : expr
+                                             , rhs_query         : expr
+                                             , rhs_query_clear   : expr
+                                             , lhs_ht_ty         : type
+                                             , rhs_ht_ty         : type
+                                             , lhs_insert_with   : expr
+                                             , lhs_nonmatch_id   : label
+                                             , lhs_nonmatch_ty   : type
+                                             , lhs_nonmatch_eval : expr
+                                             , lhs_nonmatch_rels : [label]
+                                             , lhs_probe         : expr
+                                             , result_id         : label
+                                             , result_ty         : type
+                                             , lhs_ht_clear      : expr }]
                               , partitions   : expr
                               , barrier_kt   : type
                               , next         : expr
@@ -435,6 +451,10 @@ control MosaicFetchPartitions [ lbl : label
     declare $[lbl]_fetch_barriers : mut collection {key: $[barrier_kt], value: int} @Map
 
     trigger $[lbl]_fetch_partitions : () = \_ -> (
+      // Issue fetches for all non-matching partitions.
+      $[| mosaicNonMatchingFetchPartition 'lbl 'barrier_kt 'joinOrder |];
+
+      // Issue fetches for matching partitions in the join output.
       $[partitions].iterate (\part_ids ->
         part_ids.value.iterate (\pid -> (
           $[lbl]_fetch_barriers.insert {key: pid, value: $[|mosaicFetchPartitionBarrierSize 'relations|]};
@@ -449,9 +469,10 @@ control MosaicFetchPartitions [ lbl : label
     )
 
     trigger $[lbl]_execute : () = \_ -> (
-      ($[next]) @MosaicExecutePartitions(lbl=lbl, relations=relations, joinOrder=joinOrder)
+      ($[next]) @MosaicExecutePartitions(lbl=lbl, relations=relations, joinOrder=joinOrder, partitions=partitions)
     )
 
+    // Declarations for matching output partitions
     for r in relations:
       declare $[r.i]_exec_part : mut collection $[r.val_type] @Collection
 
@@ -487,24 +508,31 @@ control MosaicExecutePartitions [ lbl : label
                                                , elem_type : type
                                                , query     : expr
                                                , clear     : expr }]
-                                , joinOrder : [{ i                : label
-                                               , lhs_ht_id        : label
-                                               , lhs_query        : expr
-                                               , lhs_query_clear  : expr
-                                               , rhs_query        : expr
-                                               , rhs_query_clear  : expr
-                                               , lhs_ht_ty        : type
-                                               , rhs_ht_ty        : type
-                                               , lhs_insert_with  : expr
-                                               , lhs_probe        : expr
-                                               , result_id        : label
-                                               , result_ty        : type
-                                               , lhs_ht_clear     : expr }]
+                                , joinOrder : [{ i                 : label
+                                               , lhs_ht_id         : label
+                                               , lhs_query         : expr
+                                               , lhs_query_clear   : expr
+                                               , rhs_query         : expr
+                                               , rhs_query_clear   : expr
+                                               , lhs_ht_ty         : type
+                                               , rhs_ht_ty         : type
+                                               , lhs_insert_with   : expr
+                                               , lhs_nonmatch_id   : label
+                                               , lhs_nonmatch_ty   : type
+                                               , lhs_nonmatch_eval : expr
+                                               , lhs_nonmatch_rels : [label]
+                                               , lhs_probe         : expr
+                                               , result_id         : label
+                                               , result_ty         : type
+                                               , lhs_ht_clear      : expr }]
+                                , partitions   : expr
                                 ]
 {
   (?V = (?E : ?T); (?dest, me) <- ())
     =>
-      $[| mosaicMultiwayJoinResult 'joinOrder |].iterate (\part_ids ->
+      $[| mosaicExecuteNonMatchingPartitions 'V.identifier 'E.expr 'T.typ 'relations 'joinOrder |];
+
+      $[partitions].iterate (\part_ids ->
         part_ids.value.iterate (\pid -> (
           // We can skip assigning to partitions when the partition id is -1 (used to encode outer joins).
           $[| mosaicAssignInputPartitions 'relations "pid" "_exec_parts" "_exec_part" |];
@@ -522,17 +550,24 @@ control MosaicExecutePartitions [ lbl : label
 //
 // Distributed execution rewrites.
 
+control MosaicLogExec[id: label, op: label] {
+  ?E => $[| mosaicLogExec 'id 'op 'E.expr |]
+}
+
 // TODO: map, fold, distributed group-by
-control MosaicExecuteSingleton[ lbl : label
-                              , relations : [{ i : label
-                                              , key_type  : type
-                                              , val_type  : type
-                                              , elem_type : type
-                                              , query     : expr
-                                              , clear     : expr }]]
+control MosaicExecuteStage[ lbl : label ]
 {
+  (?v = (?e.fold ?accF ?z); (?dest, me) <- ())
+  => $#[v] = (($.[e].fold $.[accF] $.[z]) @MosaicLogExec(id=[# $#[v]], op=[# foldexec]));
+     ($.[dest], me) <- ()
+
+  (?v = (?e.group_by ?groupF ?accF ?z); (?dest, me) <- ())
+  => $#[v] = (($.[e].group_by $.[groupF] $.[accF] $.[z]) @MosaicLogExec(id=[# $#[v]], op=[# gbexec]));
+     ($.[dest], me) <- ()
+
   (?v = (?E : ?T); (?dest, me) <- ())
-  => $#[v] = $.[E]; ($.[dest], me) <- ()
+  => $#[v] = (($.[E]) @MosaicLogExec(id=[# $#[v]], op=[# generic]));
+     ($.[dest], me) <- ()
 }
 
 // General distributed M3 calculus evaluation with a pilot query for partitioning.
@@ -544,19 +579,23 @@ control MosaicExecuteJoin[ lbl : label
                                          , elem_type : type
                                          , query     : expr
                                          , clear     : expr }]
-                         , joinOrder : [{ i                : label
-                                        , lhs_ht_id        : label
-                                        , lhs_query        : expr
-                                        , lhs_query_clear  : expr
-                                        , rhs_query        : expr
-                                        , rhs_query_clear  : expr
-                                        , lhs_ht_ty        : type
-                                        , rhs_ht_ty        : type
-                                        , lhs_insert_with  : expr
-                                        , lhs_probe        : expr
-                                        , result_id        : label
-                                        , result_ty        : type
-                                        , lhs_ht_clear     : expr }]]
+                         , joinOrder : [{ i                 : label
+                                        , lhs_ht_id         : label
+                                        , lhs_query         : expr
+                                        , lhs_query_clear   : expr
+                                        , rhs_query         : expr
+                                        , rhs_query_clear   : expr
+                                        , lhs_ht_ty         : type
+                                        , rhs_ht_ty         : type
+                                        , lhs_insert_with   : expr
+                                        , lhs_nonmatch_id   : label
+                                        , lhs_nonmatch_ty   : type
+                                        , lhs_nonmatch_eval : expr
+                                        , lhs_nonmatch_rels : [label]
+                                        , lhs_probe         : expr
+                                        , result_id         : label
+                                        , result_ty         : type
+                                        , lhs_ht_clear      : expr }]]
 {
   ?E
   => (() @MosaicMultiExchange(

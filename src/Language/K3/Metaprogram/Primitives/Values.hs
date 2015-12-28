@@ -296,6 +296,9 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
     mkColT elem_t = (TC.collection elem_t) @+ TAnnotation "Collection"
     mkColEmpty elem_t = (EC.empty elem_t) @+ EAnnotation "Collection"
 
+    mkSetT elem_t = (TC.collection elem_t) @+ TAnnotation "Set"
+    mkSetEmpty elem_t = (EC.empty elem_t) @+ EAnnotation "Set"
+
     mkMapT elem_t = (TC.collection elem_t) @+ TAnnotation "Map"
     mkMapEmpty elem_t = (EC.empty elem_t) @+ EAnnotation "Map"
 
@@ -487,6 +490,24 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
                 let lquery_e = EC.applyMany (EC.project "group_by" lquery_v) [lgbf_e, lacc_e, lz_e]
                 let rquery_e = EC.applyMany (EC.project "group_by" rquery_v) [rgbf_e, racc_e, rz_e]
 
+                -- Outer join parameters
+                let lhs_nonmatch_lbl = "outer_" ++ intercalate "_" relpfx
+                let lhs_nonmatch_rels = map SLabel relpfx
+                let lhs_nonmatch_ty = mkSetT $ TC.record $ map (\i -> ("part_" ++ i, TC.int)) relpfx
+
+                let nm_build_e = EC.lambda "acc" $ EC.lambda "lpt" $ EC.binop OSeq
+                                    (EC.applyMany (EC.project "insert" $ EC.variable "acc") [EC.variable "lpt"])
+                                    (EC.variable "acc")
+
+                let nm_ibuild_e = EC.lambda "acc" $ EC.lambda "lkpt" $ EC.applyMany (EC.project "fold" $ EC.project "value" $ EC.variable "lkpt")
+                                    [nm_build_e, EC.variable "acc"]
+
+                let nm_obuild_e = EC.lambda "acc" $ EC.lambda "lv" $ EC.applyMany (EC.project "fold" $ EC.project "value" $ EC.variable "lv")
+                                   [nm_ibuild_e, EC.variable "acc"]
+
+                let lhs_nonmatch_e = EC.applyMany (EC.project "fold" $ EC.variable ht_lbl)
+                                      [nm_obuild_e, mkSetEmpty $ TC.record $ map (\i -> ("part_" ++ i, TC.int)) relpfx]
+
                 -- Join result
                 let (orfields, olfields) = partition ((== reln) . fst . fst . snd) $ zip [0..] oSchema
 
@@ -556,18 +577,22 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
                 let lhs_probe_e  = EC.lambda "rv" $ EC.applyMany (EC.project "lookup" $ EC.variable ht_lbl) [lhs_prkey_e, lhs_pmlam_e, lhs_pplam_e]
 
                 return ([("i", SLabel reln)]
-                          ++ [("lhs_ht_id",        SLabel   ht_lbl)]
-                          ++ [("lhs_query",        SExpr    lquery_e)]
-                          ++ [("rhs_query",        SExpr    rquery_e)]
-                          ++ [("lhs_ht_ty",        SType    lhs_ht_elem_t)]
-                          ++ [("rhs_ht_ty",        SType    rhs_ht_elem_t)]
-                          ++ [("lhs_insert_with",  SExpr    lhs_insert_e)]
-                          ++ [("lhs_probe",        SExpr    lhs_probe_e)]
-                          ++ [("result_id",        SLabel   result_id)]
-                          ++ [("result_ty",        SType    result_t)]
-                          ++ [("lhs_query_clear",  SExpr    EC.unit)]
-                          ++ [("rhs_query_clear",  SExpr    EC.unit)]
-                          ++ [("lhs_ht_clear",     SExpr    EC.unit)],
+                          ++ [("lhs_ht_id",         SLabel   ht_lbl)]
+                          ++ [("lhs_query",         SExpr    lquery_e)]
+                          ++ [("rhs_query",         SExpr    rquery_e)]
+                          ++ [("lhs_ht_ty",         SType    lhs_ht_elem_t)]
+                          ++ [("rhs_ht_ty",         SType    rhs_ht_elem_t)]
+                          ++ [("lhs_insert_with",   SExpr    lhs_insert_e)]
+                          ++ [("lhs_nonmatch_id",   SLabel   lhs_nonmatch_lbl)]
+                          ++ [("lhs_nonmatch_ty",   SType    lhs_nonmatch_ty)]
+                          ++ [("lhs_nonmatch_eval", SExpr    lhs_nonmatch_e)]
+                          ++ [("lhs_nonmatch_rels", SList    lhs_nonmatch_rels)]
+                          ++ [("lhs_probe",         SExpr    lhs_probe_e)]
+                          ++ [("result_id",         SLabel   result_id)]
+                          ++ [("result_ty",         SType    result_t)]
+                          ++ [("lhs_query_clear",   SExpr    EC.unit)]
+                          ++ [("rhs_query_clear",   SExpr    EC.unit)]
+                          ++ [("lhs_ht_clear",      SExpr    EC.unit)],
                         resultKeySchema, Right resultValSchema)
 
 
@@ -881,7 +906,6 @@ mosaicFetchPartitionBarrierSize :: SpliceValue -> SpliceValue
 mosaicFetchPartitionBarrierSize (SList relsvs) = SExpr $ EC.constant $ CInt $ length relsvs
 mosaicFetchPartitionBarrierSize _ = error "Invalid relations in mosaicFetchPartitionBarrierSize"
 
-
 mosaicFetchPartition :: SpliceValue -> String -> SpliceValue
 mosaicFetchPartition (SList relsvs) keyVar = SExpr $ foldl fetchAcc EC.unit relsvs
   where fetchAcc accE (SRecord nsvs) =
@@ -905,6 +929,54 @@ mosaicFetchPartition (SList relsvs) keyVar = SExpr $ foldl fetchAcc EC.unit rels
         nameError = error "Invalid relation name in mosaicFetchPartition"
 
 mosaicFetchPartition _ _ = error "Invalid relations in mosaicFetchPartition"
+
+
+mosaicNonMatchingFetchPartition :: SpliceValue -> SpliceValue -> SpliceValue -> SpliceValue
+mosaicNonMatchingFetchPartition (SLabel lbl) (SType barrier_kt) (SList josvs) = SExpr $ foldl accFetchE EC.unit josvs
+
+  where accFetchE accE (SRecord jsvs) = maybe paramErr (fetchNM accE)
+                                            ((,) <$> Map.lookup "lhs_nonmatch_id" jsvs
+                                                 <*> Map.lookup "lhs_nonmatch_rels" jsvs)
+
+        fetchNM accE (SLabel i, SList rellbls) =
+          flip (EC.binop OSeq) accE $ EC.applyMany (EC.project "iterate" $ EC.variable i)
+            [EC.lambda "partialpid" $ EC.letIn "pid" (barrierKey rellbls) $ foldl accDoFetchE (registerBarrier rellbls) rellbls]
+
+        fetchNM _ _ = error "Invalid non-match id/relation in NMFetchPartition"
+
+        registerBarrier ls = EC.applyMany (EC.project "insert" $ EC.variable $ lbl ++ "_fetch_barriers")
+                               [EC.record [("key", EC.variable "pid"), ("value", EC.constant $ CInt $ length ls)]]
+
+        accDoFetchE accE (SLabel i) = EC.binop OSeq accE $
+          (EC.letIn ("pi_" ++ i) (partId i) $
+           EC.send
+            (EC.variable $ i ++ "_fetch_part")
+            (EC.project "addr" $ partAddr i)
+            (EC.record [ ("part_id",     EC.variable $ "pi_"++i)
+                       , ("dest",        EC.variable "me")
+                       , ("barrier_key", EC.variable "pid")]))
+
+        accDoFetchE _ _ = invalidNameErr
+
+        barrierKey ls = case tnc barrier_kt of
+                          (TRecord ids, ch) -> EC.record $ map (bkElem ls) ids
+                          _ -> error "Invalid barrier key type in NMFetchPartition"
+
+        bkElem ls i = case stripPrefix "part_" i of
+                        Just j -> if (SLabel j) `elem` ls
+                                    then (i, EC.project i $ EC.variable "partialpid")
+                                    else (i, EC.constant $ CInt $ -1)
+                        Nothing -> partErr
+
+        partId i = EC.project ("part_" ++ i) $ EC.variable "pid"
+        partAddr i = EC.applyMany (EC.project "at" $ EC.variable "peers")
+                       [EC.binop OMod (EC.variable $ "pi_" ++ i) (EC.variable $ i ++ "_stride")]
+
+        paramErr = error "Could not find non-match id or relations for NMFetchPartition"
+        invalidNameErr = error "Invalid non-match relation name in NMFetchPartition"
+        partErr = error "Invalid partition index field in NMFetchPartition"
+
+mosaicNonMatchingFetchPartition _ _ _ = error "Invalid arguments for NMFetchPartition"
 
 
 mosaicAssignInputPartitions :: SpliceValue -> String -> String -> String -> SpliceValue
@@ -977,12 +1049,53 @@ mosaicAccumulatePartition (SLabel v) (SExpr e) (SType ty) =
 
 mosaicAccumulatePartition _ _ _ = error "Invalid arguments for mosaicAccumulatePartition"
 
+
+mosaicExecuteNonMatchingPartitions :: SpliceValue -> SpliceValue -> SpliceValue -> SpliceValue -> SpliceValue -> SpliceValue
+mosaicExecuteNonMatchingPartitions execV execE execT relations@(SList relsvs) (SList josvs) =
+    SExpr $ foldl accExecE EC.unit josvs
+
+  where accExecE accE (SRecord jsvs) = maybe paramErr (execNM accE)
+                                         ((,) <$> Map.lookup "lhs_nonmatch_id" jsvs
+                                              <*> Map.lookup "lhs_nonmatch_rels" jsvs)
+
+        execNM accE (SLabel i, SList rellbls) =
+          flip (EC.binop OSeq) accE $ EC.applyMany (EC.project "iterate" $ EC.variable i)
+            [EC.lambda "pid" $ EC.binop OSeq (foldl (accAssignE rellbls) EC.unit relsvs) doExecE]
+
+        execNM _ _ = error "Invalid non-match id/relation in ExecNMPartition"
+
+        accAssignE ls accE (SRecord nsvs) = case (Map.lookup "i" nsvs, Map.lookup "val_type" nsvs) of
+          (Just sv@(SLabel i), Just (SType ty)) -> EC.binop OSeq accE $
+            if sv `elem` ls
+              then
+                EC.applyMany (EC.project "lookup" $ EC.variable $ i ++ "_exec_parts")
+                  [ EC.record [ ("key", EC.project ("part_" ++ i) $ EC.variable "pid")
+                              , ("value", (EC.constant $ CEmpty ty) @+ EAnnotation "Collection" )]
+                  , EC.lambda "_" EC.unit
+                  , EC.lambda "part" $ EC.assign (i ++ "_exec_part") $ EC.project "value" $ EC.variable "part" ]
+
+              else EC.assign (i ++ "_exec_part") $ (EC.constant $ CEmpty ty) @+ EAnnotation "Collection"
+
+          (_, _) -> invalidRelErr
+
+        accAssignE _ _ _ = error "Invalid non-match relation in ExecNMPartition"
+
+        doExecE = case mosaicAccumulatePartition execV execE execT of
+                    SExpr e -> e
+                    _ -> error "Invalid partition accumulator expr in ExecNMPartition"
+
+        paramErr = error "Could not find non-match id or relations for ExecNMPartition"
+        invalidRelErr = error "Invalid relation id/type in ExecNMPartition"
+        relErr = error "Could not find relation in ExecNMPartition"
+
+mosaicExecuteNonMatchingPartitions _ _ _ _ _ = error "Invalid arguments for mosaicExecuteNonMatchingPartitions"
+
+
 mosaicDistributedPlanner :: SpliceValue -> SpliceValue
 mosaicDistributedPlanner sv@(SExpr e) =
-  case (relsvs, josvs) of
-    ([], []) -> SExpr e
-    ([_], []) -> SExpr $ e @+ (EApplyGen True "MosaicExecuteSingleton" singletonParams)
-    (_, _) -> SExpr $ e @+ (EApplyGen True "MosaicExecuteJoin" joinParams)
+  case josvs of
+    [] -> SExpr $ e @+ (EApplyGen True "MosaicExecuteStage" stageParams)
+    _ -> SExpr $ e @+ (EApplyGen True "MosaicExecuteJoin" joinParams)
 
   where (SList relsvs) = maybe (SList []) id $ mosaicTryExtractRelations sv
         (SList josvs) = maybe (SList []) id $ mosaicTryExtractJoinOrder sv
@@ -990,10 +1103,13 @@ mosaicDistributedPlanner sv@(SExpr e) =
                 (EOperate OSeq, [tnc -> (EAssign i, [asgne]), snde]) -> i
                 _ -> error "Invalid mosaic planner attachment point"
 
-        singletonParams = Map.fromList [ ("lbl", SLabel lbl), ("relations", SList relsvs) ]
+        stageParams = Map.fromList [ ("lbl", SLabel lbl) ]
         joinParams = Map.fromList [ ("lbl", SLabel lbl), ("relations", SList relsvs), ("joinOrder", SList josvs) ]
 
 mosaicDistributedPlanner sv = error $ boxToString $ ["Invalid mosaicDistributedPlanner argument:"] %$ prettyLines sv
 
 mosaicLogStaging :: SpliceValue -> SpliceValue -> SpliceValue -> SpliceValue
 mosaicLogStaging (SLabel lbl) (SLabel op) (SExpr e) = trace (unwords ["Stage", lbl, "op:", op]) $ SExpr e
+
+mosaicLogExec :: SpliceValue -> SpliceValue -> SpliceValue -> SpliceValue
+mosaicLogExec (SLabel lbl) (SLabel op) (SExpr e) = trace (unwords ["Exec", lbl, "op:", op]) $ SExpr e
