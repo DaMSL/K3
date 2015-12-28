@@ -260,6 +260,10 @@ def harvest(statuses, out_folder)
       puts "\t#{job_id} FAILED."
     end
   end
+
+  File.open("#{out_folder}/#{$options[:job_set]}/stats.json", "wb") do |outf|
+    outf.write($stats.to_json)
+  end
   return results
 end
 
@@ -284,7 +288,11 @@ def check(folders)
   end
 end
 
-def postprocess()
+def postprocess(dir)
+  stats_file = "#{dir}/#{options[:job_set]}/stats.json"
+  if File.exists?(stats_file)
+    $stats = JSON.parse(File.read(stats_file))
+  end
   puts "Summary"
   for key, val in $stats
     sum = val.reduce(:+)
@@ -366,7 +374,7 @@ def main()
   end
 
   if $options[:post_process]
-    postprocess()
+    postprocess(workdir)
   end
 
   if $options[:check]
