@@ -11,6 +11,7 @@
 -- 7. subqueries in gbs, prjs, aggs
 -- 8. correlated subqueries, and query decorrelation
 -- x. more groupByPushdown, subquery and distributed plan testing
+-- y. distinct, order, limit, offset SQL support
 
 module Language.K3.Parser.SQL where
 
@@ -1188,9 +1189,8 @@ sqloptimize l = mapM stmt l
           if all null [remconjuncts, gbL, projectionexprs prjs, projectionexprs aggs]
             then return $ QueryClosure fvs $ QueryPlan (Just nt) [] Nothing
             else do
-              (gnt, naggs) <- if null gbL then return (nt, aggs) else groupByPushdown nt sid (map mkprojection gbL) aggs
-              (efvs, subqs) <- debugGBPushdown gnt
-                                 $ varsAndQueries (Just sid) $ remconjuncts ++ gbL ++ (projectionexprs $ prjs ++ naggs)
+              (gnt, naggs)   <- if null gbL then return (nt, aggs) else groupByPushdown nt sid (map mkprojection gbL) aggs
+              (efvs, subqs)  <- debugGBPushdown gnt $ varsAndQueries (Just sid) $ remconjuncts ++ gbL ++ (projectionexprs $ prjs ++ naggs)
               (hfvs, hsubqs) <- maybe (return ([], [])) (\e -> varsAndQueries (Just gsid) [e]) havingE
               let chains = [PlanCPath gsid remconjuncts gbL prjs naggs havingE $ subqs ++ hsubqs]
               return $ QueryClosure (nub $ fvs ++ efvs ++ hfvs) $ QueryPlan (Just gnt) chains Nothing
@@ -1304,12 +1304,13 @@ sqloptimize l = mapM stmt l
     -- TODO: AggregateFn, Interval, LiftOperator, WindowFn
     varsAndQueries :: Maybe ScopeId -> ScalarExprList -> SQLParseM ([AttrPath], SubqueryBindings)
     varsAndQueries sidOpt exprs = processMany exprs
-      where process (FunCall _ _ args) = processMany args
-            process (Identifier _ (sqlnmcomponent -> i)) = trypath sidOpt (return ([[i]], [])) (const $ return ([], [])) [i]
+      where process (Identifier _ (sqlnmcomponent -> i)) = trypath sidOpt (return ([[i]], [])) (const $ return ([], [])) [i]
             process (QIdentifier _ (sqlnmpath -> path)) = trypath sidOpt (return ([path], [])) (const $ return ([], [])) path
 
             process (Case _ whens elseexpr) = caseList (maybe [] (:[]) elseexpr) whens
             process (CaseSimple _ expr whens elseexpr) = caseList ([expr] ++ maybe [] (:[]) elseexpr) whens
+
+            process (FunCall _ _ args) = processMany args
 
             process e@(Exists _ q) = bindSubquery e q
             process e@(ScalarSubQuery _ q) = bindSubquery e q
