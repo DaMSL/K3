@@ -1143,3 +1143,7 @@ mosaicLogStaging (SLabel lbl) (SLabel op) (SExpr e) = trace (unwords ["Stage", l
 
 mosaicLogExec :: SpliceValue -> SpliceValue -> SpliceValue -> SpliceValue
 mosaicLogExec (SLabel lbl) (SLabel op) (SExpr e) = trace (unwords ["Exec", lbl, "op:", op]) $ SExpr e
+
+mosaicExprError :: String -> SpliceValue -> SpliceValue
+mosaicExprError msg (SExpr e) = error $ boxToString $ [msg] %$ prettyLines e
+mosaicExprError _ _ = error "Invalid arguments for mosaicExprError"

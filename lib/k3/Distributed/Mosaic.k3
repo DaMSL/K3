@@ -557,27 +557,53 @@ control MosaicLogExec[id: label, op: label] {
   ?E => $[| mosaicLogExec 'id 'op 'E.expr |]
 }
 
-// TODO: map, fold, distributed group-by
+// TODO: inference for CollectAcc in MosaicAnalyzeAccumulator
 control MosaicExecuteStage[ lbl : label ]
 {
+  // Parallel fold transformers.
+
+  // Parallel independent fold transformers.
   (?v = (?e.fold (?accF @:IndepAcc) ?z); (?dest, me) <- ())
   => $#[v] = (($.[e].fold $.[accF] $.[z]) @MosaicLogExec(id=[# $#[v]], op=[# foldexec_indep]));
      ($.[dest], me) <- ()
 
-  // TODO: collect e and run at master.
-  (?v = (?e.fold (?accF @:GenericAcc) ?z); (?dest, me) <- ())
-  => $#[v] = (($.[e].fold $.[accF] $.[z]) @MosaicLogExec(id=[# $#[v]], op=[# foldexec_generic]));
-     ($.[dest], me) <- ()
+  // Parallel collected fold transformers.
+  // Handle closure-free accumulators by collecting a materialized 'e' at the master.
+  // Remaining computation also evaluates at the master.
+  (?v = ((?E : ?T).fold (?accF @:CollectAcc) ?z); (?dest, me) <- ())
+  => (($[lbl]_collected, master) <- $.[E]) @MosaicLogExec(id=[# $#[v]], op=[# foldexec_collect])
+
+  +> {
+    declare $[lbl]_collected : mut $::[T]
+
+    trigger $[lbl]_collect_exec : $::[T] = \c -> (
+      $[| mosaicAccumulatePartition (concatLabel 'lbl (SLabel "_collected")) (EC.variable "c") 'T.typ |];
+      ( $#[v] = $[lbl]_collected.fold $.[accF] $.[z];
+        ($.[dest], me) <- ()
+      ) @OnCounter(id=[# $[lbl]_collect], eq=[$ workers.size()], reset=[$ false], profile=[$ false])
+    )
+  }
+
+  (?v = ((?E : ?T).fold (?accF @:GenericAcc) ?z); (?dest, me) <- ())
+  => $[| mosaicExprError "Cannot parallelize generic accumulator" 'E.expr |]
+
 
   (?v = (?e.fold ?AccF ?z); (?dest, me) <- ())
   => (($#[v] = $.[e].fold ($.[AccF] @MosaicAnalyzeAccumulator) $.[z]);
       ($.[dest], me) <- ()
      ) @MosaicExecuteStage(lbl=lbl)
 
+
+  // Parallel group-by transformers.
+  // TODO: analysis-based accumulator rewrites.
+
   (?v = (?e.group_by ?groupF ?AccF ?z); (?dest, me) <- ())
   => ($#[v] = (($.[e].group_by $.[groupF] $.[AccF] $.[z]) @MosaicLogExec(id=[# $#[v]], op=[# gbexec]));
       ($.[dest], me) <- ()
      ) @DistributedGroupBy2(lbl=[# $#[v]_gb ], merge=[$ $[| mosaicAccumulatorMerge 'AccF.expr |] ])
+
+
+  // Default case: non-parallelized.
 
   (?v = (?E : ?T); (?dest, me) <- ())
   => $#[v] = (($.[E]) @MosaicLogExec(id=[# $#[v]], op=[# generic]));
