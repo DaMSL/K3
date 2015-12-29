@@ -1542,7 +1542,7 @@ sqlstage stmts = mapM stage stmts >>= return . (concat *** concat) . unzip
 sqlcodegen :: Bool -> ([SQLDecl], StageGraph) -> SQLParseM (K3 Declaration)
 sqlcodegen distributed (stmts, stgg) = do
     (decls, inits) <- foldM cgstmt ([], []) stmts
-    initDecl <- mkInit
+    initDecl <- mkInit decls
     return $ DC.role "__global" $ [master] ++ decls ++ mkPeerInit inits ++ initDecl
 
   where
@@ -1567,7 +1567,7 @@ sqlcodegen distributed (stmts, stgg) = do
                                   Nothing -> do
                                     s  <- stgsextM >>= return . show
                                     let i = materializeId s
-                                    return (i, stageId s, [DC.global i t Nothing])
+                                    return (i, stageId s, [DC.global i (mutT t) Nothing])
 
       let execStageF i e = case lookup i edges of
                              Nothing -> return e
@@ -1919,20 +1919,22 @@ sqlcodegen distributed (stmts, stgg) = do
 
     mkPeerInit exprs =
         [DC.trigger "startPeer" TC.unit $ EC.lambda "_" $
-          EC.block $ exprs ++ [EC.send (EC.variable "start") (EC.variable "master") EC.unit]]
+          EC.block $ exprs ++ [EC.send (EC.variable "start") (EC.variable $ if distributed then "master" else "me") EC.unit]]
 
-    mkInit = do
+    mkInit decls = do
       sendsE <- if distributed then
                   let startE = EC.block $ flip map stageinits $ \i ->
                                  EC.applyMany (EC.project "iterate" $ EC.variable "peers")
                                    [EC.lambda "p" $ EC.send (EC.variable $ trig i) (EC.project "addr" $ EC.variable "p") EC.unit]
 
                   in mkCountBarrier startE $ EC.applyMany (EC.project "size" $ EC.variable "peers") [EC.unit]
-                else return $ EC.block $ map (\i -> EC.send (EC.variable $ trig i) (EC.variable "me") EC.unit) stageinits
+                else return $ EC.block $ map (\i -> EC.send (EC.variable i) (EC.variable "me") EC.unit) $ foldl declTriggers [] decls
 
       return $ [DC.trigger "start" TC.unit $ EC.lambda "_" $
                   EC.block $ [EC.unit @+ EApplyGen True "SQL" Map.empty, sendsE]]
 
+    declTriggers acc (tag -> DTrigger i _ _) = acc ++ [i]
+    declTriggers acc _ = acc
 
 sqlstringify :: [SQLDecl] -> SQLParseM [String]
 sqlstringify stmts = mapM prettystmt stmts

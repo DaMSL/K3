@@ -10,6 +10,9 @@ include "Core/Optimization.k3"
 control SQL {
   () => ()
      +> {
+      declare workers : collection {addr: address} @Collection
+      declare worker_idx : mut int = 0  // Index of this peer in the workers collection.
+
       declare index_by_hash : forall a. a -> int = (\s -> (
         let n = workers.size() in
         let h = (hash s) in
