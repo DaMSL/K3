@@ -260,6 +260,10 @@ def harvest(statuses, out_folder)
       puts "\t#{job_id} FAILED."
     end
   end
+
+  File.open("#{out_folder}/#{$options[:job_set]}/stats.json", "wb") do |outf|
+    outf.write($stats.to_json)
+  end
   return results
 end
 
@@ -284,7 +288,11 @@ def check(folders)
   end
 end
 
-def postprocess()
+def postprocess(dir)
+  stats_file = "#{dir}/#{options[:job_set]}/stats.json"
+  if File.exists?(stats_file)
+    $stats = JSON.parse(File.read(stats_file))
+  end
   puts "Summary"
   for key, val in $stats
     sum = val.reduce(:+)
@@ -322,6 +330,7 @@ def main()
     opts.on("-s", "--submit", "Submit binary") { $options[:submit] = true }
     opts.on("-g", "--gather", "Gather results from remote server") { $options[:gather] = true }
     opts.on("-l", "--list", "List matching workloads") { $options[:list] = true }
+    opts.on("-p", "--post-process", "Post-process gathered timing results.") { $options[:post_process] = true }
 
     opts.on("-w", "--workdir [PATH]",    String,  "Working Directory") { |s| $options[:workdir]      = s    }
     opts.on("-r", "--role-dir [PATH]",   String,  "Role Directory")    { |r| $options[:role_dir]     = r    }
@@ -362,7 +371,10 @@ def main()
   if $options[:gather]
     statuses = poll(jobs, "Getting status of previously submitted jobs.")
     folders = harvest(statuses, workdir)
-    postprocess()
+  end
+
+  if $options[:post_process]
+    postprocess(workdir)
   end
 
   if $options[:check]
