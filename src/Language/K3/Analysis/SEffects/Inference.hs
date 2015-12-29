@@ -1190,13 +1190,17 @@ inferEffects extInfOpt expr = do
 
     freshM asCase e i u t f =
       case e @~ isEProvenance of
-        Just (EProvenance (tag -> PMaterialize mvs)) -> do
-          void $ maybe (return ()) (\mv -> fiextepM (pmvn mv) (pbvar mv)) $ find ((== i) . pmvn) mvs
-          forceLambdaEff t f >>= void . fifreshM i u
+        Just (EProvenance p) ->
+          (case tnc p of
+             (PMaterialize mvs, _) -> do
+               void $ maybe (return ()) (\mv -> fiextepM (pmvn mv) (pbvar mv)) $ find ((== i) . pmvn) mvs
+               forceLambdaEff t f >>= void . fifreshM i u
 
-        Just (EProvenance (tnc -> (PSet, (safeHead -> Just (tag -> PMaterialize mvs))))) | asCase -> do
-          void $ maybe (return ()) (\mv -> fiextepM (pmvn mv) (pbvar mv)) $ find ((== i) . pmvn) mvs
-          forceLambdaEff t f >>= void . fifreshM i u
+             (PSet, (safeHead -> Just (tag -> PMaterialize mvs))) | asCase -> do
+               void $ maybe (return ()) (\mv -> fiextepM (pmvn mv) (pbvar mv)) $ find ((== i) . pmvn) mvs
+               forceLambdaEff t f >>= void . fifreshM i u
+
+             _ -> matErr e)
 
         _ -> matErr e
 

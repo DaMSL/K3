@@ -1,12 +1,15 @@
 include "Annotation/Maps/MapE.k3"
 include "Core/Barrier.k3"
 include "Core/Messaging.k3"
+include "Distributed/SQLTransformers.k3"
 
 declare index_by_hash : forall a. a -> int = (\s -> (
-  let n = peers.size() in
+  let n = workers.size() in
   let h = (hash s) in
   ((h % n) + n) % n
 ))
+
+declare workers : collection {addr: address} @Collection
 
 control MosaicLoader
 {
@@ -266,7 +269,7 @@ control MosaicMultiExchange [ lbl : label
                                              , lhs_ht_clear      : expr }]
                             , next : expr ]
 {
-	() => peers.iterate (\p ->
+	() => workers.iterate (\p ->
           $[| mosaicStartMultiExchange 'relations (EC.project "addr" (EC.variable "p")) |]
             // Generate a send to each relation's exchange trigger
         )
@@ -300,7 +303,7 @@ control MosaicMultiExchange [ lbl : label
           @PartitionShuffleWithMissing(
             lbl           = [# $[R.i]_exchange]
           , dest_trg      = [$ $[R.i]_process_exchange]
-          , nodes         = [$ peers ]
+          , nodes         = [$ workers ]
           , send_extra_fn = [$ \x -> x]
           , send_ty       = [: $[|specializeMapTypeByKV 'R.elem_type|] ]
           ));
@@ -315,7 +318,7 @@ control MosaicMultiExchange [ lbl : label
                        ($[R.i]_parts.insert {key: bucket_id, value: v.value})))
             (\bucket_kv -> $[R.i]_parts.insert_with {key: bucket_kv.value, value: v.value} (\old -> \new -> (old.value.extend new.value; old))));
         ( ( $[lbl]_global_barrier, master ) <- ()
-        ) @OnCounter(id=[# $[R.i]_exchange_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+        ) @OnCounter(id=[# $[R.i]_exchange_done], eq=[$ workers.size()], reset=[$ false], profile=[$ false])
         )
       )
   }
@@ -349,7 +352,7 @@ control MosaicMultiwayJoin [ lbl : label
                            , next : expr
                            ]
 {
-  () => peers.iterate (\p -> $[| mosaicStartMultiwayJoin 'joinOrder (EC.project "addr" (EC.variable "p")) |])
+  () => workers.iterate (\p -> $[| mosaicStartMultiwayJoin 'joinOrder (EC.project "addr" (EC.variable "p")) |])
           // Generate a message to the first join's lhs_redistribute trigger
   +>
   {
@@ -372,7 +375,7 @@ control MosaicMultiwayJoin [ lbl : label
           @PartitionShuffleWithMissing(
             lbl           = [# $[J.i]_lhs]
           , dest_trg      = [$ $[J.i]_lhs_process_redistribute]
-          , nodes         = [$ peers ]
+          , nodes         = [$ workers ]
           , send_extra_fn = [$ \x -> x]
           , send_ty       = [: $[|specializeMapTypeByKV 'J.lhs_ht_ty|] ]
           ));
@@ -382,8 +385,8 @@ control MosaicMultiwayJoin [ lbl : label
       trigger $[J.i]_lhs_process_redistribute : $[|specializeMapTypeByKV 'J.lhs_ht_ty|] = (\vals ->
       ((vals.iterate (\v -> $[J.lhs_ht_id].insert_with v $[J.lhs_insert_with]));
         ( ($[J.lhs_nonmatch_id] = $[J.lhs_nonmatch_eval]);
-          peers.iterate (\p -> ($[J.i]_rhs_redistribute, p.addr) <- ())
-        ) @OnCounter(id=[# $[J.i]_peer_build_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false]))
+          workers.iterate (\p -> ($[J.i]_rhs_redistribute, p.addr) <- ())
+        ) @OnCounter(id=[# $[J.i]_peer_build_done], eq=[$ workers.size()], reset=[$ false], profile=[$ false]))
       )
 
       trigger $[J.i]_rhs_redistribute : () = \_ -> (
@@ -391,12 +394,12 @@ control MosaicMultiwayJoin [ lbl : label
               @PartitionShuffleWithMissing(
                 lbl           = [# $[J.i]_rhs]
               , dest_trg      = [$ $[J.i]_rhs_process_redistribute]
-              , nodes         = [$ peers ]
+              , nodes         = [$ workers ]
               , send_extra_fn = [$ \x -> x]
               , send_ty       = [: $[|specializeMapTypeByKV 'J.rhs_ht_ty|] ]
               );
           $[J.rhs_query_clear])
-        ) @OnCounter(id=[# $[J.i]_lhs_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+        ) @OnCounter(id=[# $[J.i]_lhs_done], eq=[$ workers.size()], reset=[$ false], profile=[$ false])
       )
 
       trigger $[J.i]_rhs_process_redistribute : $[|specializeMapTypeByKV 'J.rhs_ht_ty|] = (\vals -> (
@@ -404,14 +407,14 @@ control MosaicMultiwayJoin [ lbl : label
         vals.iterate $[J.lhs_probe];
         ( ( $[J.lhs_ht_clear] );
           ( $[J.i]_global_barrier, master ) <- ()
-        ) @OnCounter(id=[# $[J.i]_rhs_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+        ) @OnCounter(id=[# $[J.i]_rhs_done], eq=[$ workers.size()], reset=[$ false], profile=[$ false])
         ))
 
       trigger $[J.i]_global_barrier : () = \_ -> (
         ( $[| mosaicGlobalNextMultiwayJoin 'lbl 'joinOrder 'J "master" |]
             // Generate a message to the next join's lhs_redistribute trigger
             // or the final multiway join processing trigger (_mjoin_done)
-        ) @OnCounter(id=[# $[J.i]_join_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+        ) @OnCounter(id=[# $[J.i]_join_done], eq=[$ workers.size()], reset=[$ false], profile=[$ false])
       )
   }
 }
@@ -446,7 +449,7 @@ control MosaicFetchPartitions [ lbl : label
                               , next         : expr
                               ]
 {
-  () => peers.iterate (\p -> ($[lbl]_fetch_partitions, p.addr) <- ())
+  () => workers.iterate (\p -> ($[lbl]_fetch_partitions, p.addr) <- ())
   +> {
     declare $[lbl]_fetch_barriers : mut collection {key: $[barrier_kt], value: int} @Map
 
@@ -464,8 +467,8 @@ control MosaicFetchPartitions [ lbl : label
     )
 
     trigger $[lbl]_fetches_complete : () = \_ -> (
-      ( peers.iterate (\p -> ($[lbl]_execute, p.addr) <- ())
-      ) @OnCounter(id=[# $[lbl]_fetch_done], eq=[$ peers.size() ], reset=[$ false], profile=[$ false])
+      ( workers.iterate (\p -> ($[lbl]_execute, p.addr) <- ())
+      ) @OnCounter(id=[# $[lbl]_fetch_done], eq=[$ workers.size() ], reset=[$ false], profile=[$ false])
     )
 
     trigger $[lbl]_execute : () = \_ -> (
@@ -557,18 +560,37 @@ control MosaicLogExec[id: label, op: label] {
 // TODO: map, fold, distributed group-by
 control MosaicExecuteStage[ lbl : label ]
 {
-  (?v = (?e.fold ?accF ?z); (?dest, me) <- ())
-  => $#[v] = (($.[e].fold $.[accF] $.[z]) @MosaicLogExec(id=[# $#[v]], op=[# foldexec]));
+  (?v = (?e.fold (?accF @:IndepAcc) ?z); (?dest, me) <- ())
+  => $#[v] = (($.[e].fold $.[accF] $.[z]) @MosaicLogExec(id=[# $#[v]], op=[# foldexec_indep]));
      ($.[dest], me) <- ()
 
-  (?v = (?e.group_by ?groupF ?accF ?z); (?dest, me) <- ())
-  => $#[v] = (($.[e].group_by $.[groupF] $.[accF] $.[z]) @MosaicLogExec(id=[# $#[v]], op=[# gbexec]));
+  // TODO: collect e and run at master.
+  (?v = (?e.fold (?accF @:GenericAcc) ?z); (?dest, me) <- ())
+  => $#[v] = (($.[e].fold $.[accF] $.[z]) @MosaicLogExec(id=[# $#[v]], op=[# foldexec_generic]));
      ($.[dest], me) <- ()
+
+  (?v = (?e.fold ?AccF ?z); (?dest, me) <- ())
+  => (($#[v] = $.[e].fold ($.[AccF] @MosaicAnalyzeAccumulator) $.[z]);
+      ($.[dest], me) <- ()
+     ) @MosaicExecuteStage(lbl=lbl)
+
+  (?v = (?e.group_by ?groupF ?AccF ?z); (?dest, me) <- ())
+  => ($#[v] = (($.[e].group_by $.[groupF] $.[AccF] $.[z]) @MosaicLogExec(id=[# $#[v]], op=[# gbexec]));
+      ($.[dest], me) <- ()
+     ) @DistributedGroupBy2(lbl=[# $#[v]_gb ], merge=[$ $[| mosaicAccumulatorMerge 'AccF.expr |] ])
 
   (?v = (?E : ?T); (?dest, me) <- ())
   => $#[v] = (($.[E]) @MosaicLogExec(id=[# $#[v]], op=[# generic]));
      ($.[dest], me) <- ()
 }
+
+
+control MosaicAnalyzeAccumulator {
+  \?Acc -> ?E => $[| mosaicAnalyzeAccumulatorIndependence 'Acc.identifier 'E.expr |]
+
+  ?E => $.[E] @:GenericAcc
+}
+
 
 // General distributed M3 calculus evaluation with a pilot query for partitioning.
 // This is attached by the Mosaic distributed query planner.
@@ -603,6 +625,6 @@ control MosaicExecuteJoin[ lbl : label
            , relations   = relations
            , joinOrder   = joinOrder
            , next        = [$ $.[E] ])
-     ) @OnCounter(id=lbl, eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+     ) @OnCounter(id=lbl, eq=[$ workers.size()], reset=[$ false], profile=[$ false])
           // Barrier on the completion of the previous phase (or system ready)
 }

@@ -248,14 +248,14 @@ applyCAnnGens opts mp = foldExpression applyCAnnExprTree False mp >>= return . s
   where
     applyCAnnExprTree changed e = foldMapRebuildTree (applyCAnnExpr $ mpSerial opts) changed e
 
-    -- TODO: think about propagation of annotations between rewrites.
-    -- Currently we do not preserve any annotations.
     applyCAnnExpr True chChanged ch (Node (t :@: anns) _) =
       if or chChanged
         then return (True, Node (t :@: anns) ch)
         else let (appAnns, rest) = partition isEApplyGen anns in
              case appAnns of
-               h:tl -> eApplyAnn (Node (t :@: (tl ++ rest)) ch) h >>= return . (True,)
+               h:tl -> do
+                  (Node (nt :@: nanns) nch) <- eApplyAnn (Node (t :@: rest) ch) h
+                  return (True, Node (nt :@: (nanns ++ tl)) nch)
                [] -> return (False, Node (t :@: rest) ch)
 
     applyCAnnExpr False _ ch (Node (t :@: anns) _) =

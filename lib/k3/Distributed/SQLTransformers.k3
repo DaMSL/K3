@@ -140,7 +140,7 @@ control DistributedGroupBy2 [ lbl : label, merge : expr ]
     trigger $[lbl]_redistribute : () = \_ -> (
       (ignore (($.[Expr].group_by $.[groupF] $.[aggF] $.[accE])
                        .fold (\a -> \e -> (a.insert e; a)) (empty $::[KVT] @Map)
-              )@ShuffleByKey(dest_trig=[$ $[lbl]_merge])
+              ) @ShuffleByKey(dest_trig=[$ $[lbl]_merge])
       );
       workers.iterate (\p -> ($[lbl]_redist_punc, p.addr) <- ())
     )

@@ -1271,9 +1271,10 @@ fuseFoldTransformers expr = do
     fuse nch@(PPrj _ _ (any isETransformer -> True), _) =
       let spec = fst nch @~ isEFusionSpec in
       case spec of
-	Just p@(getFusionSpec -> Just spec) ->
-	  let nann = updateFusionSpec (annotations $ fst nch) spec in
-          return $ (False, uncurry replaceCh nch @<- nann)
+        Just p@(getFusionSpec -> Just spec) ->
+            let nann = updateFusionSpec (annotations $ fst nch) spec
+            in return $ (False, uncurry replaceCh nch @<- nann)
+
         _ -> return $ (False, uncurry replaceCh nch)
 
     fuse nch = return $ (False, uncurry replaceCh nch)
@@ -2091,6 +2092,12 @@ mapAccumulation onAccumF onRetVarF i expr = runIdentity $ do
           if True then return (Right True, onAccumF e)
           else trace ("onAccumF " ++ pretty e) $ return (Right True, onAccumF e)
 
+    -- Inserts into MultiIndexVMaps with an additional argument.
+    returnAsAccumulator (shadowed, _) _ e@(PPrjApp2VarSeq j "insert" vid v)
+      | i == j && not shadowed && notAccessedIn vid && notAccessedIn v =
+          if True then return (Right True, onAccumF e)
+          else trace ("onAccumF " ++ pretty e) $ return (Right True, onAccumF e)
+
     {-
     returnAsAccumulator (shadowed, _) _ e@(PPrjApp3VarSeq j "upsert_with" v ml pl)
       | i == j && not shadowed && notAccessedIn v && notAccessedIn ml && notAccessedIn pl =
@@ -2379,6 +2386,9 @@ pattern PPrjApp3 cE fId fAs fArg1 fArg2 fArg3 app1As app2As app3As
 
 pattern PPrjAppVarSeq i prjId arg <-
   PSeq (PPrjApp (PVar i _) prjId _ arg _) (PVar ((== i) -> True) _) _
+
+pattern PPrjApp2VarSeq i prjId arg1 arg2 <-
+  PSeq (PPrjApp2 (PVar i _) prjId _ arg1 arg2 _ _) (PVar ((== i) -> True) _) _
 
 pattern PPrjApp3VarSeq i prjId arg1 arg2 arg3 <-
   PSeq (PPrjApp3 (PVar i _) prjId _ arg1 arg2 arg3 _ _ _) (PVar ((== i) -> True) _) _

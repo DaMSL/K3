@@ -1282,7 +1282,6 @@ inferProvenance expr = do
     uidErr e = errorM $ PT.boxToString $ [T.pack "No uid found for pexprinf on "] %+ PT.prettyLines e
 
     uidInt (UID i) = i
-    uidInt _ = error "Invalid UID for uidInt"
 
     pmv (tag -> PBVar mv) = return mv
     pmv p = errorM $ PT.boxToString $ [T.pack "Invalid provenance bound var: "] %$ PT.prettyLines p

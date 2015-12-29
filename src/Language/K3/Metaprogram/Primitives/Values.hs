@@ -34,6 +34,9 @@ import Language.K3.Core.Constructor.Expression as EC
 
 import Language.K3.Core.Metaprogram
 
+import Language.K3.Analysis.Core
+import Language.K3.Transform.Simplification ( inferAccumulation )
+
 import Language.K3.Utils.Pretty
 
 {- Annotation propagation. -}
@@ -757,6 +760,8 @@ pattern PVar     i           iAs   = Node (EVariable i   :@: iAs)   []
 pattern PLam     i   bodyE   iAs   = Node (ELambda i     :@: iAs)   [bodyE]
 pattern PApp     fE  argE    appAs = Node (EOperate OApp :@: appAs) [fE, argE]
 pattern PPrj     cE  fId     fAs   = Node (EProject fId  :@: fAs)   [cE]
+pattern PAdd     lE  rE      opAs  = Node (EOperate OAdd :@: opAs) [lE, rE]
+pattern PMul     lE  rE      opAs  = Node (EOperate OMul :@: opAs) [lE, rE]
 
 pattern PBindAs      srcE bnd bodyE bAs          = Node (EBindAs bnd   :@: bAs) [srcE, bodyE]
 
@@ -783,6 +788,11 @@ pattern PTKVRecord kt vt tas = Node (TRecord ["key", "value"] :@: tas) [kt, vt]
 
 pattern PTCollection elem tas = Node (TCollection :@: tas) [elem]
 
+pattern PSumAccumulator <-
+  PLam i (PLam j (PBindAs (PVar ((== j) -> True) _) bnd (PAdd lE rE opAs) bAs) jAs) iAs
+
+pattern PMulAccumulator <-
+  PLam i (PLam j (PBindAs (PVar ((== j) -> True) _) bnd (PMul lE rE opAs) bAs) jAs) iAs
 
 mosaicGMRKey :: SpliceValue -> String -> SpliceValue
 mosaicGMRKey (SType t@(tag -> (TRecord ids))) s = SExpr $ EC.record $ map (\x -> (x, EC.project x $ EC.variable s)) $ init ids
@@ -1050,6 +1060,16 @@ mosaicAccumulatePartition (SLabel v) (SExpr e) (SType ty) =
 mosaicAccumulatePartition _ _ _ = error "Invalid arguments for mosaicAccumulatePartition"
 
 
+mosaicAccumulatorMerge :: SpliceValue -> SpliceValue
+mosaicAccumulatorMerge (SExpr e) = SExpr $
+  case e of
+    PSumAccumulator -> EC.lambda "x" $ EC.lambda "y" $ EC.binop OAdd (EC.variable "x") $ EC.variable "y"
+    PMulAccumulator -> EC.lambda "x" $ EC.lambda "y" $ EC.binop OMul (EC.variable "x") $ EC.variable "y"
+    _ -> error $ boxToString $ ["Unhandled merge accumulator:"] %$ prettyLines e
+
+mosaicAccumulatorMerge _ = error "Invalid arguments for mosaicAccumulatorMerge"
+
+
 mosaicExecuteNonMatchingPartitions :: SpliceValue -> SpliceValue -> SpliceValue -> SpliceValue -> SpliceValue -> SpliceValue
 mosaicExecuteNonMatchingPartitions execV execE execT relations@(SList relsvs) (SList josvs) =
     SExpr $ foldl accExecE EC.unit josvs
@@ -1107,6 +1127,16 @@ mosaicDistributedPlanner sv@(SExpr e) =
         joinParams = Map.fromList [ ("lbl", SLabel lbl), ("relations", SList relsvs), ("joinOrder", SList josvs) ]
 
 mosaicDistributedPlanner sv = error $ boxToString $ ["Invalid mosaicDistributedPlanner argument:"] %$ prettyLines sv
+
+
+mosaicAnalyzeAccumulatorIndependence :: SpliceValue -> SpliceValue -> SpliceValue
+mosaicAnalyzeAccumulatorIndependence (SLabel v) (SExpr e) =
+    SExpr $ if inferAccumulation v e
+              then (EC.lambda v e) @+ (EProperty (Left ("IndepAcc", Nothing)))
+              else (EC.lambda v e) @+ (EProperty (Left ("GenericAcc", Nothing)))
+
+mosaicAnalyzeAccumulatorIndependence _ _ = error "Invalid arguments for mosaicAnalyzeIndependence"
+
 
 mosaicLogStaging :: SpliceValue -> SpliceValue -> SpliceValue -> SpliceValue
 mosaicLogStaging (SLabel lbl) (SLabel op) (SExpr e) = trace (unwords ["Stage", lbl, "op:", op]) $ SExpr e

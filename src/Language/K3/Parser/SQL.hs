@@ -1169,11 +1169,13 @@ sqloptimize l = mapM stmt l
             then return $ QueryClosure fvs $ QueryPlan (Just nt) [] Nothing
             else do
               (gnt, naggs) <- if null gbL then return (nt, aggs) else groupByPushdown nt sid (map mkprojection gbL) aggs
-              (efvs, subqs) <- trace (boxToString $ ["GB pushdown result"] %$ prettyLines gnt)
+              (efvs, subqs) <- debugGBPushdown gnt
                                  $ varsAndQueries (Just sid) $ remconjuncts ++ gbL ++ (projectionexprs $ prjs ++ naggs)
               (hfvs, hsubqs) <- maybe (return ([], [])) (\e -> varsAndQueries (Just gsid) [e]) havingE
               let chains = [PlanCPath gsid remconjuncts gbL prjs naggs havingE $ subqs ++ hsubqs]
               return $ QueryClosure (nub $ fvs ++ efvs ++ hfvs) $ QueryPlan (Just gnt) chains Nothing
+
+    debugGBPushdown x y = if False then y else trace (boxToString $ ["GB pushdown result"] %$ prettyLines x) y
 
     joinTree [] = return Nothing
     joinTree (h:t) = do

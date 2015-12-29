@@ -37,9 +37,9 @@ simplifyChildren tagF ch = nub $ filter (\p -> tag p /= PTemporary) $ concatMap 
 
 simplifyChildrenTI :: (Provenance -> Bool) -> [TrIndex] -> [K3 Provenance] -> ([TrIndex], [K3 Provenance])
 simplifyChildrenTI tagF tich ch =
-	unzip $ nubBy ((==) `on` snd)
-		  $ filter (\(_,p) -> tag p /= PTemporary)
-		  $ concatMap flatCh $ zip tich ch
+  unzip $ nubBy ((==) `on` snd)
+      $ filter (\(_,p) -> tag p /= PTemporary)
+      $ concatMap flatCh $ zip tich ch
   where flatCh (children -> tigch, tnc -> (tagF -> True, gch)) = zip tigch gch
         flatCh (ti,p) = [(ti,p)]
 
