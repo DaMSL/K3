@@ -322,10 +322,13 @@ sql sqlopts opts = do
       mprog <- metaprogram opts sprog
       case (sqlDoCompile sqlopts, sqlCompile sqlopts) of
         (True, Just cOpts) -> dispatch (opts {mode = Compile cOpts}) mprog
+        (_, _) -> dispatch (opts {mode = Parse pmOpts}) mprog
 
-        (_, _) -> do
-          encprog <- if asSyntax then liftEitherM $ programS mprog else return $ pretty mprog
-          liftIO $ putStrLn encprog
+    pmOpts = ParseOptions (sqlPrintMode sqlopts) (defaultCompileStages ST.mz0 LocalCompiler ST.cs0) []
+
+    printProg p = do
+      encprog <- if asSyntax then liftEitherM $ programS p else return $ pretty p
+      liftIO $ putStrLn encprog
 
     printStmts stmts = liftIO $ do
       putStrLn $ replicate 40 '='
