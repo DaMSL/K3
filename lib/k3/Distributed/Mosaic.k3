@@ -10,14 +10,18 @@ declare index_by_hash : forall a. a -> int = (\s -> (
 ))
 
 declare workers : collection {addr: address} @Collection
+declare worker_idx : mut int = 0  // Index of this peer in the workers collection.
 
 control MosaicLoader
 {
-    ?loader ?paths (?Col : collection ?T)  => $.[loader] $.[paths] $.[Col];
-                                              $[|labelExpr 'Col.expr|] = ($.[Col].group_by
-					                  (\x -> $[|mosaicGMRKey 'T.typ "x"|])
-							  (\a -> \x -> a + $[|mosaicGMRMultiplicity 'T.typ "x"|])
-							  0).fold (\a -> \e -> (a.insert $[|mosaicGMRFlatten 'T.typ "e"|]; a)) empty $::[T] @Collection
+  ?loader ?paths (?Col : collection ?T)
+  => $.[loader] $.[paths] $.[Col];
+     $[|labelExpr 'Col.expr|] =
+      ($.[Col].group_by (\x -> $[|mosaicGMRKey 'T.typ "x"|])
+                        (\a -> \x -> a + $[|mosaicGMRMultiplicity 'T.typ "x"|])
+                        0)
+              .fold     (\a -> \e -> (a.insert $[|mosaicGMRFlatten 'T.typ "e"|]; a))
+                        (empty $::[T] @Collection)
 
 }
 
@@ -286,8 +290,8 @@ control MosaicMultiExchange [ lbl : label
     )
 
     for R in relations:
-      declare $[R.i]_offset : mut int = 0
-      declare $[R.i]_stride : mut int = 0
+      declare $[R.i]_offset : mut int = worker_idx
+      declare $[R.i]_stride : mut int = workers.size ()
       declare $[R.i]_cnt    : mut int = 0
 
       declare $[R.i]_next_bucket : () -> int = \_ -> (
