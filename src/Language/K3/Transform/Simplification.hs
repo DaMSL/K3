@@ -1136,16 +1136,18 @@ encodeTransformers noBR restChanged expr = do
         bodyF aVar eVar $ PSeq (EC.applyMany (EC.project "insert" aVar) [elemF aVar eVar]) aVar []
 
     mkCondAccF elemF condF = mkAccF elemF $ \aVar eVar accumE ->
-      EC.ifThenElse (attachNoBR $ EC.applyMany condF [eVar]) accumE aVar
+      EC.ifThenElse (attachBoth $ EC.applyMany (attachFusionSource condF) [eVar]) accumE aVar
 
     -- Note the element accumulator must be a function to match with our UCond pattern.
     mkIdAccF = mkAccF (\_ e -> EC.applyMany (EC.lambda "x" $ EC.variable "x") [e]) (\_ _ e -> e)
 
     attachNoBR :: K3 Expression -> K3 Expression
-    attachNoBR e = if noBR
-                     then e @+ (EProperty (Left ("NoBetaReduce", Nothing)))
-                            @+ (EProperty (Left ("IsolateApplication", Nothing)))
-                     else e
+    attachNoBR e = if noBR then e @+ (EProperty (Left ("NoBetaReduce", Nothing))) else e
+
+    attachFusionSource :: K3 Expression -> K3 Expression
+    attachFusionSource e = e @+ (EProperty (Left ("FusionSource", Nothing)))
+
+    attachBoth = attachFusionSource . attachNoBR
 
     mkIndepAccF fId fAs fArg =
       case fId of
@@ -1154,7 +1156,7 @@ encodeTransformers noBR restChanged expr = do
 
         "map" -> let nfAs = fAs ++ [pOElemRec, pFusionSpec (UCond, IndepTr), pFusionLineage "map"]
                  in return (nfAs, mkAccF (\_ e -> EC.applyMany (EC.lambda "x" $ elemE' $ EC.variable "x")
-                                                   [ attachNoBR $ EC.applyMany fArg [e] ]) (\_ _ e -> e))
+                                                    [ attachBoth $ EC.applyMany (attachFusionSource fArg) [e] ]) (\_ _ e -> e))
 
         _ -> invalidAccFerr fId
 
@@ -1168,7 +1170,7 @@ encodeTransformers noBR restChanged expr = do
           -- to avoid duplicate UIDs.
           missingAccFE = stripEUIDSpan accFE
 
-          entryE v = EC.record [("key", attachNoBR $ EC.applyMany gbE [eVar]), ("value", v)]
+          entryE v = EC.record [("key", attachBoth $ EC.applyMany (attachFusionSource gbE) [eVar]), ("value", v)]
 
           missingE = EC.lambda "_" $
                        EC.record [("key", EC.project "key" rVar)
@@ -1176,7 +1178,7 @@ encodeTransformers noBR restChanged expr = do
 
           presentE = EC.lambda oVarId $
                       EC.record [("key", EC.project "key" oVar)
-                                ,("value", attachNoBR $ EC.applyMany accFE [EC.project "value" oVar, eVar])]
+                                ,("value", attachBoth $ EC.applyMany (attachFusionSource accFE) [EC.project "value" oVar, eVar])]
 
       in do
       defaultV <- defaultExpression valueT
@@ -1282,8 +1284,8 @@ fuseFoldTransformers expr = do
     leftFusable fId = fId `elem` ["sample", "fold"]
 
     debugFusionStep fAs gAs ngArg1 e =
-      if True then e else flip trace e $
-        unlines [ "Fused:" ++ (showFusion fAs gAs), pretty $ stripAllExprAnnotations ngArg1 ]
+      if False then e else flip trace e $
+        unlines [ "Fused:" ++ (showFusion fAs gAs)]
 
     debugFusionMatching lAccF rAccF lAs rAs r =
       if True then r
