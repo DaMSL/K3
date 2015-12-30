@@ -289,7 +289,7 @@ def check(folders)
 end
 
 def postprocess(dir)
-  stats_file = "#{dir}/#{options[:job_set]}/stats.json"
+  stats_file = "#{dir}/#{$options[:job_set]}/stats.json"
   if File.exists?(stats_file)
     $stats = JSON.parse(File.read(stats_file))
   end
