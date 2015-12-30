@@ -101,12 +101,6 @@ stlLinearDSs = ["Collection", "Set", "Vector", "Seq"]
 stlAssocDSs :: [Identifier]
 stlAssocDSs = ["Map"]
 
-(@:?) :: K3 Expression -> Identifier -> Bool
-(@:?) e p = isJust $ e @~ \case  { EProperty s -> ePropertyName s == p; _ -> False }
-
-(@:+) :: K3 Expression -> Identifier -> K3 Expression
-(@:+) e p = e @+ (EProperty (Left (p, Nothing)))
-
 hasMoveProperty :: Annotation Expression -> Bool
 hasMoveProperty ae = case ae of
                        (EProperty s) -> ePropertyName s == "Move"

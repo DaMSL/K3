@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -42,6 +43,9 @@ module Language.K3.Core.Expression (
   , isAnyEEffectAnn
   , isAnyETypeOrEffectAnn
   , namedEAnnotations
+
+  , (@:?)
+  , (@:+)
 ) where
 
 import Control.DeepSeq
@@ -50,6 +54,7 @@ import Data.Binary
 import Data.Serialize
 
 import Data.List
+import Data.Maybe (isJust)
 import Data.Tree
 import Data.Typeable
 
@@ -278,6 +283,12 @@ isEInferredProperty _                     = False
 isEUserProperty :: Annotation Expression -> Bool
 isEUserProperty (EProperty (Left _)) = True
 isEUserProperty _                    = False
+
+(@:?) :: K3 Expression -> Identifier -> Bool
+(@:?) e p = isJust $ e @~ \case  { EProperty s -> ePropertyName s == p; _ -> False }
+
+(@:+) :: K3 Expression -> Identifier -> K3 Expression
+(@:+) e p = e @+ (EProperty (Left (p, Nothing)))
 
 isESyntax :: Annotation Expression -> Bool
 isESyntax (ESyntax _) = True
