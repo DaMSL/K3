@@ -373,9 +373,6 @@ materializeE e@(Node (t :@: _) cs) = case t of
         ilu <- eUID il
         constrain xu i In (mAtom Moved -??- "Fold Override")
         constrain ilu i In (mAtom Moved -??- "Fold Override")
-
-        ila <- asks (isolateApplicationMZ . flags)
-        when ila $ constrain ilu ele In (mAtom Copied -??- "Application Isolation Override")
       _ -> return ()
 
     contextualizeNow x >>= \x' -> withDownstreams [x'] $ materializeE f
