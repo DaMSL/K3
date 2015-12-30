@@ -86,6 +86,8 @@ pattern Peek c <- Node (EProject "peek" :@: _) [c]
 pattern SafeAt c <- Node (EProject "safe_at" :@: _) [c]
 pattern UnsafeAt c <- Node (EProject "unsafe_at" :@: _) [c]
 
+pattern (:$:) f x <- Node (EOperate OApp :@: _) [f, x]
+
 dataspaceIn :: K3 Expression -> [Identifier] -> Bool
 dataspaceIn e as = isJust $ getKTypeP e >>= \t -> t @~ \case { TAnnotation i -> i `elem` as; _ -> False }
 
@@ -218,6 +220,7 @@ cDecl t i = genCType t >>= \ct -> return [R.Forward $ R.ScalarDecl (R.Name i) ct
 inline :: K3 Expression -> CPPGenM ([R.Statement], R.Expression)
 inline e = do
   isolateApplicationP <- gets (isolateApplicationCG . flags)
+  isolateQueryP <- gets (isolateQueryCG . flags)
   case e of
     (tag &&& annotations -> (EConstant (CEmpty t), as)) ->
       case annotationComboIdE as of
@@ -346,7 +349,7 @@ inline e = do
 
       return ([], R.Lambda captures argList True (if isAccumulating then Just R.Void else returnType) fullBody)
 
-    (tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OApp, [p@(Fold c), f])), z])) | doInline e -> do
+    p@(Fold c) :$: f :$: z  | doInline e -> do
       (ce, cv) <- inline c
       (ze, zv) <- inline z
 
@@ -618,15 +621,15 @@ inline e = do
       return (ce ++ [ue] ++ ie ++ [resultDecl] ++ [R.Block (advance ++ wfe ++ wfb)]
             , R.Variable $ R.Name result)
 
-    -- (tag -> EOperate OApp) | isolateApplicationP && not (e @:? "IsolateApplicationHandled") -> do
-    --   -- a <- gets (isolateApplicationCG . flags)
-    --   -- let e' = (e @- (EProperty (Left ("IsolateApplication", Nothing))))
-    --   -- if a
-    --   --   then do
-    --   g <- genSym
-    --   es <- reify (RDecl g Nothing) (e @:+ "IsolateApplicationHandled")
-    --   return (es, R.Variable (R.Name g))
-    --     -- else inline e'
+    Fold _ :$: _ :$: _  | isolateQueryP && not (e @:? "QueryIsolated") -> do
+      g <- genSym
+      es <- reify (RDecl g Nothing) (e @:+ "QueryIsolated")
+      return (es, R.Variable $ R.Name g)
+
+    _ :$: _ | isolateApplicationP && e @:? "FusionSource" && not (e @:? "ApplicationIsolated") -> do
+      g <- genSym
+      es <- reify (RDecl g Nothing) (e @:+ "ApplicationIsolated")
+      return (es, R.Variable $ R.Name g)
 
     (tag -> EOperate OApp) -> do
       -- Inline both function and argument for call.
