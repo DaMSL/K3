@@ -308,10 +308,12 @@ materializeE e@(Node (t :@: _) cs) = case t of
       withDownstreams os' $ do
         materializeE c
 
+        ila <- asks (isolateApplicationMZ . flags)
+
         -- Determine if the field argument is moveable within the current expression.
         moveableNow <- ePrv c >>= contextualizeNow >>= isMoveableNow
 
-        constrain u i In $ mITE moveableNow (mAtom Moved) (mAtom Copied)
+        constrain u i In $ mITE (moveableNow -&&- (mNot $ mBool ila)) (mAtom Moved) (mAtom Copied)
 
   ELambda i -> do
     let [body] = cs
@@ -335,8 +337,10 @@ materializeE e@(Node (t :@: _) cs) = case t of
           Just (EType (tag &&& children -> (TFunction, [t, _]))) -> isNonScalarType t
           _ -> False
 
-    let standardPath = mITE ehw (mITE (mBool argShouldBeMoved) (mAtom Moved) (mAtom Copied)) (mAtom Forwarded)
-    let topLPath = mITE (mBool topL -&&- mBool iRun) (mAtom Copied) standardPath
+    isolateApplication <- asks (isolateApplicationMZ . flags)
+    let fSourceOverride = mITE (mBool $ isolateApplication && e @:? "FusionSource") (mAtom Copied)
+    let standardPath = mITE ehw (mITE (mBool $ argShouldBeMoved) (mAtom Moved) (mAtom Copied)) (mAtom Forwarded)
+    let topLPath = mITE (mBool topL -&&- mBool iRun) (mAtom Copied) (fSourceOverride standardPath)
 
     constrain u i In topLPath
 
