@@ -622,12 +622,12 @@ inline e = do
 
     Fold _ :$: _ :$: _  | isolateQueryP && not (e @:? "QueryIsolated") -> do
       g <- genSym
-      es <- reify (RDecl g Nothing) (e @:+ "QueryIsolated")
+      es <- guardDReify (RDecl g Nothing) (e @:+ "QueryIsolated")
       return (es, R.Variable $ R.Name g)
 
     _ :$: _ | isolateApplicationP && e @:? "FusionSource" && not (e @:? "ApplicationIsolated") -> do
       g <- genSym
-      es <- reify (RDecl g Nothing) (e @:+ "ApplicationIsolated")
+      es <- guardDReify (RDecl g Nothing) (e @:+ "ApplicationIsolated")
       return (es, R.Variable $ R.Name g)
 
     (tag -> EOperate OApp) -> do
@@ -946,6 +946,23 @@ reify r e = do
         RReturn b -> return $ [R.Return $ (if b then R.Move else id) value]
         RSplice _ -> throwE $ CPPGenE "Unsupported reification by splice."
     return $ effects ++ reification
+
+doubleReify :: RContext -> K3 Expression -> CPPGenM [R.Statement]
+doubleReify r e = do
+  g <- genSym
+  es' <- reify (RDecl g Nothing) e
+  let rg = R.Variable $ R.Name g
+  es <- case r of
+    RForget -> return []
+    RName k b -> return [R.Assignment k (if fromMaybe False b then gMoveByE e rg else rg)]
+    RDecl i b -> return [R.Forward $ R.ScalarDecl (R.Name i) (R.Inferred)
+                         (Just $ if fromMaybe False b then gMoveByE e rg else rg)]
+    RReturn b -> return $ [R.Return $ (if b then R.Move else id) rg]
+    RSplice _ -> throwE $ CPPGenE "Unsupported reification by splice."
+  return $ es' ++ es
+
+guardDReify :: RContext -> K3 Expression -> CPPGenM [R.Statement]
+guardDReify r e = gets (isolateApplicationCG . flags) >>= \a -> if a then doubleReify r e else reify r e
 
 -- ** Template Helpers
 inlineApply :: Bool -> RContext -> K3 Expression -> [R.Expression] -> CPPGenM ([R.Statement], [R.Statement])
