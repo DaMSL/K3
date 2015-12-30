@@ -405,11 +405,7 @@ inline e = do
       --                              , R.Pragma $ "clang loop interleave_count(" ++ show i ++ ")"
       --                              ]
 
-    (tag &&& children -> (EOperate OApp, [
-      (tag &&& children -> (EOperate OApp, [
-                       p@(InsertWith c),
-                       k])),
-                       w])) | c `dataspaceIn` stlAssocDSs && doInline e -> do
+    p@(InsertWith c) :$: k :$: w | c `dataspaceIn` stlAssocDSs && doInline e -> do
       (ce, cv) <- inline c
       (ke, kv) <- inline k
       -- kg <- genSym
@@ -437,13 +433,7 @@ inline e = do
             , R.Initialization R.Unit [])
 
 
-    (tag &&& children -> (EOperate OApp, [
-      (tag &&& children -> (EOperate OApp, [
-        (tag &&& children -> (EOperate OApp, [
-                      p@(UpsertWith c),
-                      k])),
-                      n])),
-                      w])) | c `dataspaceIn` stlAssocDSs && doInline e -> do
+    p@(UpsertWith c) :$: k :$: n :$: w | c `dataspaceIn` stlAssocDSs && doInline e -> do
       (ce, cv) <- inline c
 
       kg <- genSym
@@ -485,13 +475,7 @@ inline e = do
       return (ce ++ [ue] ++ ke ++ [existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb) (wfe ++ wfb)]
             , R.Initialization R.Unit [])
 
-    (tag &&& children -> (EOperate OApp, [
-      (tag &&& children -> (EOperate OApp, [
-        (tag &&& children -> (EOperate OApp, [
-                      p@(Lookup c),
-                      k])),
-                      n])),
-                      w])) | c `dataspaceIn` stlAssocDSs && doInline e -> do
+    p@(Lookup c) :$: k :$: n :$: w | c `dataspaceIn` stlAssocDSs && doInline e -> do
       (ce, cv) <- inline c
       kg <- genSym
       ke <- reify (RDecl kg Nothing) k
@@ -532,11 +516,7 @@ inline e = do
       return (ce ++ [ue] ++ ke ++ [resultDecl, existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb) (wfe ++ wfb)]
             , R.Variable $ R.Name result)
 
-    (tag &&& children -> (EOperate OApp, [
-      (tag &&& children -> (EOperate OApp, [
-                      p@(Peek c),
-                      n])),
-                      w])) | c `dataspaceIn` stlLinearDSs && doInline e -> do
+    p@(Peek c) :$: n :$: w | c `dataspaceIn` stlLinearDSs && doInline e -> do
       (ce, cv) <- inline c
 
       ug <- genSym
@@ -559,13 +539,7 @@ inline e = do
       return (ce ++ [ue] ++ [resultDecl, firstDecl] ++ [R.IfThenElse firstPred (nfe ++ nfb) (wfe ++ wfb)]
             , R.Variable $ R.Name result)
 
-    (tag &&& children -> (EOperate OApp, [
-      (tag &&& children -> (EOperate OApp, [
-        (tag &&& children -> (EOperate OApp, [
-                      p@(SafeAt c),
-                      i])),
-                      n])),
-                      w])) | c `dataspaceIn` stlLinearDSs && doInline e -> do
+    p@(SafeAt c) :$: i :$: n :$: w | c `dataspaceIn` stlLinearDSs && doInline e -> do
       (ce, cv) <- inline c
       ig <- genSym
       ie <- reify (RDecl ig Nothing) i
@@ -592,11 +566,7 @@ inline e = do
       return (ce ++ [ue] ++ ie ++ [resultDecl] ++ [R.IfThenElse sizeCheck (advance ++ wfe ++ wfb) (nfe ++ nfb)]
             , R.Variable $ R.Name result)
 
-    (tag &&& children -> (EOperate OApp, [
-      (tag &&& children -> (EOperate OApp, [
-                      p@(UnsafeAt c),
-                      i])),
-                      w])) | c `dataspaceIn` stlLinearDSs && doInline e -> do
+    p@(UnsafeAt c) :$: i :$: w | c `dataspaceIn` stlLinearDSs && doInline e -> do
       (ce, cv) <- inline c
       ig <- genSym
       ie <- reify (RDecl ig Nothing) i
@@ -630,7 +600,7 @@ inline e = do
       es <- guardDReify (RDecl g Nothing) (e @:+ "ApplicationIsolated")
       return (es, R.Variable $ R.Name g)
 
-    (tag -> EOperate OApp) -> do
+    _ :$: _ -> do
       -- Inline both function and argument for call.
       incApplyLevel
 
@@ -762,7 +732,7 @@ inline e = do
 -- method of reification is indicated by the @RContext@ argument.
 reify :: RContext -> K3 Expression -> CPPGenM [R.Statement]
 
-reify RForget e@(tag &&& children -> (EOperate OApp, [(tag &&& children -> (EOperate OApp, [Fold _, _])), _])) | doInline e = do
+reify RForget e@(Fold _ :$: _ :$: _) | doInline e = do
   (ee, _) <- inline e
   return ee
 
