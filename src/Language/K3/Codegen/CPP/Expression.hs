@@ -293,7 +293,6 @@ inline e = do
 
     e@(tag -> ELambda _) -> do
       resetApplyLevel
-      let isAccumulating = (not isolateQueryP) && (isJust $ e @~ (\case { EProperty (ePropertyName -> "ReturnsArgument") -> True; _ -> False }))
 
       let (unzip -> (argNames, fExprs), b) = rollLambdaChain e
 
@@ -313,7 +312,7 @@ inline e = do
 
       -- let nrvo = getExMethodFor anon innerFExpr == Moved
 
-      body <- reify (if isAccumulating then RForget else RReturn False) b
+      body <- reify (RReturn False) b
 
       let captureByMtrlzn i m = case m of
             ConstReferenced -> R.RefCapture (Just (i, Nothing))
@@ -326,7 +325,7 @@ inline e = do
                               $ getInDecisions outerFExpr)
 
       let reifyArg a g = if a == "_" then [] else
-            let discriminator = if a == head (argNames) && isAccumulating then Referenced else (getInMethodFor a innerFExpr)
+            let discriminator = getInMethodFor a innerFExpr
                 reifyType = case discriminator of
                     ConstReferenced -> R.Reference $ R.Const R.Inferred
                     Referenced -> R.Reference R.Inferred
@@ -347,7 +346,7 @@ inline e = do
                     | fi <- argNames
                     ]
 
-      return ([], R.Lambda captures argList True (if isAccumulating then Just R.Void else returnType) fullBody)
+      return ([], R.Lambda captures argList True returnType fullBody)
 
     p@(Fold c) :$: f :$: z  | doInline e -> do
       (ce, cv) <- inline c
