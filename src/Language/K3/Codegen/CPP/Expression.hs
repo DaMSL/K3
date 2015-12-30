@@ -293,7 +293,7 @@ inline e = do
 
     e@(tag -> ELambda _) -> do
       resetApplyLevel
-      let isAccumulating = isJust $ e @~ (\case { EProperty (ePropertyName -> "ReturnsArgument") -> True; _ -> False })
+      let isAccumulating = (not isolateQueryP) && (isJust $ e @~ (\case { EProperty (ePropertyName -> "ReturnsArgument") -> True; _ -> False }))
 
       let (unzip -> (argNames, fExprs), b) = rollLambdaChain e
 
