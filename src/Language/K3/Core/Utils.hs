@@ -22,6 +22,11 @@ module Language.K3.Core.Utils
 , check8Children
 , prependToRole
 
+, arithOp
+, compareOp
+, logicOp
+, stringOp
+
 , declarationName
 , declarationExpr
 
@@ -168,6 +173,42 @@ $(
   in
   concat <$> mapM mkCheckChildren [0::Int .. 8]
  )
+
+-- Returns whether the argument is an arithmetic operation
+arithOp :: Operator -> Bool
+arithOp o = case o of
+              OAdd -> True
+              OSub -> True
+              OMul -> True
+              ODiv -> True
+              OMod -> True
+              ONeg -> True
+              _ -> False
+
+-- Returns whether the argument is a comparison operation
+compareOp :: Operator -> Bool
+compareOp o = case o of
+                OEqu -> True
+                ONeq -> True
+                OLth -> True
+                OLeq -> True
+                OGth -> True
+                OGeq -> True
+                _ -> False
+
+-- Returns whether the argument is a logic operation
+logicOp :: Operator -> Bool
+logicOp o = case o of
+              OAnd -> True
+              OOr  -> True
+              ONot -> True
+              _ -> False
+
+-- Returns whether the argument is a string operation
+stringOp :: Operator -> Bool
+stringOp o = case o of
+                OConcat -> True
+                _ -> False
 
 -- Returns the name of a declaration if available.
 declarationName :: K3 Declaration -> Maybe Identifier

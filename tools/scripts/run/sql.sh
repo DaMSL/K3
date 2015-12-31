@@ -5,6 +5,6 @@
 export SNDPATH=`find .cabal-sandbox -name "*packages.conf.d"`
 
 dist/build/k3/k3 \
-  -I lib/k3 -I examples/sql -I examples/distributed/amplab/compact \
-  --mpargs package-db=$SNDPATH --mpsearch src \
+  -I lib/k3 -I examples/sql -I examples/distributed/amplab \
+  --mpargs package-db=$SNDPATH --mpsearch src $K3MPARGS \
   sql $@
