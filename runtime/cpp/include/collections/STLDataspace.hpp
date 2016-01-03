@@ -227,6 +227,17 @@ class STLDS {
     return result;
   }
 
+  template <class Fun>
+  auto ext(Fun expand) const -> Derived<typename RT<Fun, Elem>::ElemType> {
+    typedef typename RT<Fun, Elem>::ElemType T;
+    Derived<T> result;
+    for (const Elem& elem : container) {
+      for (T&& elem2 : expand(elem).container) {
+        result.insert(std::move(elem2));
+      }
+    }
+  }
+
   template<class Other, class F, class G>
   Derived<R_elem<RT<G, Elem, Other>>> join(Derived<Other> other, F f, G g) const {
     Derived<R_elem<RT<G, Elem, Other>>> result;
@@ -274,16 +285,126 @@ class STLDS {
     return equijoin<Other,F,G,H>(other, f, g, h);
   }
 
-  template <class Fun>
-  auto ext(Fun expand) const -> Derived<typename RT<Fun, Elem>::ElemType> {
-    typedef typename RT<Fun, Elem>::ElemType T;
-    Derived<T> result;
-    for (const Elem& elem : container) {
-      for (T&& elem2 : expand(elem).container) {
-        result.insert(std::move(elem2));
+  template<class Other, class F, class G, class H, class Acc>
+  Acc equijoin_fold(Derived<Other> other, F f, G g, H h, Acc acc) const
+  {
+    // Build.
+    unordered_map<RT<F, Elem>, std::multiset<Elem>> lhsHT;
+
+    for (const auto& elem : container) {
+      lhsHT[f(elem)].insert(elem);
+    }
+
+    // Probe.
+    for (const auto& otherelem : other.getConstContainer()) {
+      RT<G, Other> key(g(otherelem));
+      auto it = lhsHT.find(key);
+      if ( it != lhsHT.end() ) {
+        for (const auto& probeelem : it->second) {
+          acc = h(std::move(acc), probeelem, otherelem);
+        }
       }
     }
+    return acc;
   }
+
+  template<class Other, class F, class G, class H, class H2, class Acc>
+  Acc outerequijoin_fold(Derived<Other> other, F f, G g, H h, H2 h2, Acc acc) const
+  {
+    // Build.
+    unordered_map<RT<G, Other>, std::multiset<Other>> rhsHT;
+
+    for (const auto& otherelem : other.getConstContainer()) {
+      rhsHT[g(otherelem)].insert(otherelem);
+    }
+
+    // Probe, and fire accumulator on misses.
+    for (const auto& elem : container) {
+      RT<F, Elem> key(f(elem));
+      auto it = rhsHT.find(key);
+      if ( it == rhsHT.end() ) {
+        acc = h(std::move(acc), elem);
+      } else {
+        for (const auto& probeelem : it->second) {
+          acc = h2(std::move(acc), elem, probeelem);
+        }
+      }
+    }
+
+    return acc;
+  }
+
+  template<class Other, class F, class G, class H, class Acc>
+  Acc antiequijoin_fold(Derived<Other> other, F f, G g, H h, Acc acc) const
+  {
+    // Build.
+    unordered_map<RT<G, Other>, std::multiset<Other>> rhsHT;
+
+    for (const auto& otherelem : other.getConstContainer()) {
+      rhsHT[g(otherelem)].insert(otherelem);
+    }
+
+    // Probe, and fire accumulator on misses.
+    for (const auto& elem : container) {
+      RT<F, Elem> key(f(elem));
+      auto it = rhsHT.find(key);
+      if ( it == rhsHT.end() ) {
+        acc = h(std::move(acc), elem);
+      }
+    }
+
+    return acc;
+  }
+
+  template<class Other, class F, class G, class H, class I, class Acc>
+  Acc antieqthetajoin_fold(Derived<Other> other, F f, G g, H h, I i, Acc acc) const
+  {
+    // Build.
+    unordered_map<RT<G, Other>, std::multiset<Other>> rhsHT;
+
+    for (const auto& otherelem : other.getConstContainer()) {
+      rhsHT[g(otherelem)].insert(otherelem);
+    }
+
+    // Probe, and fire accumulator on misses.
+    for (const auto& elem : container) {
+      RT<F, Elem> key(f(elem));
+      auto it = rhsHT.find(key);
+      if ( it == rhsHT.end() ) {
+        acc = h(std::move(acc), elem);
+      } else {
+        bool matched = false;
+        for (const auto& probeelem : it->second) {
+          matched = i(elem, probeelem);
+          if ( matched ) { break; }
+        }
+        if ( !matched ) { acc = h(std::move(acc), elem); }
+      }
+    }
+
+    return acc;
+  }
+
+  template<class Other, class F, class G, class H, class Acc>
+  Acc equijoin_fold_kv(Derived<Other> other, F f, G g, H h, Acc acc) const {
+    return equijoin_fold<Other, F, G, H, Acc>(other, f, g, h, acc);
+  }
+
+  template<class Other, class F, class G, class H, class H2, class Acc>
+  Acc outerequijoin_fold_kv(Derived<Other> other, F f, G g, H h, H2 h2, Acc acc) const {
+    return outerequijoin_fold<Other, F, G, H, H2, Acc>(other, f, g, h, h2, acc);
+  }
+
+  template<class Other, class F, class G, class H, class Acc>
+  Acc antiequijoin_fold_kv(Derived<Other> other, F f, G g, H h, Acc acc) const {
+    return antiequijoin_fold<Other, F, G, H, Acc>(other, f, g, h, acc);
+  }
+
+  template<class Other, class F, class G, class H, class I, class Acc>
+  Acc antieqthetajoin_fold_kv(Derived<Other> other, F f, G g, H h, I i, Acc acc) const {
+    return antieqthetajoin_fold<Other, F, G, H, Acc>(other, f, g, h, i, acc);
+  }
+
 
   // Iterators
   using iterator = typename Container::iterator;

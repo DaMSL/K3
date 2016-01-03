@@ -72,6 +72,15 @@ annotation Collection given type a, b, c, d
       \gbF -> \gaccF -> \z -> \s ->
         [R[self]; R[z]; R[s]; ([R[content]; gbF content; gaccF content])*]
 
+  @:Transformer
+  provides lifted ext : (content -> collection {elem : a} @Collection)
+                         -> collection {elem : a} @Collection
+    with effects \extF -> [R[self]; ([R[content]; extF content])*]
+
+
+  ///////////////////////
+  // Join transformers.
+
   @:{Transformer, CArgs 3}
   provides lifted join : collection {elem: a} @Collection
                           -> (content -> {elem: a} -> bool) -> (content -> {elem: a} -> b)
@@ -100,8 +109,77 @@ annotation Collection given type a, b, c, d
     with effects \other -> \matchLF -> \matchRF -> \outputF ->
                    [R[self]; ([R[other]; R[content]; matchLF content; matchRF none; outputF content none])*]
 
-  @:Transformer
-  provides lifted ext : (content -> collection {elem : a} @Collection)
-                         -> collection {elem : a} @Collection
-    with effects \extF -> [R[self]; ([R[content]; extF content])*]
+
+  ////////////////////////////////////////////////////////////////////////////////
+  // Join-fold transformers: equijoin_fold, antiequijoin_fold, outerequijoin_fold
+
+  @:{Transformer, CArgs 5}
+  provides lifted equijoin_fold : collection {elem: a} @Collection
+                                    -> (content -> b) -> ({elem:a} -> b)
+                                    -> (d -> content -> {elem: a} -> d) -> d -> d
+    with effects \other -> \matchLF -> \matchRF -> \outputF -> \z ->
+                   [R[self]; R[z]; ([R[other]; R[content]; matchLF content; matchRF none; ((outputF z) content) none])*]
+
+  @:{Transformer, CArgs 5}
+  provides lifted equijoin_fold_kv : collection {key: a, value: b} @Collection
+                                       -> (content -> c) -> ({key: a, value: b} -> c)
+                                       -> (d -> content -> {key: a, value: b} -> d) -> d -> d
+    with effects \other -> \matchLF -> \matchRF -> \outputF -> \z ->
+                   [R[self]; R[z]; ([R[other]; R[content]; matchLF content; matchRF none; ((outputF z) content) none])*]
+
+  @:{Transformer, CArgs 6}
+  provides lifted outerequijoin_fold : collection {elem: a} @Collection
+                                        -> (content -> b) -> ({elem:a} -> b)
+                                        -> (d -> content -> d)
+                                        -> (d -> content -> {elem: a} -> d)
+                                        -> d -> d
+    with effects \other -> \matchLF -> \matchRF -> \outputLF -> \outputBothF -> \z ->
+                   [R[self]; R[z]; ([R[other]; R[content]; matchLF content; matchRF none;
+                                     ((outputLF z) content); ((outputBothF z) content) none])*]
+
+  @:{Transformer, CArgs 6}
+  provides lifted outerequijoin_fold_kv : collection {key: a, value: b} @Collection
+                                           -> (content -> c) -> ({key: a, value: b} -> c)
+                                            -> (d -> content -> d)
+                                            -> (d -> content -> {key: a, value: b} -> d)
+                                            -> d -> d
+    with effects \other -> \matchLF -> \matchRF -> \outputLF -> \outputBothF -> \z ->
+                   [R[self]; R[z]; ([R[other]; R[content]; matchLF content; matchRF none;
+                                     ((outputLF z) content); ((outputBothF z) content) none])*]
+
+  @:{Transformer, CArgs 5}
+  provides lifted antiequijoin_fold : collection {elem: a} @Collection
+                                        -> (content -> b) -> ({elem:a} -> b)
+                                        -> (d -> content -> d)
+                                        -> d -> d
+    with effects \other -> \matchLF -> \matchRF -> \outputLF -> \z ->
+                   [R[self]; R[z]; ([R[other]; R[content]; matchLF content; matchRF none; (outputLF z) content])*]
+
+  @:{Transformer, CArgs 5}
+  provides lifted antiequijoin_fold_kv : collection {key: a, value: b} @Collection
+                                           -> (content -> c) -> ({key: a, value: b} -> c)
+                                           -> (d -> content -> d)
+                                           -> d -> d
+    with effects \other -> \matchLF -> \matchRF -> \outputLF -> \z ->
+                   [R[self]; R[z]; ([R[other]; R[content]; matchLF content; matchRF none; (outputLF z) content])*]
+
+
+  @:{Transformer, CArgs 6}
+  provides lifted antieqthetajoin_fold : collection {elem: a} @Collection
+                                           -> (content -> b) -> ({elem:a} -> b)
+                                           -> (content -> {elem: a} -> bool)
+                                           -> (d -> content -> d)
+                                           -> d -> d
+    with effects \other -> \matchLF -> \matchRF -> \matchBothF -> \outputLF -> \z ->
+                   [R[self]; R[z]; ([R[other]; R[content]; matchLF content; matchRF none; matchBothF content none; (outputLF z) content])*]
+
+  @:{Transformer, CArgs 6}
+  provides lifted antieqthetajoin_fold_kv : collection {key: a, value: b} @Collection
+                                           -> (content -> c) -> ({key: a, value: b} -> c)
+                                           -> (content -> {key: a, value: b} -> bool)
+                                           -> (d -> content -> d)
+                                           -> d -> d
+    with effects \other -> \matchLF -> \matchRF -> \matchBothF -> \outputLF -> \z ->
+                   [R[self]; R[z]; ([R[other]; R[content]; matchLF content; matchRF none; matchBothF content none; (outputLF z) content])*]
+
 }
