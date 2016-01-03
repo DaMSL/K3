@@ -182,7 +182,9 @@ unit_t ProfilingBuiltins::jemallocDump(unit_t) {
       dup2(fd, 1);
       dup2(fd, 2);
 
-      exit(execl("/usr/bin/perf", "perf", "stat", "-e", "cache-misses,cache-references",
+      auto events = std::getenv("K3_PERF_STAT_EVENTS");
+
+      exit(execl("/usr/bin/perf", "perf", "stat", "-e", (events ? events: "cache-misses,cache-references"),
                  "-p", pid_stream.str().c_str(), nullptr));
     }
 #endif
