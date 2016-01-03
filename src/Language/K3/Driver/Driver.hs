@@ -312,8 +312,9 @@ sql sqlopts opts = do
       return (env, (rstmts, stggraph))
 
     sqlcg env sg = do
-      (prog, _) <- liftEitherM $ SQL.runSQLParseEM env $ SQL.sqlcodegen (sqlDistributedPlan sqlopts) sg
-      if sqlUntyped sqlopts
+      (prog, _) <- trace "Starting SQLCodegen" $ liftEitherM $
+                     SQL.runSQLParseEM env $ SQL.sqlcodegen (sqlDistributedPlan sqlopts) sg
+      if trace "Finished SQLCodegen" $ sqlUntyped sqlopts
         then liftIO $ putStrLn $ pretty prog
         else sqlprog prog
 
