@@ -293,14 +293,18 @@ def postprocess(dir)
   if File.exists?(stats_file)
     $stats = JSON.parse(File.read(stats_file))
   end
-  puts "Summary"
-  for key, val in $stats
-    sum = val.reduce(:+)
-    cnt = val.size
-    avg = 1.0 * sum / cnt
-    var = val.map{|x| (x - avg) * (x - avg)}.reduce(:+) / (1.0 * cnt)
-    dev = Math.sqrt(var)
-    puts "\t#{key} => Successful Trials: #{cnt}/#{$options[:trials]}. Avg: #{avg}. StdDev: #{dev}"
+  CSV.open("#{out_folder}/#{$options[:job_set]}/stats.csv", "wb") do |outf|
+    outf << ["variant", "query", "role", "trials", "average", "stddev"]
+    puts "Summary"
+    for key, val in $stats
+      sum = val.reduce(:+)
+      cnt = val.size
+      avg = 1.0 * sum / cnt
+      var = val.map{|x| (x - avg) * (x - avg)}.reduce(:+) / (1.0 * cnt)
+      dev = Math.sqrt(var)
+      puts "\t#{key} => Successful Trials: #{cnt}/#{$options[:trials]}. Avg: #{avg}. StdDev: #{dev}"
+      outf << [dir, key[:name], key[:role], cnt, avg, dev]
+    end
   end
 end
 
