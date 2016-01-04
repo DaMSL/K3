@@ -39,6 +39,8 @@ class StandardBuiltins {
   double randomFraction(unit_t);
   K3::base_string randomWord(unit_t);
   int randomBinomial(int trials, double p);
+
+  bool regex_like(string_impl const&, string_impl const&);
  protected:
   Engine& __engine_;
   static boost::mutex __mutex_;

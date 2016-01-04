@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <thread>
 #include <chrono>
+#include <regex>
 
 #include "Common.hpp"
 #include "builtins/StandardBuiltins.hpp"
@@ -50,6 +51,11 @@ unit_t StandardBuiltins::print(const string_impl& message) {
   std::cout << message << std::endl;
   return unit_t();
 }
+
+  bool StandardBuiltins::regex_like(string_impl const& input, string_impl const& pattern) {
+    auto like_pattern = "^" + std::regex_replace(std::string(pattern), std::regex("%"), ".*") + "$";
+    return std::regex_match(input.c_str(), std::regex(like_pattern));
+  }
 
 unit_t StandardBuiltins::sleep(int n) {
   std::this_thread::sleep_for(std::chrono::milliseconds(n));

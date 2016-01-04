@@ -39,6 +39,9 @@ declare regex_matcher_q4 : string -> collection {elem: string} @ Collection
 declare regex_match_int : string -> string -> int
   with effects \x -> \y -> [R[x]; R[y]]
 
+declare regex_like: string -> string -> bool
+  with effects \x -> \y -> [R[x]; R[y]]
+
 @:CArgs 2
 declare date_part: string -> int -> int
   with effects \x -> \y -> [R[x]; R[y]]
