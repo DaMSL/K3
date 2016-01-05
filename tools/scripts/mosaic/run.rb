@@ -277,6 +277,7 @@ def gen_yaml(role_path, script_path)
     extra_args << "pmap_buckets=" + (num_nodes * 4).to_s if num_nodes > 16
   end
   extra_args << "replicas=" + $options[:replicas] if $options[:replicas]
+  extra_args << "isobatch_mode=false" if !$options[:isobatch]
   cmd << "--extra-args " << extra_args.join(',') << " " if extra_args.size > 0
 
   yaml = run("#{File.join(script_path, "gen_yaml.py")} #{cmd}")
@@ -773,6 +774,7 @@ def main()
   $options[:run_mode] = :dist
   $options[:logging] = :none
   $options[:profile] = :none
+  $options[:isobatch] = true
 
   uid = nil
 
@@ -849,6 +851,7 @@ def main()
     opts.on("--process-latencies [SWITCH_REGEX]", "Post-processing on latency files") { |s| $options[:process_latencies] = s }
     opts.on("--latency-job-dir [PATH]", "Manual selection of job directory") { |s| $options[:latency_dir] = s }
     opts.on("--plot-messages", "Create message heat maps") { $options[:plot_messages] = true }
+    opts.on("--no-isobatch", "Disable isobatch mode") { $options[:isobatch] = false }
 
     # Stages.
     # Ktrace is not run by default.
