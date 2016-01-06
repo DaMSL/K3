@@ -37,9 +37,11 @@ namespace Libdynamic {
 
 ////////////////////////////////////////////////////
 // Externalizer and Internalizer.
-// These are support classes that hold externalization
-// and internalizaton metadata while traversing through
-// data structures to perform pointer switching.
+// These are support classes that hold externalization and internalizaton
+// metadata while traversing through data structures to perform pointer switching.
+// To externalize a data structure (only applies to string currently) means to
+// store its data as an offset outside of its confines, within the flat poly buffer.
+// To internalize means to let the data structure have a full pointer to the data.
 
 class BufferExternalizer
 {
@@ -921,31 +923,34 @@ struct convert<K3::FlatPolyBuffer<E, Derived>> {
   using Tag = typename K3::FlatPolyBuffer<E, Derived>::Tag;
   template <class Allocator>
   static Value encode(const K3::FlatPolyBuffer<E, Derived>& c, Allocator& al) {
+#if 1
     Value v;
     v.SetObject();
     v.AddMember("type", Value("FlatPolyBuffer"), al);
     return v;
-    //bool modified = false;
-    //K3::FlatPolyBuffer<E, Derived>& non_const = const_cast<K3::FlatPolyBuffer<E, Derived>&>(c);
-    //if (!c.isInternalized()) {
-    //  non_const.unpack(K3::unit_t {});
-    //  modified = true;
-    //}
+#else
+    bool modified = false;
+    K3::FlatPolyBuffer<E, Derived>& non_const = const_cast<K3::FlatPolyBuffer<E, Derived>&>(c);
+    if (!c.isInternalized()) {
+      non_const.unpack(K3::unit_t {});
+      modified = true;
+    }
 
-    //Value v;
-    //v.SetObject();
-    //v.AddMember("type", Value("FlatPolyBuffer"), al);
-    //Value inner;
-    //inner.SetArray();
-    //c.iterate([&c, &inner, &al](Tag tg, size_t idx, size_t offset){
-    //  inner.PushBack(c.jsonencode(tg, idx, offset, al), al);
-    //});
-    //v.AddMember("value", inner.Move(), al);
+    Value v;
+    v.SetObject();
+    v.AddMember("type", Value("FlatPolyBuffer"), al);
+    Value inner;
+    inner.SetArray();
+    c.iterate([&c, &inner, &al](Tag tg, size_t idx, size_t offset){
+      inner.PushBack(c.jsonencode(tg, idx, offset, al), al);
+    });
+    v.AddMember("value", inner.Move(), al);
 
-    //if (modified) {
-    //  non_const.repack(K3::unit_t {});
-    //}
-    //return v;
+    if (modified) {
+      non_const.repack(K3::unit_t {});
+    }
+    return v;
+#endif
   }
 };
 }  // namespace JSON
