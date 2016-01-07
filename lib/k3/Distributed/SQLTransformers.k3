@@ -360,3 +360,65 @@ control BroadcastJoin2 [ lbl : label ]
     )
   }
 }
+
+control DistributedOuterEquiJoinFold[lbl: label] {
+  ((?var = (?expr.outerequijoin_fold ?other ?this_key_func ?other_key_func ?null_emit_func ?match_emit_func ?acc));
+   (?dtrig, ?daddr) <- ()
+  )
+  => ($[lbl]_oejf_start, me) <- ()
+
+  shared {
+    trigger $[lbl]_oejf_start: () = \_ -> (
+      ($[lbl]_oejf_rhs_partition_shuffle, me) <- ()
+    )
+
+    // Partition RHS by key and shuffle.
+    trigger $[lbl]_oejf_rhs_partition_shuffle: () = \_ -> (
+      ignore ($[other].group_by $[other_key_func] (\acc -> \e -> acc.insert e; acc) (empty {} @ Collection))
+        @ PartitionShuffleWithMissing(
+            lbl = $[lbl]_oejf_rhs_partition_shuffle,
+            dest_trg = [$ $[lbl]_oejf_rhs_partition_receive ],
+            nodes = workers,
+            send_extra_fn = [$ \x -> x ],
+            send_ty = [: _ ]
+          )
+    )
+
+    // Build local RHS hash table.
+    declare $[lbl]_rhs_table: mut _
+    trigger $[lbl]_oejf_rhs_partition_receive: _ = \p -> (
+      p.iterate (\e -> $[lbl]_rhs_table.insert e);
+      (($[lbl]_oejf_lhs_partition_shuffle, me) <- ())
+        @ OnCounter(
+            id = [# $[lbl]_oejf_rhs_partition_receive],
+            eq = [$ $[nodes].size ()],
+            reset = [$ false],
+            profile = [$ false]
+          )
+    )
+
+    // Partition LHS by key and shuffle LHS.
+    trigger $[lbl]_oejf_lhs_partition_shuffle: () = \_ -> (
+      ignore ($[this].group_by $[this_key_func] (\acc -> \e -> acc.insert e; acc) empty {} @ Collection)
+        @ PartitionShuffleWithMissing(
+            lbl = $[lbl]_oejf_lhs_partition_shuffle,
+            dest_trg = [$ $[lbl]_oejf_lhs_partition_receive ],
+            nodes = workers,
+            send_extra_fn = [$ \x -> x ],
+            send_ty = [: _ ]
+          )
+    )
+
+    // Process each incoming LHS partition; notify continuation when done.
+    trigger $[lbl]_oejf_lhs_partition_receive: _ = \p -> (
+      $[var] = p.outerequijoin_fold_kv $[lbl]_rhs_table (\r -> r.key) (\r -> r.key) $[null_emit_func] $[match_emit_func] $[var];
+      (($[dtrig], $[daddr]) <- ())
+        @ OnCounter(
+            id = [# $[lbl]_oejf_lhs_partition_receive],
+            eq = [$ $[nodes].size ()],
+            reset = [$ false],
+            profile = [$ false]
+        )
+    )
+  }
+}
