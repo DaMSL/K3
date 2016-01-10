@@ -153,13 +153,11 @@ optimizeMaterialization dbg mzfs is (p, f) d = runExceptT $ inferMaterialization
        t :@: as -> t :@: as
 
      attachE e = case e of
-       (EOperate OApp :@: as) -> (EOperate OApp :@: (maybeAttachNoInline $ (EMaterialization as' : as)))
+       (EOperate OApp :@: as) -> (EOperate OApp :@: (EMaterialization as' : as))
        (t :@: as) -> (t :@: (EMaterialization as' : as))
       where
         Just u = e @~ isEUID >>= getUID
         as' = MM.fromList [((i, r), q) | ((Juncture u' i, r), q) <- M.toList m, u' == u]
-
-     maybeAttachNoInline = if isolateQueryMZ mzfs then (EProperty (Right ("NoInline", Nothing)):) else id
 
 -- * Types
 

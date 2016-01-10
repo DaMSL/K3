@@ -94,9 +94,6 @@ dataspaceIn e as = isJust $ getKTypeP e >>= \t -> t @~ \case { TAnnotation i -> 
 precludeInline :: K3 Expression -> Bool
 precludeInline e = isJust $ e @~ \case { (EProperty s) -> ePropertyName s == "NoInline"; _ -> False}
 
-doInline :: K3 Expression -> Bool
-doInline = not . precludeInline
-
 stlLinearDSs :: [Identifier]
 stlLinearDSs = ["Collection", "Set", "Vector", "Seq"]
 
@@ -348,7 +345,7 @@ inline e = do
 
       return ([], R.Lambda captures argList True returnType fullBody)
 
-    p@(Fold c) :$: f :$: z  | doInline e -> do
+    p@(Fold c) :$: f :$: z  | not isolateQueryP -> do
       (ce, cv) <- inline c
       (ze, zv) <- inline z
 
@@ -405,7 +402,7 @@ inline e = do
       --                              , R.Pragma $ "clang loop interleave_count(" ++ show i ++ ")"
       --                              ]
 
-    p@(InsertWith c) :$: k :$: w | c `dataspaceIn` stlAssocDSs && doInline e -> do
+    p@(InsertWith c) :$: k :$: w | c `dataspaceIn` stlAssocDSs && not isolateQueryP -> do
       (ce, cv) <- inline c
       (ke, kv) <- inline k
       -- kg <- genSym
@@ -433,7 +430,7 @@ inline e = do
             , R.Initialization R.Unit [])
 
 
-    p@(UpsertWith c) :$: k :$: n :$: w | c `dataspaceIn` stlAssocDSs && doInline e -> do
+    p@(UpsertWith c) :$: k :$: n :$: w | c `dataspaceIn` stlAssocDSs && not isolateQueryP -> do
       (ce, cv) <- inline c
 
       kg <- genSym
@@ -475,7 +472,7 @@ inline e = do
       return (ce ++ [ue] ++ ke ++ [existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb) (wfe ++ wfb)]
             , R.Initialization R.Unit [])
 
-    p@(Lookup c) :$: k :$: n :$: w | c `dataspaceIn` stlAssocDSs && doInline e -> do
+    p@(Lookup c) :$: k :$: n :$: w | c `dataspaceIn` stlAssocDSs && not isolateQueryP -> do
       (ce, cv) <- inline c
       kg <- genSym
       ke <- reify (RDecl kg Nothing) k
@@ -516,7 +513,7 @@ inline e = do
       return (ce ++ [ue] ++ ke ++ [resultDecl, existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb) (wfe ++ wfb)]
             , R.Variable $ R.Name result)
 
-    p@(Peek c) :$: n :$: w | c `dataspaceIn` stlLinearDSs && doInline e -> do
+    p@(Peek c) :$: n :$: w | c `dataspaceIn` stlLinearDSs && not isolateQueryP -> do
       (ce, cv) <- inline c
 
       ug <- genSym
@@ -539,7 +536,7 @@ inline e = do
       return (ce ++ [ue] ++ [resultDecl, firstDecl] ++ [R.IfThenElse firstPred (nfe ++ nfb) (wfe ++ wfb)]
             , R.Variable $ R.Name result)
 
-    p@(SafeAt c) :$: i :$: n :$: w | c `dataspaceIn` stlLinearDSs && doInline e -> do
+    p@(SafeAt c) :$: i :$: n :$: w | c `dataspaceIn` stlLinearDSs && not isolateQueryP -> do
       (ce, cv) <- inline c
       ig <- genSym
       ie <- reify (RDecl ig Nothing) i
@@ -566,7 +563,7 @@ inline e = do
       return (ce ++ [ue] ++ ie ++ [resultDecl] ++ [R.IfThenElse sizeCheck (advance ++ wfe ++ wfb) (nfe ++ nfb)]
             , R.Variable $ R.Name result)
 
-    p@(UnsafeAt c) :$: i :$: w | c `dataspaceIn` stlLinearDSs && doInline e -> do
+    p@(UnsafeAt c) :$: i :$: w | c `dataspaceIn` stlLinearDSs && not isolateQueryP -> do
       (ce, cv) <- inline c
       ig <- genSym
       ie <- reify (RDecl ig Nothing) i
@@ -731,191 +728,191 @@ inline e = do
 -- | The generic function to generate code for an expression whose result is to be reified. The
 -- method of reification is indicated by the @RContext@ argument.
 reify :: RContext -> K3 Expression -> CPPGenM [R.Statement]
-
-reify RForget e@(Fold _ :$: _ :$: _) | doInline e = do
-  (ee, _) <- inline e
-  return ee
-
--- TODO: Is this the fix we need for the unnecessary reification issues?
-reify RForget e@(tag -> EOperate OApp) = do
-    (ee, ev) <- inline e
-    return $ ee ++ [R.Ignore ev]
-
-reify r (tag &&& children -> (EOperate OSeq, [a, b])) = do
-    ae <- reify RForget a
-    be <- reify r b
-    return $ ae ++ be
-
-reify (RDecl i b) x@(tag -> ELetIn _) = precludeRDecl i b x
-
-reify r lt@(tag &&& children -> (ELetIn x, [e, b])) = do
-  ct <- getKType e
-  let initD = getInMethodFor x lt
-  ee <- reify (RDecl x (Just $ initD == Moved)) e
-  be <- reify r b
-  return [R.Block $ ee ++ be]
-
-reify (RDecl i b) x@(tag -> ECaseOf _) = precludeRDecl i b x
-
--- case `e' of { some `x' -> `s' } { none -> `n' }
-reify r k@(tag &&& children -> (ECaseOf x, [e, s, n])) = do
-    let m = getInMethodFor x k
-
-    initKType <- getKType e
-    initCType <- genCType initKType
-
-    let innerCType = case initCType of
-                       R.Pointer t -> t
-                       R.SharedPointer t -> t
-                       _ -> error "Invalid pointer type for case/of"
-
-    -- Code to reify the case/of initializer, and the name of the temporary variable used.
-    (initName, initReify) <-
-      case tag e of
-        EVariable k -> return (k, [])
-        _ -> do
-          g <- genSym
-          ee <- reify (RName (R.Variable $ R.Name g) Nothing) e
-          return (g, [R.Forward $ R.ScalarDecl (R.Name g) initCType Nothing] ++ ee)
-
-    let initExpr = R.Dereference $ R.Variable $ R.Name initName
-
-    let cx = R.Name x
-
-    let initSome =
-          case m of
-            Copied -> [R.Forward $ R.ScalarDecl cx innerCType (Just initExpr)]
-            Moved -> [R.Forward $ R.ScalarDecl cx innerCType (Just $ R.Move initExpr)]
-            Referenced -> [R.Forward $ R.ScalarDecl cx (R.Reference innerCType) (Just initExpr)]
-            ConstReferenced -> [R.Forward $ R.ScalarDecl cx (R.Reference $ R.Const innerCType) (Just initExpr)]
-
-    let writeBackSome = case m of
-                          Copied -> [R.Assignment (R.Variable $ R.Name initName) (R.Variable $ R.Name x)]
-                          Moved -> [R.Assignment (R.Variable $ R.Name initName) (R.Move $ R.Variable $ R.Name x)]
-                          _ -> []
-
-    let writeBackNone = case m of
-                          Copied -> [R.Assignment (R.Variable $ R.Name initName) (R.Literal R.LNullptr)]
-                          Moved -> [R.Assignment (R.Variable $ R.Name initName) (R.Literal R.LNullptr)]
-                          _ -> []
-
-    -- If this case/of is the last expression in the current function and therefore returns,
-    -- writeback must happen before the return takes place.
-    (someE, noneE, returnDecl, returnStmt) <-
-      case r of
-        RReturn j | m == Copied || m == Moved -> do
-          returnName <- genSym
-          returnType <- getKType k >>= genCType
-          let returnDecl = [R.Forward $ R.ScalarDecl (R.Name returnName) returnType Nothing]
-          let returnStmt = if j then R.Move (R.Variable $ R.Name returnName) else (R.Variable $ R.Name returnName)
-          someE <- reify (RName (R.Variable $ R.Name returnName) Nothing) s
-          noneE <- reify (RName (R.Variable $ R.Name returnName) Nothing) n
-
-          return (someE, noneE, returnDecl, [R.Return returnStmt])
-        _ -> do
-          someE <- reify r s
-          noneE <- reify r n
-          return (someE, noneE, [], [])
-
-    return $ initReify ++ [R.IfThenElse (R.Variable $ R.Name initName)
-                              (returnDecl ++ initSome ++ someE ++ writeBackSome ++ returnStmt)
-                              (returnDecl ++ noneE ++ writeBackNone ++ returnStmt)]
-
-reify (RDecl i b) x@(tag -> EBindAs _) = precludeRDecl i b x
-
-reify r k@(tag &&& children -> (EBindAs b, [a, e])) = do
-  let newNames =
-        case b of
-          BIndirection i -> [i]
-          BTuple is -> is
-          BRecord iis -> snd (unzip iis)
-          BSplice _ -> []
-
-  initKType <- getKType a
-  initCType <- genCType initKType
-
-  (initName, initReify) <- do
-    g <- genSym
-    (e, i) <- inline a
-    return (g, e ++ [R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just i)])
-
-    {- case tag a of
-      EVariable v -> return (v, [])
-      _ -> do
-        g <- genSym
-        ee <- reify (RName (R.Variable $ R.Name g) Nothing) a
-        return (g, [R.Forward $ R.ScalarDecl (R.Name g) initCType Nothing] ++ ee) -}
-
-  let initExpr = R.Variable (R.Name initName)
-
-  let initSkeleton t m i e = [R.Forward $ R.ScalarDecl (R.Name i) (t R.Inferred) (Just $ m e)]
-
-  let initByDecision d =
-        case d of
-          Referenced -> initSkeleton R.Reference id
-          ConstReferenced -> initSkeleton (R.Const . R.Reference) id
-          Moved -> initSkeleton id R.Move
-          Copied -> initSkeleton id id
-
-  let bindInit =
-        case b of
-          BIndirection i -> initByDecision (getInMethodFor i k) i (R.Dereference initExpr)
-          BTuple is ->
-            concat [initByDecision (getInMethodFor i k) i (R.TGet initExpr n) | i <- is | n <- [0..]]
-          BRecord iis ->
-            concat [initByDecision (getInMethodFor i k) i (R.Project initExpr (R.Name f)) | (f, i) <- iis]
-          BSplice _ -> []
-
-  let wbByDecision d old new =
-        case d of
-          Referenced -> []
-          ConstReferenced -> []
-          Moved -> [R.Assignment old (R.Move new)]
-          Copied -> [R.Assignment old new]
-
-  let bindWriteBack =
-        case b of
-          BIndirection i -> wbByDecision (getExMethodFor i k) (R.Dereference initExpr) (R.Variable $ R.Name i)
-          BTuple is ->
-            concat [wbByDecision (getExMethodFor i k) (R.TGet initExpr n) (R.Variable $ R.Name i) | i <- is | n <- [0..]]
-          BRecord iis ->
-            concat [wbByDecision (getExMethodFor i k) (R.Project initExpr (R.Name f)) (R.Variable $ R.Name i) | (f, i) <- iis]
-          BSplice _ -> []
-
-  (bindBody, returnDecl, returnStmt) <-
-    case r of
-      RReturn m | any (\d -> d == Moved || d == Copied) (getExDecisions k) -> do
-        returnName <- genSym
-        returnType <- getKType k >>= genCType
-        let returnDecl = [R.Forward $ R.ScalarDecl (R.Name returnName) returnType Nothing]
-        let returnExpr = if m then R.Move (R.Variable $ R.Name returnName) else (R.Variable $ R.Name returnName)
-        bindBody <- reify (RName (R.Variable $ R.Name returnName) (Just m)) e
-        return (bindBody, returnDecl, [R.Return returnExpr])
-      _ -> do
-        bindBody <- reify r e
-        return (bindBody, [], [])
-
-  return $ initReify ++ [R.Block $ bindInit ++ returnDecl ++ bindBody ++ bindWriteBack ++ returnStmt]
-
-reify (RDecl i mb) x@(tag -> EIfThenElse) = precludeRDecl i mb x
-
-reify r (tag &&& children -> (EIfThenElse, [p, t, e])) = do
-    (pe, pv) <- inline p
-    te <- reify r t
-    ee <- reify r e
-    return $ pe ++ [R.IfThenElse pv te ee]
-
--- | Catch-all case
 reify r e = do
-    (effects, value) <- inline e
-    reification <- case r of
-        RForget -> return []
-        RName k b -> return [R.Assignment k (if fromMaybe False b then gMoveByE e value else value)]
-        RDecl i b -> return [R.Forward $ R.ScalarDecl (R.Name i) (R.Inferred)
-                             (Just $ if fromMaybe False b then gMoveByE e value else value)]
-        RReturn b -> return $ [R.Return $ (if b then R.Move else id) value]
-        RSplice _ -> throwE $ CPPGenE "Unsupported reification by splice."
-    return $ effects ++ reification
+  isolateQueryP <- gets (isolateQueryCG . flags)
+  case (r, e) of
+    (RForget, Fold _ :$: _ :$: _) | not isolateQueryP -> do
+      (ee, _) <- inline e
+      return ee
+
+    -- TODO: Is this the fix we need for the unnecessary reification issues?
+    (RForget, _ :$: _) -> do
+      (ee, ev) <- inline e
+      return $ ee ++ [R.Ignore ev]
+
+    (_,(tag &&& children -> (EOperate OSeq, [a, b]))) -> do
+      ae <- reify RForget a
+      be <- reify r b
+      return $ ae ++ be
+
+    (RDecl i b, (tag -> ELetIn _)) -> precludeRDecl i b e
+
+    (_, (tag &&& children -> (ELetIn x, [i, b]))) -> do
+      let initD = getInMethodFor x e
+      ie <- reify (RDecl x (Just $ initD == Moved)) i
+      be <- reify r b
+      return [R.Block $ ie ++ be]
+
+    (RDecl i b, (tag -> ECaseOf _)) -> precludeRDecl i b e
+
+    (_, k@(tag &&& children -> (ECaseOf x, [e, s, n]))) -> do
+      let m = getInMethodFor x k
+
+      initKType <- getKType e
+      initCType <- genCType initKType
+
+      let innerCType = case initCType of
+                        R.Pointer t -> t
+                        R.SharedPointer t -> t
+                        _ -> error "Invalid pointer type for case/of"
+
+      -- Code to reify the case/of initializer, and the name of the temporary variable used.
+      (initName, initReify) <-
+        case tag e of
+          EVariable k -> return (k, [])
+          _ -> do
+            g <- genSym
+            ee <- reify (RName (R.Variable $ R.Name g) Nothing) e
+            return (g, [R.Forward $ R.ScalarDecl (R.Name g) initCType Nothing] ++ ee)
+
+      let initExpr = R.Dereference $ R.Variable $ R.Name initName
+
+      let cx = R.Name x
+
+      let initSome =
+            case m of
+              Copied -> [R.Forward $ R.ScalarDecl cx innerCType (Just initExpr)]
+              Moved -> [R.Forward $ R.ScalarDecl cx innerCType (Just $ R.Move initExpr)]
+              Referenced -> [R.Forward $ R.ScalarDecl cx (R.Reference innerCType) (Just initExpr)]
+              ConstReferenced -> [R.Forward $ R.ScalarDecl cx (R.Reference $ R.Const innerCType) (Just initExpr)]
+
+      let writeBackSome = case m of
+                            Copied -> [R.Assignment (R.Variable $ R.Name initName) (R.Variable $ R.Name x)]
+                            Moved -> [R.Assignment (R.Variable $ R.Name initName) (R.Move $ R.Variable $ R.Name x)]
+                            _ -> []
+
+      let writeBackNone = case m of
+                            Copied -> [R.Assignment (R.Variable $ R.Name initName) (R.Literal R.LNullptr)]
+                            Moved -> [R.Assignment (R.Variable $ R.Name initName) (R.Literal R.LNullptr)]
+                            _ -> []
+
+      -- If this case/of is the last expression in the current function and therefore returns,
+      -- writeback must happen before the return takes place.
+      (someE, noneE, returnDecl, returnStmt) <-
+        case r of
+          RReturn j | m == Copied || m == Moved -> do
+            returnName <- genSym
+            returnType <- getKType k >>= genCType
+            let returnDecl = [R.Forward $ R.ScalarDecl (R.Name returnName) returnType Nothing]
+            let returnStmt = if j then R.Move (R.Variable $ R.Name returnName) else (R.Variable $ R.Name returnName)
+            someE <- reify (RName (R.Variable $ R.Name returnName) Nothing) s
+            noneE <- reify (RName (R.Variable $ R.Name returnName) Nothing) n
+
+            return (someE, noneE, returnDecl, [R.Return returnStmt])
+          _ -> do
+            someE <- reify r s
+            noneE <- reify r n
+            return (someE, noneE, [], [])
+
+      return $ initReify ++ [R.IfThenElse (R.Variable $ R.Name initName)
+                                (returnDecl ++ initSome ++ someE ++ writeBackSome ++ returnStmt)
+                                (returnDecl ++ noneE ++ writeBackNone ++ returnStmt)]
+
+    (RDecl i b, x@(tag -> EBindAs _)) -> precludeRDecl i b x
+
+    (_, k@(tag &&& children -> (EBindAs b, [a, e]))) -> do
+      let newNames =
+            case b of
+              BIndirection i -> [i]
+              BTuple is -> is
+              BRecord iis -> snd (unzip iis)
+              BSplice _ -> []
+
+      initKType <- getKType a
+      initCType <- genCType initKType
+
+      (initName, initReify) <- do
+        g <- genSym
+        (e, i) <- inline a
+        return (g, e ++ [R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just i)])
+
+        {- case tag a of
+          EVariable v -> return (v, [])
+          _ -> do
+            g <- genSym
+            ee <- reify (RName (R.Variable $ R.Name g) Nothing) a
+            return (g, [R.Forward $ R.ScalarDecl (R.Name g) initCType Nothing] ++ ee) -}
+
+      let initExpr = R.Variable (R.Name initName)
+
+      let initSkeleton t m i e = [R.Forward $ R.ScalarDecl (R.Name i) (t R.Inferred) (Just $ m e)]
+
+      let initByDecision d =
+            case d of
+              Referenced -> initSkeleton R.Reference id
+              ConstReferenced -> initSkeleton (R.Const . R.Reference) id
+              Moved -> initSkeleton id R.Move
+              Copied -> initSkeleton id id
+
+      let bindInit =
+            case b of
+              BIndirection i -> initByDecision (getInMethodFor i k) i (R.Dereference initExpr)
+              BTuple is ->
+                concat [initByDecision (getInMethodFor i k) i (R.TGet initExpr n) | i <- is | n <- [0..]]
+              BRecord iis ->
+                concat [initByDecision (getInMethodFor i k) i (R.Project initExpr (R.Name f)) | (f, i) <- iis]
+              BSplice _ -> []
+
+      let wbByDecision d old new =
+            case d of
+              Referenced -> []
+              ConstReferenced -> []
+              Moved -> [R.Assignment old (R.Move new)]
+              Copied -> [R.Assignment old new]
+
+      let bindWriteBack =
+            case b of
+              BIndirection i -> wbByDecision (getExMethodFor i k) (R.Dereference initExpr) (R.Variable $ R.Name i)
+              BTuple is ->
+                concat [wbByDecision (getExMethodFor i k) (R.TGet initExpr n) (R.Variable $ R.Name i) | i <- is | n <- [0..]]
+              BRecord iis ->
+                concat [wbByDecision (getExMethodFor i k) (R.Project initExpr (R.Name f)) (R.Variable $ R.Name i) | (f, i) <- iis]
+              BSplice _ -> []
+
+      (bindBody, returnDecl, returnStmt) <-
+        case r of
+          RReturn m | any (\d -> d == Moved || d == Copied) (getExDecisions k) -> do
+            returnName <- genSym
+            returnType <- getKType k >>= genCType
+            let returnDecl = [R.Forward $ R.ScalarDecl (R.Name returnName) returnType Nothing]
+            let returnExpr = if m then R.Move (R.Variable $ R.Name returnName) else (R.Variable $ R.Name returnName)
+            bindBody <- reify (RName (R.Variable $ R.Name returnName) (Just m)) e
+            return (bindBody, returnDecl, [R.Return returnExpr])
+          _ -> do
+            bindBody <- reify r e
+            return (bindBody, [], [])
+
+      return $ initReify ++ [R.Block $ bindInit ++ returnDecl ++ bindBody ++ bindWriteBack ++ returnStmt]
+
+    (RDecl i mb, x@(tag -> EIfThenElse)) -> precludeRDecl i mb x
+
+    (_, (tag &&& children -> (EIfThenElse, [p, t, e]))) -> do
+        (pe, pv) <- inline p
+        te <- reify r t
+        ee <- reify r e
+        return $ pe ++ [R.IfThenElse pv te ee]
+
+    -- | Catch-all case
+    _ -> do
+      (effects, value) <- inline e
+      reification <- case r of
+          RForget -> return []
+          RName k b -> return [R.Assignment k (if fromMaybe False b then gMoveByE e value else value)]
+          RDecl i b -> return [R.Forward $ R.ScalarDecl (R.Name i) (R.Inferred)
+                              (Just $ if fromMaybe False b then gMoveByE e value else value)]
+          RReturn b -> return $ [R.Return $ (if b then R.Move else id) value]
+          RSplice _ -> throwE $ CPPGenE "Unsupported reification by splice."
+      return $ effects ++ reification
 
 doubleReify :: RContext -> K3 Expression -> CPPGenM [R.Statement]
 doubleReify r e = do
