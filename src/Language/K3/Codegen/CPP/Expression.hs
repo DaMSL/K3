@@ -374,9 +374,10 @@ inline e = do
 
       let loopBody = fb
 
-      loopIndexIsIsolated <- gets (isolateLoopIndex . flags)
 
-      let loop = R.ForEach eleVar ((if loopIndexIsIsolated then id else R.Reference) $ R.Inferred) cv (R.Block loopBody)
+      -- loopIndexIsIsolated <- gets (isolateLoopIndex . flags)
+
+      let loop = R.ForEach eleVar ((if isolateApplicationP then id else R.Reference) $ R.Inferred) cv (R.Block loopBody)
 
       let bb = if null fe then loop else R.Block (fe ++ [loop])
 
