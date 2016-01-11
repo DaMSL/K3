@@ -594,7 +594,7 @@ inline e = do
       es <- guardDReify (RDecl g Nothing) (e @:+ "QueryIsolated")
       return (es, R.Variable $ R.Name g)
 
-    _ :$: _ | isolateApplicationP && e @:? "FusionSource" && not (e @:? "ApplicationIsolated") -> do
+    f :$: x | isolateApplicationP && e @:? "FusionSource" && not (e @:? "ApplicationIsolated") -> do
       g <- genSym
       es <- guardDReify (RDecl g Nothing) (e @:+ "ApplicationIsolated")
       return (es, R.Variable $ R.Name g)
@@ -606,7 +606,14 @@ inline e = do
       let (f, as) = rollAppChain e
       (fe, fv) <- inline f
       let xs = map (last . children) as
-      (unzip -> (xes, xvs)) <- mapM inline xs
+      let inline' e' =
+            if e @:? "FusionSource" && isolateApplicationP then do
+              g <- genSym
+              es <- reify (RDecl g Nothing) e'
+              return (es, R.Variable $ R.Name g)
+            else inline e'
+
+      (unzip -> (xes, xvs)) <- mapM inline' xs
 
       let reifyArg (x, xv, m) = do
             let orderAgnosticP = R.isOrderAgnostic xv
