@@ -673,7 +673,12 @@ declTransforms stSpec extInfOpt n = topLevel
         mkT $ mkSeqRep "Optimize-NoBR" highLevel $ fPf fst $ prepend [ ("refreshI",       False) ]
                                                                    $ [ ("Decl-Simplify",  True)
                                                                      , ("Decl-Fuse-NoBR", True)
-                                                                     , ("Decl-Simplify",  True) ]
+                                                                     , ("Decl-Simplify",  True) ],
+        second mkFix $
+        mkT $ mkSeqRep "isolateApplication" highLevel $ fPf fst $ prepend [ ("refreshI",          False) ]
+                                                                        $ [ ("Decl-Simplify",     True)
+                                                                          , ("Decl-Fuse-FT-NoBR", True)
+                                                                          , ("Decl-Simplify",     True) ]
 
       , mkW (transformE mosaicWarmupMapRewrites) "Mosaic" False True False False Nothing
       ]) `Map.union` highLevel
@@ -691,6 +696,11 @@ declTransforms stSpec extInfOpt n = topLevel
       , mkT $ mkSeq "Decl-Fuse-NoBR" lowLevel $ fP [ "Decl-FE-NoBR"
                                                    , "typEffI"
                                                    ]
+
+      , mkT $ mkSeq "Decl-Fuse-FT-NoBR" lowLevel $ fP [ "Decl-FE-NoBR"
+                                                      , "typEffI"
+                                                      , "Decl-FT"
+                                                      ]
       ]) `Map.union` lowLevel
 
     lowLevel = Map.fromList $ fPf fst $ [
