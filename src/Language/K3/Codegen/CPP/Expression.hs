@@ -330,7 +330,7 @@ inline e = do
                     Forwarded -> R.RValueReference R.Inferred
                     _ -> R.Inferred
                 reifyFrom = case discriminator of
-                    Copied -> id
+                    -- Copied -> id
                     _ -> R.SForward (R.ConstExpr $ R.Call (R.Variable $ R.Name "decltype") [R.Variable $ R.Name g])
             in [R.Forward $ R.ScalarDecl (R.Name a) reifyType
                 (Just $ reifyFrom (R.Variable $ R.Name g))]
