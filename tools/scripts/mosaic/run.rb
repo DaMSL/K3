@@ -435,6 +435,7 @@ def run_deploy_k3_local(bin_path, nice_name, script_path)
   args = ""
   args << "--json #{json_dist_path} " unless $options[:logging] == :none
   args << "--json_final_only " if $options[:logging] == :final
+  args << "-g '#{$options[:json_regex]}' " if $options[:json_regex]
   cmd_suffix = "#{bin_path} -p #{role_path} #{args}"
   frequency = if $options[:perf_frequency] then $options[:perf_frequency] else "10" end
   perf_cmd = "perf record -F #{frequency} -a --call-graph dwarf -- "
@@ -487,7 +488,7 @@ def parse_dbt_results(dbt_name)
   return dbt_results
 end
 
-def parse_k3_results(dbt_results, jobid, full_ktrace)
+def parse_k3_results(dbt_results, jobid, full_json)
   stage "[6] Parsing K3 results"
 
   job_sandbox_path = File.join($workdir, "job_#{jobid}")
@@ -503,7 +504,7 @@ def parse_k3_results(dbt_results, jobid, full_ktrace)
   str = File.read(globals_path)
   stage "[6] Found K3 globals.csv"
 
-  if full_ktrace
+  if full_json
     max_msg_ids = {}
     str.each_line do |line|
       fields = line.split('|')
@@ -520,8 +521,8 @@ def parse_k3_results(dbt_results, jobid, full_ktrace)
     map_name = csv[2]
     map_data = csv[3]
 
-    # skip intermediate state if using full ktrace
-    next if full_ktrace && msg_id != max_msg_ids[peer]
+    # skip intermediate state if using full json
+    next if full_json && msg_id != max_msg_ids[peer]
 
     # skip irrelevant maps
     next unless dbt_results.has_key? map_name
@@ -811,9 +812,10 @@ def main()
     opts.on("--moderate2",  "Query is of moderate skew (and size), class 2") { $options[:skew] = :moderate2}
     opts.on("--extreme",  "Query is of extreme skew (and size)") { $options[:skew] = :extreme}
     opts.on("--dry-run",  "Dry run for Mosaic deployment (generates K3 YAML topology)") { $options[:dry_run] = true}
-    opts.on("--full-ktrace", "Turn on JSON logging for ktrace") { $options[:logging] = :full }
-    opts.on("--final-ktrace", "Turn on final JSON logging for ktrace") { $options[:logging] = :final }
-    opts.on("--no-ktrace", "Turn off JSON logging for ktrace") { $options[:logging] = :none }
+    opts.on("--full-json", "Turn on JSON logging for ktrace") { $options[:logging] = :full }
+    opts.on("--final-json", "Turn on final JSON logging for ktrace") { $options[:logging] = :final }
+    opts.on("--json-regex [REGEX]", "Regex pattern for JSON logging") { |s| $options[:json_regex] = s}
+    opts.on("--no-json", "Turn off JSON logging for ktrace") { $options[:logging] = :none }
     opts.on("--perf-profile", "Turn on perf profiling") { $options[:profile] = :perf }
     opts.on("--perf-frequency [NUM]", String, "Set perf profiling frequency") { |s| $options[:perf_frequency] = s }
     opts.on("--core-dump", "Turn on core dump for distributed run") { $options[:core_dump] = true }

@@ -218,6 +218,7 @@ inline :: K3 Expression -> CPPGenM ([R.Statement], R.Expression)
 inline e = do
   isolateApplicationP <- gets (isolateApplicationCG . flags)
   isolateQueryP <- gets (isolateQueryCG . flags)
+  let doInlineP = not (isolateApplicationP || isolateQueryP)
   case e of
     (tag &&& annotations -> (EConstant (CEmpty t), as)) ->
       case annotationComboIdE as of
@@ -329,7 +330,7 @@ inline e = do
                     Forwarded -> R.RValueReference R.Inferred
                     _ -> R.Inferred
                 reifyFrom = case discriminator of
-                    Copied -> id
+                    -- Copied -> id
                     _ -> R.SForward (R.ConstExpr $ R.Call (R.Variable $ R.Name "decltype") [R.Variable $ R.Name g])
             in [R.Forward $ R.ScalarDecl (R.Name a) reifyType
                 (Just $ reifyFrom (R.Variable $ R.Name g))]
@@ -345,7 +346,7 @@ inline e = do
 
       return ([], R.Lambda captures argList True returnType fullBody)
 
-    p@(Fold c) :$: f :$: z  | not isolateQueryP -> do
+    p@(Fold c) :$: f :$: z  | doInlineP -> do
       (ce, cv) <- inline c
       (ze, zv) <- inline z
 
@@ -403,7 +404,7 @@ inline e = do
       --                              , R.Pragma $ "clang loop interleave_count(" ++ show i ++ ")"
       --                              ]
 
-    p@(InsertWith c) :$: k :$: w | c `dataspaceIn` stlAssocDSs && not isolateQueryP -> do
+    p@(InsertWith c) :$: k :$: w | c `dataspaceIn` stlAssocDSs && doInlineP -> do
       (ce, cv) <- inline c
       (ke, kv) <- inline k
       -- kg <- genSym
@@ -431,7 +432,7 @@ inline e = do
             , R.Initialization R.Unit [])
 
 
-    p@(UpsertWith c) :$: k :$: n :$: w | c `dataspaceIn` stlAssocDSs && not isolateQueryP -> do
+    p@(UpsertWith c) :$: k :$: n :$: w | c `dataspaceIn` stlAssocDSs && doInlineP -> do
       (ce, cv) <- inline c
 
       kg <- genSym
@@ -473,7 +474,7 @@ inline e = do
       return (ce ++ [ue] ++ ke ++ [existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb) (wfe ++ wfb)]
             , R.Initialization R.Unit [])
 
-    p@(Lookup c) :$: k :$: n :$: w | c `dataspaceIn` stlAssocDSs && not isolateQueryP -> do
+    p@(Lookup c) :$: k :$: n :$: w | c `dataspaceIn` stlAssocDSs && doInlineP -> do
       (ce, cv) <- inline c
       kg <- genSym
       ke <- reify (RDecl kg Nothing) k
@@ -514,7 +515,7 @@ inline e = do
       return (ce ++ [ue] ++ ke ++ [resultDecl, existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb) (wfe ++ wfb)]
             , R.Variable $ R.Name result)
 
-    p@(Peek c) :$: n :$: w | c `dataspaceIn` stlLinearDSs && not isolateQueryP -> do
+    p@(Peek c) :$: n :$: w | c `dataspaceIn` stlLinearDSs && doInlineP -> do
       (ce, cv) <- inline c
 
       ug <- genSym
@@ -537,7 +538,7 @@ inline e = do
       return (ce ++ [ue] ++ [resultDecl, firstDecl] ++ [R.IfThenElse firstPred (nfe ++ nfb) (wfe ++ wfb)]
             , R.Variable $ R.Name result)
 
-    p@(SafeAt c) :$: i :$: n :$: w | c `dataspaceIn` stlLinearDSs && not isolateQueryP -> do
+    p@(SafeAt c) :$: i :$: n :$: w | c `dataspaceIn` stlLinearDSs && doInlineP -> do
       (ce, cv) <- inline c
       ig <- genSym
       ie <- reify (RDecl ig Nothing) i
@@ -564,7 +565,7 @@ inline e = do
       return (ce ++ [ue] ++ ie ++ [resultDecl] ++ [R.IfThenElse sizeCheck (advance ++ wfe ++ wfb) (nfe ++ nfb)]
             , R.Variable $ R.Name result)
 
-    p@(UnsafeAt c) :$: i :$: w | c `dataspaceIn` stlLinearDSs && not isolateQueryP -> do
+    p@(UnsafeAt c) :$: i :$: w | c `dataspaceIn` stlLinearDSs && doInlineP -> do
       (ce, cv) <- inline c
       ig <- genSym
       ie <- reify (RDecl ig Nothing) i
@@ -593,7 +594,7 @@ inline e = do
       es <- guardDReify (RDecl g Nothing) (e @:+ "QueryIsolated")
       return (es, R.Variable $ R.Name g)
 
-    _ :$: _ | isolateApplicationP && e @:? "FusionSource" && not (e @:? "ApplicationIsolated") -> do
+    f :$: x | isolateApplicationP && e @:? "FusionSource" && not (e @:? "ApplicationIsolated") -> do
       g <- genSym
       es <- guardDReify (RDecl g Nothing) (e @:+ "ApplicationIsolated")
       return (es, R.Variable $ R.Name g)
@@ -605,7 +606,14 @@ inline e = do
       let (f, as) = rollAppChain e
       (fe, fv) <- inline f
       let xs = map (last . children) as
-      (unzip -> (xes, xvs)) <- mapM inline xs
+      let inline' e' =
+            if e @:? "FusionSource" && isolateApplicationP then do
+              g <- genSym
+              es <- reify (RDecl g Nothing) e'
+              return (es, R.Variable $ R.Name g)
+            else inline e'
+
+      (unzip -> (xes, xvs)) <- mapM inline' xs
 
       let reifyArg (x, xv, m) = do
             let orderAgnosticP = R.isOrderAgnostic xv
@@ -730,9 +738,11 @@ inline e = do
 -- method of reification is indicated by the @RContext@ argument.
 reify :: RContext -> K3 Expression -> CPPGenM [R.Statement]
 reify r e = do
+  isolateApplicationP <- gets (isolateApplicationCG . flags)
   isolateQueryP <- gets (isolateQueryCG . flags)
+  let doInlineP = not (isolateApplicationP || isolateQueryP)
   case (r, e) of
-    (RForget, Fold _ :$: _ :$: _) | not isolateQueryP -> do
+    (RForget, Fold _ :$: _ :$: _) | doInlineP -> do
       (ee, _) <- inline e
       return ee
 

@@ -131,7 +131,7 @@ def inplace_process(prefix):
         for f in files:
             name, ext = os.path.splitext(f)
             new_name = name + "_clean" + ext
-            tests = [("Globals", [0]), ("Messages", [0, 5])]
+            tests = [("Globals$", [0]), ("Messages$", [0, 5])]
             for regex, indices in tests:
                 if re.search(regex, name):
                     with open(os.path.join(root, new_name), "w", newline='') as out_file:
