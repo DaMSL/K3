@@ -1,0 +1,45 @@
+include "tpch/benchmark.k3"
+include "Annotation/Set.k3"
+
+declare q6_selectivity_quantity_threshold: int = 24
+
+declare lineitem_r : lineitem_r
+declare lineitem   : mut q6_lineitem_bag
+declare q6_result  : mut real = 0.0
+declare results    : collection {revenue: real} @Collection
+
+trigger q6_local : () = \_ -> (
+  (ignore
+    ((( (lineitem
+        .filter  (\r ->     ( r.l_shipdate >= 19940101 )
+                        and ( r.l_shipdate <  19950101 )
+                        and ( r.l_discount >= ( 0.05 ) )
+                        and ( r.l_discount <= ( 0.07 ) )
+                        and ( r.l_quantity < q6_selectivity_quantity_threshold )
+                  )
+        ).fold    (\acc -> \r -> (acc + (r.l_extendedprice * r.l_discount))) 0.0
+      )) @:Result) @TPCHBenchmark);
+  lineitem = empty q6_lineitem_r @Collection
+)
+
+trigger start : () = \_ -> (() @:Start) @TPCHBenchmark(
+  nodes                = [$ peers],
+  onReadyExpr          = [$ peers.iterate (\x -> (q6_local, x.addr) <- () ) ],
+  loadExpr             = [$ q6_lineitemLoaderPC lineitemFiles lineitem lineitem_r
+                         ],
+  preLoadExpr          = [$ ()],
+  preReadyExpr         = [$ ()],
+  finishArgT           = [: real],
+  preTestFinishExpr    = [$ (\x -> q6_result = q6_result + x)],
+  preFinishExpr        = [$ ( (results.insert {revenue: q6_result});
+                              (results_sink, me) <- q6_result )
+                         ],
+  preShutdownExpr      = [$ ()],
+  finishAsShutdownExpr = [$ true ]
+)
+
+sink results_sink : real = file "results.csv" text csv
+sink query_time_sink : int = file "time.csv" text csv
+
+source rows : () = value ()
+feed rows |> start
