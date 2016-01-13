@@ -11,9 +11,8 @@ control ManualFusion {
                      if $.[filterF] v then
                      ( let k  = $.[gbF1] v in
                        let k2 = $.[gbF2] {key: k, value: $.[z1]} in
-                       let cz1 = $.[fz1] in
-                       ((acc2.upsert_with {key: k2, value: cz1}
-                           (\_ -> let ncz1 = cz1 in
+                       ((acc2.upsert_with {key: k2, value: $.[fz1]}
+                           (\_ -> let ncz1 = $.[fz1] in
                                   ((ncz1.insert {key: k, value: (($.[accF1] $.[z1]) v)});
                                    {key: k2, value: ncz1})
                            )
@@ -41,9 +40,8 @@ control ManualFusion {
                      if $.[filterF] v then
                      ( let k  = $.[gbF1] v in
                        let k2 = $.[gbF2] {key: k, value: $.[z1]} in
-                       let cz1 = $.[fz1] in
-                       ((acc2.upsert_with {key: k2, value: cz1}
-                           (\_ -> let ncz1 = cz1 in
+                       ((acc2.upsert_with {key: k2, value: $.[fz1]}
+                           (\_ -> let ncz1 = $.[fz1] in
                                   ((ncz1.insert {key: k, value: (($.[accF1] $.[z1]) v)});
                                    {key: k2, value: ncz1})
                            )
@@ -71,9 +69,8 @@ control ManualFusion {
                      if $.[filterF] v then
                      ( let k  = $.[gbF1] v in
                        let k2 = $.[gbF2] {key: k, value: $.[z1]} in
-                       let cz1 = $.[fz1] in
-                       ((acc2.upsert_with {key: k2, value: cz1}
-                           (\_ -> let ncz1 = cz1 in
+                       ((acc2.upsert_with {key: k2, value: $.[fz1]}
+                           (\_ -> let ncz1 = $.[fz1] in
                                   ((ncz1.insert {key: k, value: (($.[accF1] $.[z1]) v)});
                                    {key: k2, value: ncz1})
                            )

@@ -24,6 +24,14 @@ QUERIES = {
       "scalability_64" => "scalability/64.yml",
       "scalability_32" => "scalability/32.yml",
       "scalability_16" => "scalability/16.yml",
+
+      "10g_selectivity_0.0" => "selectivity/tpch_10g_selectivity_0.0.yml",
+      "10g_selectivity_0.5" => "selectivity/tpch_10g_selectivity_0.5.yml",
+      "10g_selectivity_1.0" => "selectivity/tpch_10g_selectivity_1.0.yml",
+
+      "100g_selectivity_0.0" => "selectivity/tpch_100g_selectivity_0.0.yml",
+      "100g_selectivity_0.5" => "selectivity/tpch_100g_selectivity_0.5.yml",
+      "100g_selectivity_1.0" => "selectivity/tpch_100g_selectivity_1.0.yml",
     },
     :queries => {
       "1" => "examples/sql/tpch/queries/k3/q1.k3",
@@ -32,6 +40,13 @@ QUERIES = {
       "6" => "examples/sql/tpch/queries/k3/q6.k3",
       "18" => "examples/sql/tpch/queries/k3/barrier-queries/q18.k3",
       "22" => "examples/sql/tpch/queries/k3/barrier-queries/q22.k3",
+
+      "1s" => "examples/sql/tpch/queries/k3/selectivity/q1.k3",
+      "3s" => "examples/sql/tpch/queries/k3/selectivity/q3.k3",
+      "5s" => "examples/sql/tpch/queries/k3/selectivity/q5_bushy_broadcast_broj2.k3",
+      "6s" => "examples/sql/tpch/queries/k3/selectivity/q6.k3",
+      "18s" => "examples/sql/tpch/queries/k3/selectivity/q18.k3",
+      "22s" => "examples/sql/tpch/queries/k3/selectivity/q22.k3",
     }
   },
 

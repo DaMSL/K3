@@ -1,0 +1,26 @@
+volumes:
+  - {host: /local, container: /local}
+name: role 1
+peers: 128
+hostmask: ".*hm.*"
+privileged: True
+k3_globals:
+  role: [{i: rows}]
+  master: auto
+  q1_selectivity_date_threshold: 19920102
+  q3_selectivity_mktsegments: []
+  q5_selectivity_regions: []
+  q6_selectivity_date_lbound: 19920102
+  q6_selectivity_date_ubound: 19920102
+  q18_selectivity_sum_quantity_threshold: 0
+  q22_selectivity_valid_phones: []
+k3_data:
+  - {var: dataFiles, path: /local/data/tpch100g/lineitem, policy: global}
+  - {var: lineitemFiles, path: /local/data/tpch100g/lineitem, policy: global}
+  - {var: customerFiles, path: /local/data/tpch100g/customer, policy: global}  
+  - {var: ordersFiles, path: /local/data/tpch100g/orders, policy: global}  
+  - {var: supplierFiles, path: /local/data/tpch100g/supplier, policy: global}  
+  - {var: partsuppFiles, path: /local/data/tpch100g/partsupp, policy: global}  
+  - {var: partFiles, path: /local/data/tpch100g/part, policy: global}  
+  - {var: regionFiles, path: /local/data/tpch100g/region, policy: replicate}
+  - {var: nationFiles, path: /local/data/tpch100g/nation, policy: replicate}
