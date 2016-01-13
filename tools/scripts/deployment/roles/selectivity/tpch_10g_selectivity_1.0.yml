@@ -11,7 +11,7 @@ k3_globals:
                                 {key: FURNITURE, value: []},
                                 {key: HOUSEHOLD, value: []},
                                 {key: MACHINERY, value: []}
-                              ],
+                              ]
   q5_selectivity_regions: [ {key: ASIA, value: []},
                             {key: AMERICA, value: []},
                             {key: EUROPE, value: []},
