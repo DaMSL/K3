@@ -1,7 +1,7 @@
 include "tpch/benchmark.k3"
 include "Annotation/Set.k3"
 
-declare q1_date_threshold: int = 19980902
+declare q1_selectivity_date_threshold: int = 19980902
 
 declare master : address
 
@@ -71,7 +71,7 @@ declare order_agg : {elem : q1_result_r} -> {elem : q1_result_r} -> int =
 
 trigger q1 : () = \_ -> (
   (ignore
-    ((lineitem.filter   (\r -> r.l_shipdate <= q1_date_threshold))
+    ((lineitem.filter   (\r -> r.l_shipdate <= q1_selectivity_date_threshold))
               .group_by (\r -> (r.l_returnflag, r.l_linestatus))
                         accum_agg
                         init_agg)
