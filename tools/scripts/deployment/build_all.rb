@@ -32,6 +32,13 @@ QUERIES = {
       "6" => "examples/sql/tpch/queries/k3/q6.k3",
       "18" => "examples/sql/tpch/queries/k3/barrier-queries/q18.k3",
       "22" => "examples/sql/tpch/queries/k3/barrier-queries/q22.k3",
+
+      "1s" => "examples/sql/tpch/queries/k3/selectivity/q1.k3",
+      "3s" => "examples/sql/tpch/queries/k3/selectivity/q3.k3",
+      "5s" => "examples/sql/tpch/queries/k3/selectivity/q5_bushy_broadcast_broj2.k3",
+      "6s" => "examples/sql/tpch/queries/k3/selectivity/q6.k3",
+      "18s" => "examples/sql/tpch/queries/k3/selectivity/q18.k3",
+      "22s" => "examples/sql/tpch/queries/k3/selectivity/q22.k3",
     }
   },
 
