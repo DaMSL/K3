@@ -291,6 +291,8 @@ inline e = do
 
     e@(tag -> ELambda _) -> do
       resetApplyLevel
+      -- let isAccumulating = (not isolateQueryP) && e @:? "ReturnsArgument"
+      let isAccumulating = False
 
       let (unzip -> (argNames, fExprs), b) = rollLambdaChain e
 
@@ -310,7 +312,7 @@ inline e = do
 
       -- let nrvo = getExMethodFor anon innerFExpr == Moved
 
-      body <- reify (RReturn False) b
+      body <- reify (if isAccumulating then RForget else RReturn False) b
 
       let captureByMtrlzn i m = case m of
             ConstReferenced -> R.RefCapture (Just (i, Nothing))
@@ -323,7 +325,7 @@ inline e = do
                               $ getInDecisions outerFExpr)
 
       let reifyArg a g = if a == "_" then [] else
-            let discriminator = getInMethodFor a innerFExpr
+            let discriminator = if a == head (argNames) && isAccumulating then Referenced else (getInMethodFor a innerFExpr)
                 reifyType = case discriminator of
                     ConstReferenced -> R.Reference $ R.Const R.Inferred
                     Referenced -> R.Reference R.Inferred
@@ -344,7 +346,7 @@ inline e = do
                     | fi <- argNames
                     ]
 
-      return ([], R.Lambda captures argList True returnType fullBody)
+      return ([], R.Lambda captures argList True (if isAccumulating then Just R.Void else returnType) fullBody)
 
     p@(Fold c) :$: f :$: z  | doInlineP -> do
       (ce, cv) <- inline c
@@ -357,7 +359,8 @@ inline e = do
                                       ; _ -> False
                                       })
 
-          isSM = isAP || isRA
+          -- isSM = isAP || isRA
+          isSM = False
 
       eleMove <- getKType c >>= \(tag &&& children -> (TCollection, [t])) -> return $ getInMethodFor anon p == Moved && isNonScalarType t
 
@@ -463,7 +466,8 @@ inline e = do
 
       (nfe, nfb) <- inlineApply False (RName (R.Subscript uv kv) (Just True)) n [R.Initialization R.Unit []]
 
-      let rArg = isJust $ w @~ (\case { EProperty (ePropertyName -> "ReturnsArgument") -> True; _ -> False })
+      -- let rArg = isJust $ w @~ (\case { EProperty (ePropertyName -> "ReturnsArgument") -> True; _ -> False })
+      let rArg = False
       let rContext = if rArg
                       then RForget
                       else RName (R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")) (Just True)
@@ -622,6 +626,7 @@ inline e = do
                 let castMoveP = maybe True (\m -> needsMoveCast m xv) (getKTypeP x)
 
                 let castModifier = case getInMethodFor anon m of
+                      -- _ | not isolateQueryP && f @:? "ReturnsArgument" -> id
                       Moved | castMoveP -> R.Move
                       Forwarded -> R.FMacro
                       _ -> id
