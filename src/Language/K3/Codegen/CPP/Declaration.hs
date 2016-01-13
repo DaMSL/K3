@@ -303,7 +303,7 @@ genLoader elemWrap fixedSize projectedLoader asReturn addMeta addMultiplicity se
  let setMeta = R.Assignment (R.Project (bw $ R.Variable $ R.Name "record") (R.Name "meta")) (R.Call (R.Variable $ R.Name "mf") [R.Initialization R.Unit [] ])
  let setMult = R.Assignment (R.Project (R.Variable $ R.Name "record") (R.Name . last . fst $ fields)) (R.Literal $ R.LInt 1)
 
- let ftsToRead = init ftsWSkip
+ let ftsToRead = if addMultiplicity then init ftsWSkip else ftsWSkip
  let recordGetLines = recordDecl
                       ++ concat [readField field ft skip False | (field, ft, skip)  <- init ftsToRead]
                       ++ (\(a,b,c) -> readField a b c True) (last ftsToRead)
