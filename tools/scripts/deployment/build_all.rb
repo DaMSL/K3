@@ -24,6 +24,12 @@ QUERIES = {
       "scalability_64" => "scalability/64.yml",
       "scalability_32" => "scalability/32.yml",
       "scalability_16" => "scalability/16.yml",
+
+      "10g_selectivity_0.0" => "selectivity/tpch_10g_selectivity_0.0.yml",
+      "10g_selectivity_1.0" => "selectivity/tpch_10g_selectivity_1.0.yml",
+
+      "100g_selectivity_0.0" => "selectivity/tpch_100g_selectivity_0.0.yml",
+      "100g_selectivity_1.0" => "selectivity/tpch_100g_selectivity_1.0.yml",
     },
     :queries => {
       "1" => "examples/sql/tpch/queries/k3/q1.k3",
