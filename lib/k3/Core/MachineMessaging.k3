@@ -205,7 +205,7 @@ control BroadcastByMachine[lbl : label, dest_trg : expr, masters : expr, masters
                          , send_ty : type, send_extra_fn : expr]
 {
   ( ignore (?e : collection ?t) ) @:Send
-    => (( ignore $.[e] ) @: SendBroadcast
+    => (( ignore $.[e] ) @:SendBroadcast
        ) @DispatchByMachine( lbl = lbl, dest_trg = dest_trg
                            , masters = masters, masters_map = masters_map
                            , send_ty = send_ty, send_extra_fn = send_extra_fn )
@@ -213,7 +213,7 @@ control BroadcastByMachine[lbl : label, dest_trg : expr, masters : expr, masters
     +> {}
 
   () @:Send
-    => ( ( ignore () ) @: SendBroadcast
+    => ( ( ignore () ) @:SendBroadcast
        ) @DispatchByMachine( lbl = lbl, dest_trg = dest_trg
                            , masters = masters, masters_map = masters_map
                            , send_ty = send_ty, send_extra_fn = send_extra_fn )
