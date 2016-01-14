@@ -115,7 +115,6 @@ class Vector : public VectorDS<K3::Vector, Elem> {
   friend class boost::serialization::access;
 };
 
-
 #ifdef USE_BITVECTOR
 // Specialization for a vector of bools.
 template <>
@@ -140,12 +139,12 @@ class Vector<R_elem<bool>> : public VectorDS<K3::Vector, bool> {
     bool_iterator& operator++() { ++i; return *this; }
     bool_iterator operator++(int) { bool_iterator t = *this; ++i; return t; }
 
-    auto operator -> () const {
+    auto operator -> () {
       current = RElem(*i);
       return &current;
     }
 
-    auto& operator*() const {
+    auto& operator*() {
       current = RElem(*i);
       return current;
     }
@@ -215,26 +214,25 @@ class Vector<R_elem<bool>> : public VectorDS<K3::Vector, bool> {
     return f(RElem{ vec[i] });
   }
 
-  unit_t set(int i, RElem&& v) {
+  unit_t set(int i, const RElem& v) {
     auto& vec = Super::getContainer();
     vec[i] = v.elem;
     return unit_t();
   }
 
-  unit_t set_all(RElem&& q) {
-    auto& vec = Super::getContainer();
-    for (auto i = vec.begin(); i != vec.end; ++i) {
+  unit_t set_all(const RElem& q) {
+    for (auto i = container.begin(); i != container.end(); ++i) {
       *i = q.elem;
     }
     return unit_t();
   }
 
-  unit_t insert(RElem &&e) {
+  unit_t insert(const RElem &e) {
     container.insert(container.end(), e.elem);
     return unit_t();
   }
 
-  unit_t update(const RElem& v, RElem&& v2) {
+  unit_t update(const RElem& v, const RElem& v2) {
     auto it = std::find(container.begin(), container.end(), v.elem);
     if (it != container.end()) {
       *it = v2.elem;
@@ -250,7 +248,7 @@ class Vector<R_elem<bool>> : public VectorDS<K3::Vector, bool> {
     return unit_t();
   }
 
-  unit_t insert_at(int i, RElem&& v) {
+  unit_t insert_at(int i, const RElem& v) {
     auto& vec = Super::getContainer();
     if (i >= vec.size()) {
       vec.resize(i + 1);
@@ -262,26 +260,26 @@ class Vector<R_elem<bool>> : public VectorDS<K3::Vector, bool> {
   template <class F>
   unit_t update_at(int i, F f) {
     auto& vec = Super::getContainer();
-    vec[i] = f(RElem{ vec[i] }).elem;
+    vec[i] = f(RElem{vec[i]}).elem;
     return unit_t();
   }
 
   auto erase_at(int i) {
     auto& vec = Super::getContainer();
-    return RElem { vec[i] };
+    return RElem {vec[i]};
   }
 
-  RElem swap(int i, RElem&& q) {
+  RElem swap(int i, RElem& q) {
     auto& vec = Super::getContainer();
     auto old = vec[i];
     vec[i] = q.elem;
-    return RElem{ old };
+    return RElem{old};
   }
 
   template<typename Fun>
   unit_t iterate(Fun f) const {
-    for (const Elem& e : container) {
-      f(RElem{ e });
+    for (Elem e : container) {
+      f(RElem{e});
     }
     return unit_t();
   }
@@ -289,8 +287,8 @@ class Vector<R_elem<bool>> : public VectorDS<K3::Vector, bool> {
   template<typename Fun>
   auto map(Fun f) const -> Vector<R_elem<RT<Fun, RElem>>>  const {
     Vector<R_elem<RT<Fun, RElem>>> result;
-    for (const Elem &e : container) {
-      result.insert(R_elem<RT<Fun, RElem>> { f(RElem{ e }) });
+    for (Elem e : container) {
+      result.insert(R_elem<RT<Fun, RElem>> { f(RElem{e}) });
     }
     return result;
   }
@@ -298,8 +296,8 @@ class Vector<R_elem<bool>> : public VectorDS<K3::Vector, bool> {
   template<typename Fun>
   Vector<RElem> filter(Fun predicate) const {
     Vector<RElem> result;
-    for (const Elem &e : container) {
-      if (predicate(RElem{ e })) {
+    for (Elem e : container) {
+      if (predicate(RElem{e})) {
         result.insert(e);
       }
     }
@@ -308,8 +306,8 @@ class Vector<R_elem<bool>> : public VectorDS<K3::Vector, bool> {
 
   template<typename Fun, typename Acc>
   Acc fold(Fun f, Acc acc) const {
-    for (const Elem &e : container) {
-      acc = f(std::move(acc), RElem{ e });
+    for (Elem e : container) {
+      acc = f(std::move(acc), RElem{e});
     }
     return acc;
   }
