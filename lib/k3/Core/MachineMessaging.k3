@@ -14,6 +14,7 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
                          , masters : expr, masters_map : expr
                          , send_ty : type, send_extra_fn : expr]
 {
+  ((\?x -> ?b) @:DirectReceive) => (\$#[x] -> $.[b])
   // Rewrite the receiving trigger to to synchronously call the existing trigger on the global
   // stashed by the machine-local master. As long as the trigger doesn't modify its argument, the
   // global will be passed in by constant reference, and no copies will take place.
@@ -33,6 +34,10 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
               else ( error (print ("Invalid bc peer master at " ++ (atos me))) ) )
           )
         }
+
+  ( ignore ?e ) @:DirectSend
+    => (let $[lbl]_broadcast_out = $.[e]
+        in $[masters_map].iterate (\r -> (($[dest_trg], r.key) <- $[lbl]_broadcast_out)))
 
   ( ignore ?e ) @: SendBroadcast
      => ( let r = $.[e] in
