@@ -46,6 +46,9 @@ order by
 declare q5_selectivity_regions: collection { key: string, value: () } @ StrMap
   = {| key: string, value: () | {key: "ASIA", value: ()} |} @ StrMap
 
+declare q5_selectivity_date_lbound: int = 19940101
+declare q5_selectivity_date_ubound: int = 19950101
+
 declare master : address
 declare clear_enabled : bool = false
 declare sample_factor : real = 10.0
@@ -150,8 +153,8 @@ trigger q5_co_start : () = \_ -> (
   () @PipelinedBroadcastJoin(
         lbl       = [# co ]
       , lhs_query = [$ or_ok_by_ck =
-                         ((orders.filter  (\o ->     o.o_orderdate >= 19940101
-                                                 and o.o_orderdate <  19950101 ))
+                         ((orders.filter  (\o ->     o.o_orderdate >= q5_selectivity_date_lbound
+                                                 and o.o_orderdate <  q5_selectivity_date_rbound ))
                                  .group_by (\o -> o.o_custkey)
                                           (\acc -> \o -> ((acc.insert {o_orderkey: o.o_orderkey}); acc))
                                           (empty {o_orderkey: int} @Collection))

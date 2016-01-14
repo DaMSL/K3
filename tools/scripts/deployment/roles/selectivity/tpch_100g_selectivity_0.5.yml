@@ -9,7 +9,11 @@ k3_globals:
   master: auto
   q1_selectivity_date_threshold: 19950618
   q3_selectivity_mktsegments: [{key: AUTOMOBILE, value: []}, {key: BUILDING, value: []}, {key: FURNITURE, value: []}]
+
   q5_selectivity_regions: [{key: ASIA, value: []}, {key: AMERICA, value: []}, {key: EUROPE, value: []}]
+  q5_selectivity_date_lbound: 19920102
+  q5_selectivity_date_ubound: 19981201
+
   q6_selectivity_date_lbound: 19920102
   q6_selectivity_date_lbound: 19950618
   q18_selectivity_sum_quantity_threshold: 0

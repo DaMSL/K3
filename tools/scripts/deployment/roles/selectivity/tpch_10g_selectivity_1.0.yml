@@ -18,6 +18,9 @@ k3_globals:
                             {key: AFRICA, value: []},
                             {key: 'MIDDLE EAST', value: []}
                           ]
+  q5_selectivity_date_lbound: 19920102
+  q5_selectivity_date_ubound: 19981201
+
   q6_selectivity_date_lbound: 19920102
   q6_selectivity_date_lbound: 19981201
   q18_selectivity_sum_quantity_threshold: 0
