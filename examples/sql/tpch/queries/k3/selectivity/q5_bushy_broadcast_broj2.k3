@@ -154,7 +154,7 @@ trigger q5_co_start : () = \_ -> (
         lbl       = [# co ]
       , lhs_query = [$ or_ok_by_ck =
                          ((orders.filter  (\o ->     o.o_orderdate >= q5_selectivity_date_lbound
-                                                 and o.o_orderdate <  q5_selectivity_date_rbound ))
+                                                 and o.o_orderdate <  q5_selectivity_date_ubound ))
                                  .group_by (\o -> o.o_custkey)
                                           (\acc -> \o -> ((acc.insert {o_orderkey: o.o_orderkey}); acc))
                                           (empty {o_orderkey: int} @Collection))
