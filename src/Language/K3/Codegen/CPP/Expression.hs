@@ -249,7 +249,8 @@ inline e = do
       (es, vs) <- unzip <$> mapM inline cs
       let reifyConstructorField (i, c, v) = do
             let orderAgnosticP = R.isOrderAgnostic v
-            if getInMethodFor i e == Moved
+	    let moveArg = if c @:? "Move" then Moved else getInMethodFor i e
+            if moveArg == Moved
               then do
                 castMoveP <- needsMoveCast <$> (getKType c) <*> (pure v)
                 let moveCastModifier = if castMoveP then R.Move else id
@@ -258,8 +259,9 @@ inline e = do
                   then return ([], moveCastModifier v)
                   else do
                     g <- genSym
+		    let h = if c @:? "Move" then R.Move else R.FMacro
                     return ( [R.Forward $ R.ScalarDecl (R.Name g) (R.RValueReference R.Inferred) (Just $ moveCastModifier v)]
-                          , R.FMacro $ R.Variable $ R.Name g
+                          , h $ R.Variable $ R.Name g
                           )
               else do
                 if orderAgnosticP
@@ -466,7 +468,7 @@ inline e = do
 
       (nfe, nfb) <- inlineApply False (RName (R.Subscript uv kv) (Just True)) n [R.Initialization R.Unit []]
 
-      -- let rArg = isJust $ w @~ (\case { EProperty (ePropertyName -> "ReturnsArgument") -> True; _ -> False })
+      --let rArg = isJust $ w @~ (\case { EProperty (ePropertyName -> "ReturnsArgument") -> True; _ -> False })
       let rArg = False
       let rContext = if rArg
                       then RForget
@@ -621,11 +623,12 @@ inline e = do
 
       let reifyArg (x, xv, m) = do
             let orderAgnosticP = R.isOrderAgnostic xv
-            if getInMethodFor anon m `elem` [Moved, Forwarded]
+            let moveArg = if x @:? "Move" then Moved else getInMethodFor anon m
+            if moveArg `elem` [Moved, Forwarded]
               then do
                 let castMoveP = maybe True (\m -> needsMoveCast m xv) (getKTypeP x)
 
-                let castModifier = case getInMethodFor anon m of
+                let castModifier = case moveArg of
                       -- _ | not isolateQueryP && f @:? "ReturnsArgument" -> id
                       Moved | castMoveP -> R.Move
                       Forwarded -> R.FMacro

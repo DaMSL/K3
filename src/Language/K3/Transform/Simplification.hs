@@ -1181,7 +1181,7 @@ encodeTransformers noBR restChanged expr = do
           presentE = EC.lambda oVarId $
                       EC.record [("key", EC.project "key" oVar)
                                 ,("value", guardAdd attachBoth $
-                                   EC.applyMany (guardAdd attachFusionSource accFE) [EC.project "value" oVar, eVar])]
+                                   (EC.applyMany (guardAdd attachFusionSource accFE) [(EC.project "value" oVar) @:+ "Move", eVar]) @:+ "Move")]
 
       in do
       defaultV <- defaultExpression valueT
@@ -2015,7 +2015,7 @@ fuseFoldTransformers expr = do
 
             Right (rleti, dlV, gbE, zE, accFE) ->
               let rentryE       = EC.record [("key", EC.applyMany gbE [jV]), ("value", dlV)]
-                  npresE       = EC.lambda o $ EC.record [("key", EC.project "key" oV), ("value", EC.applyMany accFE [EC.project "value" oV, jV])]
+                  npresE       = EC.lambda o $ EC.record [("key", EC.project "key" oV), ("value", (EC.applyMany accFE [(EC.project "value" oV) @:+ "Move", jV]) @:+ "Move")]
                   missingAccFE = stripEUIDSpan accFE
                   nmissE       = EC.lambda "_" $ EC.record [("key", EC.project "key" $ EC.variable leti), ("value", EC.applyMany missingAccFE [zE, jV])]
               in (rleti, rentryE, nmissE, npresE)
