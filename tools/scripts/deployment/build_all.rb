@@ -110,8 +110,36 @@ def list()
   end
 end
 
+def setup_build_profile(profile)
+  profile.fetch("patches", []).each do |p|
+    `git apply #{p}`
+  end
+
+  if profile.has_key? "build_opts"
+    ENV["K3_BUILDOPTS"] = profile["build_opts"]
+  end
+
+  if profile.has_key? "cxx_opts"
+    ENV["K3_CXXFLAGS"] = profile["cxx_opts"]
+  end
+end
+
+def teardown_build_profile(profile)
+  profile.fetch("patches", []).each do |p|
+    `git apply -R #{p}`
+  end
+end
+
 def build(name)
   target = "#{XP}/#{name}"
+  if $options.has_key?(:build_profile_set) && $options.has_key?(:build_profile)
+    profile = JSON.parse(File.read($options[:build_profile_set]))[$options[:build_profile]]
+  else
+    profile = {}
+  end
+
+  setup_build_profile(profile)
+
   for (experiment, description) in QUERIES do
     for query, path in description[:queries] do
       if !select?(experiment, query)
@@ -130,6 +158,8 @@ def build(name)
       end
     end
   end
+
+  teardown_build_profile(profile)
 end
 
 def submit(name)
@@ -344,6 +374,9 @@ def main()
     opts.banner = usage
     opts.on("-1", "--build", "Build/Submit stage")  { $options[:build] = true }
     opts.on("-2", "--run",   "Run stage")           { $options[:run]   = true }
+
+    opts.on("-x", "--build-profile-set [PATH]", String, "Set of Build Profiles") { |x| $options[:build_profile_set] = x }
+    opts.on("-y", "--build-profile [KEY]", String, "Build Profile to use.") { |y| $options[:build_profile] = y }
 
     opts.on("-c", "--check", "Check correctness") { $options[:check] = true }
     opts.on("-s", "--submit", "Submit binary") { $options[:submit] = true }
