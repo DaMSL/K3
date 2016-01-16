@@ -252,6 +252,8 @@ type PrpTrE = Properties.PIEnv -> K3 Declaration -> Either String (K3 Declaratio
 type TypTrE = TIEnv -> K3 Declaration -> Either String (K3 Declaration, TIEnv)
 type EffTrE = Provenance.PIEnv -> SEffects.FIEnv -> K3 Declaration
               -> Either String (K3 Declaration, Provenance.PIEnv, SEffects.FIEnv)
+type EffTrED = Provenance.PIEnv -> SEffects.FIEnv -> K3 Declaration
+               -> Either String (Bool, K3 Declaration, Provenance.PIEnv, SEffects.FIEnv)
 
 -- | Forces evaluation of the program transformation, by fully evaluating its result.
 reifyPass :: ProgramTransform -> ProgramTransform
@@ -272,6 +274,11 @@ displayPass n f p = f p >>= \np -> mkTg n np (return np)
 -- | Show the program both before and after applying the given program transform.
 debugPass :: String -> ProgramTransform -> ProgramTransform
 debugPass n f p = mkTg ("Before " ++ n) p (f p) >>= \np -> mkTg ("After " ++ n) np (return np)
+  where mkTg str p' = trace (boxToString $! [str] %$ prettyLines p')
+
+-- | Show the program both before and after applying the given program transform.
+debugPassD :: String -> ProgramTransformD -> ProgramTransformD
+debugPassD n f p = mkTg ("Before " ++ n) p (f p) >>= \(r,np) -> mkTg ("After " ++ n) np (return (r,np))
   where mkTg str p' = trace (boxToString $! [str] %$ prettyLines p')
 
 -- | Measure the execution time of a transform
@@ -355,6 +362,13 @@ withEffectTransform f p = do
   (np,pe,fe) <- liftEitherM (f (penv st) (fenv st) p)
   void $! put (st {penv=pe, fenv=fe})
   return np
+
+withEffectTransformD :: EffTrED -> ProgramTransformD
+withEffectTransformD f p = do
+  st <- get
+  (r,np,pe,fe) <- liftEitherM (f (penv st) (fenv st) p)
+  void $! put (st {penv=pe, fenv=fe})
+  return (r,np)
 
 withRepair :: String -> ProgramTransform -> ProgramTransform
 withRepair msg f prog = do
@@ -663,22 +677,24 @@ refreshDecl extInfOpt n =
 declTransforms :: StageSpec -> Maybe (SEffects.ExtInferF a, a) -> Identifier -> Map Identifier ProgramTransform
 declTransforms stSpec extInfOpt n = topLevel
   where
+    withPrepend = False
+
     topLevel  = (Map.fromList $! fPf fst $! [
         second mkFix $
-        mkT $! mkSeqRep "Optimize" highLevel $! fPf fst $! prepend [ ("refreshI",            False) ]
-                                                                $! [ ("Decl-Simplify-NoBR",  True)
-                                                                   , ("Decl-Fuse",           True)
-                                                                   , ("Decl-Simplify-Light", True) ],
+        mkT $! mkSeqRep "Optimize" highLevel $! fPf fst $! prepend [ ("typEffI",             False) ]
+                                                                $! [ ("Decl-Simplify-NoBR",  True, withPrepend)
+                                                                   , ("Decl-Fuse",           True, withPrepend)
+                                                                   , ("Decl-Simplify-Light", True, withPrepend) ],
         second mkFix $
         mkT $! mkSeqRep "Optimize-NoBR" highLevel $! fPf fst $! prepend [ ("refreshI",       False) ]
-                                                                     $! [ ("Decl-Simplify",  True)
-                                                                        , ("Decl-Fuse-NoBR", True)
-                                                                        , ("Decl-Simplify",  True) ],
+                                                                     $! [ ("Decl-Simplify",  True, withPrepend)
+                                                                        , ("Decl-Fuse-NoBR", True, withPrepend)
+                                                                        , ("Decl-Simplify",  True, withPrepend) ],
         second mkFix $
         mkT $! mkSeqRep "isolateApplication" highLevel $! fPf fst $! prepend [ ("refreshI",          False) ]
-                                                                          $! [ ("Decl-Simplify",     True)
-                                                                             , ("Decl-Fuse-FT-NoBR", True)
-                                                                             , ("Decl-Simplify",     True) ]
+                                                                          $! [ ("Decl-Simplify",     True, withPrepend)
+                                                                             , ("Decl-Fuse-FT-NoBR", True, withPrepend)
+                                                                             , ("Decl-Simplify",     True, withPrepend) ]
 
       , mkW (transformE mosaicWarmupMapRewrites) "Mosaic" False True False False Nothing
       ]) `Map.union` highLevel
@@ -686,43 +702,34 @@ declTransforms stSpec extInfOpt n = topLevel
     highLevel = (Map.fromList $! fPf fst $! [
         second mkFix $
         mkT $! mkSeq "Decl-Simplify" lowLevel $! fP $! [ "Decl-CF"
-                                                       , "refreshI"
                                                        , "Decl-BR"
-                                                       , "typEffI"
                                                        , "Decl-DCE"
-                                                       , "typEffI"
                                                        , "Decl-CSE" ]
 
       , second mkFix $
         mkT $! mkSeq "Decl-Simplify-NoBR" lowLevel $! fP $! [ "Decl-CF"
-                                                            , "typEffI"
                                                             , "Decl-DCE"
-                                                            , "typEffI"
                                                             , "Decl-CSE" ]
 
       , second mkFix $
-        mkT $! mkSeq "Decl-Simplify-Light" lowLevel $! fP $! intersperse "typEffI" $! [ "Decl-BR"
-                                                                                      , "Decl-DCE" ]
+        mkT $! mkSeq "Decl-Simplify-Light" lowLevel $! fP $! [ "Decl-BR"
+                                                             , "Decl-DCE" ]
 
       , mkT $! mkSeq "Decl-Fuse" lowLevel $! fP [ "Decl-FE"
-                                                , "typEffI"
                                                 , "Decl-FT" ]
 
-      , mkT $! mkSeq "Decl-Fuse-NoBR" lowLevel $! fP [ "Decl-FE-NoBR"
-                                                     , "typEffI"
-                                                     ]
+      , mkT $! mkSeq "Decl-Fuse-NoBR" lowLevel $! fP [ "Decl-FE-NoBR" ]
 
       , mkT $! mkSeq "Decl-Fuse-FT-NoBR" lowLevel $! fP [ "Decl-FE-NoBR"
-                                                        , "typEffI"
                                                         , "Decl-FT"
                                                         ]
       ]) `Map.union` lowLevel
 
     lowLevel = Map.fromList $! fPf fst $! [
-              mk  foldConstants               "Decl-CF"      False True False True (Just [typEffI])
-      ,       betaReduce                      "Decl-BR"      False True False True
-      ,       mk  eliminateDeadCode           "Decl-DCE"     False True False True (Just [typEffI])
-      ,       mkW cseTransform                "Decl-CSE"     False True False True (Just [typEffI])
+              mk   foldConstants              "Decl-CF"      False True False True (Just [typEffI])
+      ,            betaReduce                 "Decl-BR"      False True False True
+      ,       mk   eliminateDeadCode          "Decl-DCE"     False True False True (Just [typEffI])
+      ,       mkW  cseTransform               "Decl-CSE"     False True False True (Just [typEffI])
       , mkT $! mkD (encodeTransformers False) "Decl-FE"      False True False True (Just [typEffI])
       , mkT $! mkD (encodeTransformers True)  "Decl-FE-NoBR" False True False True (Just [typEffI])
       , mkT $! mk  fuseFoldTransformers       "Decl-FT"      False True False True (Just fusionI)
@@ -755,6 +762,19 @@ declTransforms stSpec extInfOpt n = topLevel
       $! (if asDebug then debugPass i else id)
       $! tr
 
+    mkWD tr i asReified asRepair asDebug asFixT fixPassOpt = mkSS $! (i,)
+      $! (maybe transformFromDelta (if asFixT then mkFixIDT i else mkFixID) fixPassOpt)
+      $! (if asReified then reifyPassD else id)
+      $! (if asRepair then withRepairD i else id)
+      $! (if asDebug then debugPassD i else id)
+      $! tr
+
+    -- Build a delta transform with an effects environment argument.
+    mkED f i asReified asRepair asDebug asFixT fixPassOpt = 
+      (\pass -> mkWD pass i asReified asRepair asDebug asFixT fixPassOpt)
+        $! withEffectTransformD
+        $! \pe fe d -> foldNamedDeclExpression n (f pe fe) False d >>= \(r,nd) -> return (r,nd,pe,fe)
+
     mkDebug asDebug (i,tr) = mkSS $! (i,) $! (if asDebug then debugPass i else id) tr
 
     -- Pass filtering
@@ -778,9 +798,7 @@ declTransforms stSpec extInfOpt n = topLevel
 
     -- Custom, and shared passes
     betaReduce i asReified asRepair asDebug asFixT =
-      (\f -> mkW f i asReified asRepair asDebug asFixT (Just [typEffI]))
-        $! withEffectTransform
-        $! \p f d -> mapNamedDeclExpression n (betaReduction p) d >>= return . (,p,f)
+      mkED betaReductionDelta i asReified asRepair asDebug asFixT (Just [typEffI])
 
     fusionReduce = mkT $! betaReduce "Decl-FR" False True False True
 
@@ -799,7 +817,7 @@ declTransforms stSpec extInfOpt n = topLevel
     mkSeqRep i m lWRep = mkSS (i, runPasses $! map (getWRep m) lWRep)
     getWRep m (i, asRep) = (if asRep then withRepair i else id) $! getTransform i m
 
-    prepend l1 l2 = concatMap ((l1 ++) . (:[])) l2
+    prepend l1 l2 = concatMap (\(x,y,pp) -> (if pp then l1 else []) ++ [(x,y)]) l2
 
 
 getTransform :: Identifier -> Map Identifier ProgramTransform -> ProgramTransform

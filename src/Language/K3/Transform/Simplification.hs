@@ -47,7 +47,7 @@ import Language.K3.Analysis.Provenance.Core
 import Language.K3.Analysis.Provenance.Inference ( PIEnv )
 
 import Language.K3.Analysis.SEffects.Core
-import Language.K3.Analysis.SEffects.Inference                ( readOnly, noWrites, noWritesOn )
+import Language.K3.Analysis.SEffects.Inference                ( FIEnv, readOnly, noWrites, noWritesOn )
 
 import qualified Language.K3.Analysis.Provenance.Constructors as PC
 import qualified Language.K3.Analysis.SEffects.Constructors   as FC
@@ -562,19 +562,21 @@ foldConstants expr = simplifyAsFoldedExpr expr >>= either (rebuildValue $ annota
 --   Furthermore, this only applies to direct lambda invocations, rather than
 --   on general function values (i.e., including applications through bnds
 --   and substructure). For the latter case, we must inline and defunctionalize first.
-betaReductionOnProgram :: PIEnv -> K3 Declaration -> Either String (K3 Declaration)
-betaReductionOnProgram !env !prog = mapExpression (betaReduction env) prog
+betaReductionOnProgram :: PIEnv -> FIEnv -> K3 Declaration -> Either String (K3 Declaration)
+betaReductionOnProgram !penv !fenv !prog = mapExpression (betaReduction penv fenv) prog
 
 -- Effect-aware beta reduction of an expression.
 -- We strip UIDs, spans, types and effects present on the substitution.
 -- Thus, we cannot recursively invoke the simplification, and must iterate
 -- to a fixpoint externally.
-betaReduction :: PIEnv -> K3 Expression -> Either String (K3 Expression)
-betaReduction !env !expr = betaReductionDelta env expr >>= return . fst
+betaReduction :: PIEnv -> FIEnv -> K3 Expression -> Either String (K3 Expression)
+betaReduction !penv !fenv !expr = betaReductionDelta penv fenv False expr >>= return . snd
 
 -- Beta reduction with a boolean indicating if any substitutions were performed.
-betaReductionDelta :: PIEnv -> K3 Expression -> Either String (K3 Expression, Bool)
-betaReductionDelta !env !expr = foldMapTree reduce (Nothing, False) expr >>= return . first fromJust
+betaReductionDelta :: PIEnv -> FIEnv -> Bool -> K3 Expression -> Either String (Bool, K3 Expression)
+betaReductionDelta !penv !fenv !restChanged !expr = do
+    (ne, r) <- foldMapTree reduce (Nothing, False) expr
+    return (restChanged || r, fromJust ne)
   where
     reduce !(onSub -> (ch, True))  !n = return $! (Just $! replaceCh n ch, True)
     reduce !(onSub -> (ch, False)) !n =
@@ -593,7 +595,7 @@ betaReductionDelta !env !expr = foldMapTree reduce (Nothing, False) expr >>= ret
     --     on the identifier.
     reduceOnOccurrences n i ie e (Just (EUID u)) = do
       ieRO <- readOnly False ie
-      eRO  <- noWritesOn True env i u e
+      eRO  <- noWritesOn True penv i u e
       let numOccurs = length $! filter (== i) $! freeVariables e
       (simple, doReduce) <- reducibleTarget numOccurs i ie e
       if debugCondition ieRO eRO n $! (simple || (ieRO && eRO)) && doReduce
@@ -668,10 +670,13 @@ eliminateDeadProgramCode :: K3 Declaration -> Either String (K3 Declaration)
 eliminateDeadProgramCode !prog = mapExpression eliminateDeadCode prog
 
 eliminateDeadCode :: K3 Expression -> Either String (K3 Expression)
-eliminateDeadCode !expr = eliminateDeadCodeDelta expr >>= return . fst
+eliminateDeadCode !expr = eliminateDeadCodeDelta False expr >>= return . snd
 
-eliminateDeadCodeDelta :: K3 Expression -> Either String (K3 Expression, Bool)
-eliminateDeadCodeDelta !expr = foldMapTree pruneExpr (Nothing,False) expr >>= return . first fromJust
+eliminateDeadCodeDelta :: Bool -> K3 Expression -> Either String (Bool, K3 Expression)
+eliminateDeadCodeDelta !restChanged !expr = do
+    (ne,r) <- foldMapTree pruneExpr (Nothing,False) expr
+    return (restChanged || r, fromJust ne)
+
   where
     pruneExpr !(onSub -> (ch, True))  !n = return $! (Just $! replaceCh n ch, True)
     pruneExpr !(onSub -> (ch, False)) !n =
