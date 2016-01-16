@@ -18,6 +18,7 @@ module Language.K3.Parser.ProgramBuilder (
 ) where
 
 import Data.Char ( isPunctuation )
+import Data.Hashable
 import Data.List
 import Data.Tree
 
@@ -166,10 +167,10 @@ roleFnId = "processRole"
 
 {- Declaration construction -}
 builtinGlobal :: Identifier -> K3 Type -> Maybe (K3 Expression) -> K3 Declaration
-builtinGlobal n t eOpt = (DC.global n t eOpt) @+ (DSpan $ GeneratedSpan "builtin")
+builtinGlobal n t eOpt = (DC.global n t eOpt) @+ (DSpan $ GeneratedSpan $ fromIntegral $ hash "builtin")
 
 builtinTrigger :: Identifier -> K3 Type -> K3 Expression -> K3 Declaration
-builtinTrigger n t e = (DC.trigger n t e) @+ (DSpan $ GeneratedSpan "builtin")
+builtinTrigger n t e = (DC.trigger n t e) @+ (DSpan $ GeneratedSpan $ fromIntegral $ hash "builtin")
 
 {- Type qualification -}
 qualifyT :: K3 Type -> K3 Type

@@ -116,6 +116,7 @@ import Control.Applicative
 import Control.Arrow
 import Control.Monad
 
+import Data.Hashable
 import Data.Functor.Identity
 import Data.List
 import Data.Maybe
@@ -985,7 +986,7 @@ repairProgram repairMsg symSOpt p =
     rebuildMem symS anns ctor = return $! (\(nsymS, nanns) -> (nsymS, ctor nanns)) $ validateMem symS anns
 
     validateMem symS anns =
-      let spa               = maybe ([DSpan $ GeneratedSpan repairMsg]) (const []) $ find isDSpan anns
+      let spa               = maybe ([DSpan $ GeneratedSpan $ fromIntegral $ hash repairMsg]) (const []) $ find isDSpan anns
           (nsymS, u)         = gensym symS
           (rsymS, extraAnns) = maybe (nsymS, [DUID $ UID u]++spa) (const (symS, spa)) $ find isDUID anns
       in (rsymS, anns ++ extraAnns)
@@ -994,7 +995,7 @@ repairProgram repairMsg symSOpt p =
       return $! ensureUID symS uCtor uT $ snd $ ensureSpan sCtor sT $ Node tg ch
 
     ensureSpan :: (Eq (Annotation a)) => (Span -> Annotation a) -> (Annotation a -> Bool) -> K3 a -> ((), K3 a)
-    ensureSpan ctor t n = addAnn () () (ctor $ GeneratedSpan repairMsg) t n
+    ensureSpan ctor t n = addAnn () () (ctor $ GeneratedSpan $ fromIntegral $ hash repairMsg) t n
 
     ensureUID :: (Eq (Annotation a)) => ParGenSymS -> (UID -> Annotation a) -> (Annotation a -> Bool) -> (K3 a) -> (ParGenSymS, K3 a)
     ensureUID symS ctor t n = addAnn nsymS symS (ctor $ UID uid) t n

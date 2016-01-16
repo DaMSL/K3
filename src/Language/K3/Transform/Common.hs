@@ -8,6 +8,8 @@ module Language.K3.Transform.Common where
 
 import Control.Monad.Identity
 import Control.Monad.State
+
+import Data.Hashable
 import Data.Tree
 
 import Language.K3.Core.Annotation
@@ -104,13 +106,13 @@ renumberUids p = evalState run 1
 -- Add missing spans in a program tree
 addSpans :: String -> K3 Declaration -> K3 Declaration
 addSpans spanName p = runIdentity $! do
-  ds  <- modifyTree (return . add isDSpan (DSpan $! GeneratedSpan spanName)) p
+  ds  <- modifyTree (return . add isDSpan (DSpan $! GeneratedSpan $! fromIntegral $! hash spanName)) p
   mapExpression addExpr ds
   where
     addExpr n = modifyTree addSpanQual n
 
     addSpanQual n = return $!
-                      add isESpan (ESpan $! GeneratedSpan spanName) n
+                      add isESpan (ESpan $! GeneratedSpan $! fromIntegral $! hash spanName) n
                       -- add isEQualified EImmutable n
 
     -- Don't add span if we already have it

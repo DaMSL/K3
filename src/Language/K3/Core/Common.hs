@@ -60,6 +60,7 @@ import Data.Char
 import Data.Hashable ( Hashable(..) )
 import Data.IORef
 import Data.Typeable
+import Data.Word ( Word8 )
 
 import Data.HashMap.Lazy ( HashMap )
 import qualified Data.HashMap.Lazy as HashMap ( toList, fromList )
@@ -91,7 +92,7 @@ data Span
     = Span !String !Int !Int !Int !Int
         -- ^ Source name, start line and column, end line and column.
 
-    | GeneratedSpan !String
+    | GeneratedSpan !Word8
         -- ^ Generator-specific metadata.
   deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
@@ -186,7 +187,8 @@ coverSpans :: Span -> Span -> Span
 coverSpans (Span n l1 c1 _ _) (Span _ _ _ l2 c2) = Span n l1 c1 l2 c2
 coverSpans s@(Span _ _ _ _ _) (GeneratedSpan _)  = s
 coverSpans (GeneratedSpan _) s@(Span _ _ _ _ _)  = s
-coverSpans (GeneratedSpan s1) (GeneratedSpan s2) = GeneratedSpan $ s1++", "++s2
+coverSpans (GeneratedSpan s1) (GeneratedSpan s2) =
+  GeneratedSpan $! fromIntegral ((fromIntegral s1 :: Int) `hashWithSalt` s2)
 
 -- | Left extension of a span.
 prefixSpan :: Int -> Span -> Span
