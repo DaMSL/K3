@@ -118,7 +118,7 @@ instance AContainer a => AContainer (Tree a) where
     Node a _ @~ f = a @~ f
 
 -- | A convenience form for attachment, structurally equivalent to tupling.
-data a :@: b = a :@: b deriving (Eq, Ord, Read, Show, Typeable, Generic)
+data a :@: b = !a :@: !b deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 instance (NFData a,     NFData b)    => NFData    (a :@: b)
 instance (Binary a,     Binary b)    => Binary    (a :@: b)

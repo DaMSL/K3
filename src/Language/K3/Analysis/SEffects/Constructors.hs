@@ -19,20 +19,20 @@ sing :: K3 Effect -> Effect -> K3 Effect
 sing ch p = Node (p :@: []) [ch]
 
 ffvar :: Identifier -> K3 Effect
-ffvar i = leaf $ FFVar i
+ffvar i = leaf $! FFVar i
 
 fbvar :: FMatVar -> K3 Effect
-fbvar mv = leaf $ FBVar mv
+fbvar mv = leaf $! FBVar mv
 
 fread :: K3 Provenance -> K3 Effect
 fread (tag -> PTemporary) = fnone
 fread (tag -> PDerived) = fnone
-fread p = leaf $ FRead p
+fread p = leaf $! FRead p
 
 fwrite :: K3 Provenance -> K3 Effect
 fwrite (tag -> PTemporary) = fnone
 fwrite (tag -> PDerived) = fnone
-fwrite p = leaf $ FWrite p
+fwrite p = leaf $! FWrite p
 
 fio :: K3 Effect
 fio = leaf FIO
@@ -56,7 +56,7 @@ fapplyRT :: Maybe FMatVar -> K3 Effect -> K3 Effect
 fapplyRT mvOpt rf = Node (FApply mvOpt :@: []) [rf]
 
 simplifyChildren :: (Effect -> Bool) -> [K3 Effect] -> [K3 Effect]
-simplifyChildren tagF ch = filter (\p -> tag p /= FNone) $ concatMap flatCh ch
+simplifyChildren tagF ch = filter (\p -> tag p /= FNone) $! concatMap flatCh ch
   where flatCh (tnc -> (tagF -> True, gch)) = gch
         flatCh p = [p]
 
@@ -66,14 +66,14 @@ fset :: [K3 Effect] -> K3 Effect
 fset ch = Node (FSet :@: []) ch
 
 fseq :: [K3 Effect] -> K3 Effect
-fseq ch = mkNode $ simplifyChildren (== FSeq) ch
+fseq ch = mkNode $! simplifyChildren (== FSeq) ch
   where mkNode []  = fnone
         mkNode [x] = x
         mkNode chl = Node (FSeq :@: []) chl
 
 floop :: K3 Effect -> K3 Effect
 floop (tag -> FNone) = fnone
-floop f = sing f $ FLoop
+floop f = sing f $! FLoop
 
 fnone :: K3 Effect
 fnone = leaf FNone

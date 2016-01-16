@@ -29,31 +29,31 @@ import Language.K3.Utils.Pretty
 
 -- | Literal variants include all builtin data types.
 data Literal
-    = LBool       Bool
-    | LInt        Int
-    | LByte       Word8
-    | LReal       Double
-    | LString     String
-    | LNone       NoneMutability
+    = LBool       !Bool
+    | LInt        !Int
+    | LByte       !Word8
+    | LReal       !Double
+    | LString     !String
+    | LNone       !NoneMutability
     | LSome
     | LIndirect
     | LTuple
-    | LRecord     [Identifier]
-    | LEmpty      (K3 Type)
-    | LCollection (K3 Type)
+    | LRecord     ![Identifier]
+    | LEmpty      !(K3 Type)
+    | LCollection !(K3 Type)
     | LAddress
   deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Annotations on literals.
 data instance Annotation Literal
-    = LSpan Span
-    | LUID UID
+    = LSpan       !Span
+    | LUID        !UID
     | LMutable
     | LImmutable
-    | LAnnotation Identifier
-    | LApplyGen   Identifier SpliceEnv
-    | LSyntax     SyntaxAnnotation
-    | LType       (K3 Type)
+    | LAnnotation !Identifier
+    | LApplyGen   !Identifier SpliceEnv
+    | LSyntax     !SyntaxAnnotation
+    | LType       !(K3 Type)
   deriving (Eq, Ord, Read, Show, Generic)
 
 {- NFData instances for literals. -}

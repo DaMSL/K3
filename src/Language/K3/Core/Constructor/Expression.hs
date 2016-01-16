@@ -113,7 +113,7 @@ block exprs = foldl (\sq e -> binop OSeq sq e) (head exprs) (tail exprs)
 
 send :: K3 Expression -> K3 Expression -> K3 Expression -> K3 Expression
 send target addr arg = binop OSnd (tuple [qualifyE target, qualifyE addr]) arg
-  where qualifyE e = if null $ filter isEQualified $ annotations e then e @+ EImmutable else e
+  where qualifyE e = if null $! filter isEQualified $! annotations e then e @+ EImmutable else e
 
 -- | Project a field from a record.
 project :: Identifier -> K3 Expression -> K3 Expression

@@ -27,18 +27,18 @@ import qualified Language.K3.Utils.PrettyText as PT
 
 type QTVarId = Int
 
-data QPType = QPType [QTVarId] (K3 QType)
+data QPType = QPType ![QTVarId] !(K3 QType)
                 deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 data QType
         = QTBottom
-        | QTPrimitive QTBase
-        | QTCon       QTData
-        | QTVar       QTVarId
-        | QTOperator  QTOp
+        | QTPrimitive !QTBase
+        | QTCon       !QTData
+        | QTVar       !QTVarId
+        | QTOperator  !QTOp
         | QTContent
         | QTFinal
-        | QTSelf      (Maybe QTVarId)
+        | QTSelf      !(Maybe QTVarId)
         | QTTop
       deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
@@ -60,8 +60,8 @@ data QTData
         | QTOption
         | QTIndirection
         | QTTuple
-        | QTRecord      [Identifier]
-        | QTCollection  [Identifier]
+        | QTRecord      ![Identifier]
+        | QTCollection  ![Identifier]
         | QTTrigger
         | QTSource
         | QTSink

@@ -14,10 +14,10 @@ import Data.Functor.Identity
 import Data.List
 import Data.String
 
-import qualified Data.HashSet as HashSet
-import qualified Data.Map     as Map
-import Data.HashSet ( HashSet )
-import Data.Map     ( Map )
+import qualified Data.HashSet        as HashSet
+import qualified Data.Map.Strict     as Map
+import Data.HashSet        ( HashSet )
+import Data.Map.Strict     ( Map )
 
 import qualified Text.Parsec          as P
 import qualified Text.Parsec.Prim     as PP
@@ -55,7 +55,7 @@ type EndpointsBQG      = [(Identifier, EndpointInfo)]
     The datatype maintains a level counter on every push or pop of the environment frame.
 -}
 type TAEnv        = Map Identifier (Map Int [K3 Type])
-data TypeAliasEnv = TypeAliasEnv Int TAEnv
+data TypeAliasEnv = TypeAliasEnv !Int !TAEnv
                   deriving (Eq, Ord, Read, Show)
 
 {-| Parser environment type.
@@ -105,9 +105,9 @@ type AnnotationCtor a = Identifier -> Annotation a
 type ApplyAnnCtor   a = Identifier -> SpliceEnv -> Annotation a
 
 -- | Metaprogram expression embedding as identifiers.
-data MPEmbedding = MPENull  Identifier
-                 | MPEPath  Identifier [Identifier]
-                 | MPEHProg String
+data MPEmbedding = MPENull  !Identifier
+                 | MPEPath  !Identifier ![Identifier]
+                 | MPEHProg !String
                  deriving (Eq, Ord, Read, Show)
 
 type   EmbeddingParser a = K3Parser (Either [MPEmbedding] a)

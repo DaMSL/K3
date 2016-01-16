@@ -515,11 +515,11 @@ mapNamedDeclExpression :: (Monad m) => Identifier -> (K3 Expression -> m (K3 Exp
 mapNamedDeclExpression i exprF prog = mapProgram namedDeclF return return Nothing prog
   where namedDeclF d@(tag -> DGlobal n t eOpt) | i == n = do
           neOpt <- maybe (return eOpt) (\e -> exprF e >>= return . Just) eOpt
-          return $ replaceTag d $ DGlobal n t neOpt
+          return $! replaceTag d $ DGlobal n t neOpt
 
         namedDeclF d@(tag -> DTrigger n t e) | i == n = do
           ne <- exprF e
-          return $ replaceTag d $ DTrigger n t ne
+          return $! replaceTag d $ DTrigger n t ne
 
         namedDeclF d = return d
 
@@ -551,7 +551,7 @@ mapMaybeAnnotation declF exprF typeF = mapProgram onDecl onMem onExpr (Just onTy
   where onDecl d = nodeF declF d
         onMem (Lifted    p n t eOpt anns) = memF (Lifted    p n) t eOpt anns
         onMem (Attribute p n t eOpt anns) = memF (Attribute p n) t eOpt anns
-        onMem (MAnnotation p n anns)      = mapM declF anns >>= \nanns -> return $ MAnnotation p n $ catMaybes nanns
+        onMem (MAnnotation p n anns)      = mapM declF anns >>= \nanns -> return $! MAnnotation p n $ catMaybes nanns
 
         memF ctor t eOpt anns = ctor <$> onType t
                                      <*> maybe (return Nothing) (\e -> onExpr e >>= return . Just) eOpt
@@ -559,7 +559,7 @@ mapMaybeAnnotation declF exprF typeF = mapProgram onDecl onMem onExpr (Just onTy
 
         onExpr e = modifyTree (nodeF exprF) e
         onType t = modifyTree (nodeF typeF) t
-        nodeF f (Node (tg :@: anns) ch) = mapM f anns >>= \nanns -> return $ Node (tg :@: catMaybes nanns) ch
+        nodeF f (Node (tg :@: anns) ch) = mapM f anns >>= \nanns -> return $! Node (tg :@: catMaybes nanns) ch
 
 -- | Map a function over all expression annotations, filtering null returns.
 mapMaybeExprAnnotation :: (Monad m)
@@ -570,7 +570,7 @@ mapMaybeExprAnnotation :: (Monad m)
 mapMaybeExprAnnotation exprF typeF = modifyTree (onNode chainType)
   where chainType (EType t) = modifyTree (onNode typeF) t >>= exprF . EType
         chainType a = exprF a
-        onNode f (Node (tg :@: anns) ch) = mapM f anns >>= \nanns -> return $ Node (tg :@: catMaybes nanns) ch
+        onNode f (Node (tg :@: anns) ch) = mapM f anns >>= \nanns -> return $! Node (tg :@: catMaybes nanns) ch
 
 -- | Transform all annotations on a program.
 mapAnnotation :: (Applicative m, Monad m)
@@ -591,7 +591,7 @@ mapExprAnnotation :: (Monad m)
 mapExprAnnotation exprF typeF = modifyTree (onNode chainType)
   where chainType (EType t) = modifyTree (onNode typeF) t >>= exprF . EType
         chainType a = exprF a
-        onNode f (Node (tg :@: anns) ch) = mapM f anns >>= \nanns -> return $ Node (tg :@: nanns) ch
+        onNode f (Node (tg :@: anns) ch) = mapM f anns >>= \nanns -> return $! Node (tg :@: nanns) ch
 
 
 -- | Fold a function and accumulator over all return expressions in the program.
@@ -649,7 +649,7 @@ skipChildrenForReturns tdF (skip, tdAcc) e =
     skipChildren (tag -> ECaseOf _)   = return [True, False, False]
     skipChildren (tag -> EIfThenElse) = return [True, False, False]
 
-    skipChildren e' = return $ replicate (length $ children e') False
+    skipChildren e' = return $! replicate (length $ children e') False
 
 
 -- | Map a function over all return expressions.
@@ -711,9 +711,9 @@ defaultExpression typ = mapTree mkExpr typ
                 extract _ = []
 
         withQualifier t e = case t @~ isTQualified of
-                             Just TMutable -> return $ EC.mut e
-                             Just TImmutable -> return $ EC.immut e
-                             _ -> return $ e
+                             Just TMutable -> return $! EC.mut e
+                             Just TImmutable -> return $! EC.immut e
+                             _ -> return $! e
 
 
 {- AST comparators -}
@@ -749,14 +749,14 @@ stripDeclAnnotations :: (Annotation Declaration -> Bool)
 stripDeclAnnotations dStripF eStripF tStripF d =
     runIdentity $ mapProgram stripDeclF stripMemF stripExprF (Just stripTypeF) d
   where
-    stripDeclF (Node (tg :@: anns) ch) =  return $ Node (tg :@: stripDAnns anns) ch
+    stripDeclF (Node (tg :@: anns) ch) =  return $! Node (tg :@: stripDAnns anns) ch
 
-    stripMemF (Lifted    p n t eOpt anns) = return $ Lifted      p n t eOpt $ stripDAnns anns
-    stripMemF (Attribute p n t eOpt anns) = return $ Attribute   p n t eOpt $ stripDAnns anns
-    stripMemF (MAnnotation p n anns)      = return $ MAnnotation p n $ stripDAnns anns
+    stripMemF (Lifted    p n t eOpt anns) = return $! Lifted      p n t eOpt $ stripDAnns anns
+    stripMemF (Attribute p n t eOpt anns) = return $! Attribute   p n t eOpt $ stripDAnns anns
+    stripMemF (MAnnotation p n anns)      = return $! MAnnotation p n $ stripDAnns anns
 
-    stripExprF e = return $ stripExprAnnotations eStripF tStripF e
-    stripTypeF t = return $ stripTypeAnnotations tStripF t
+    stripExprF e = return $! stripExprAnnotations eStripF tStripF e
+    stripTypeF t = return $! stripTypeAnnotations tStripF t
 
     stripDAnns anns = filter (not . dStripF) anns
 
@@ -770,11 +770,11 @@ stripNamedDeclAnnotations i dStripF eStripF tStripF p =
   runIdentity $ mapProgram stripDeclF return return Nothing p
   where
     stripDeclF (Node (DGlobal n t eOpt :@: anns) ch) | i == n =
-      return $ Node (DGlobal n (stripTypeF t) (maybe Nothing (Just . stripExprF) eOpt)
+      return $! Node (DGlobal n (stripTypeF t) (maybe Nothing (Just . stripExprF) eOpt)
                       :@: stripDAnns anns) ch
 
     stripDeclF (Node (DTrigger n t e :@: anns) ch) | i == n =
-      return $ Node (DTrigger n (stripTypeF t) (stripExprF e) :@: stripDAnns anns) ch
+      return $! Node (DTrigger n (stripTypeF t) (stripExprF e) :@: stripDAnns anns) ch
 
     stripDeclF d = return d
 
@@ -790,16 +790,16 @@ stripExprAnnotations eStripF tStripF e = runIdentity $ mapTree strip e
   where
     strip ch n@(tag -> EConstant (CEmpty t)) =
       let nct = stripTypeAnnotations tStripF t
-      in return $ Node (EConstant (CEmpty nct) :@: stripEAnns n) ch
+      in return $! Node (EConstant (CEmpty nct) :@: stripEAnns n) ch
 
-    strip ch n = return $ Node (tag n :@: stripEAnns n) ch
+    strip ch n = return $! Node (tag n :@: stripEAnns n) ch
 
     stripEAnns n = filter (not . eStripF) $ annotations n
 
 -- | Strips all annotations from a type given a type annotation filtering function.
 stripTypeAnnotations :: (Annotation Type -> Bool) -> K3 Type -> K3 Type
 stripTypeAnnotations tStripF t = runIdentity $ mapTree strip t
-  where strip ch n = return $ Node (tag n :@: (filter (not . tStripF) $ annotations n)) ch
+  where strip ch n = return $! Node (tag n :@: (filter (not . tStripF) $ annotations n)) ch
 
 -- | Strips all annotations from a literal given annotation filtering functions.
 stripLiteralAnnotations :: (Annotation Literal -> Bool) -> (Annotation Type -> Bool)
@@ -807,12 +807,12 @@ stripLiteralAnnotations :: (Annotation Literal -> Bool) -> (Annotation Type -> B
 stripLiteralAnnotations lStripF tStripF l = runIdentity $ mapTree strip l
   where
     strip ch n@(tag -> LEmpty t) =
-      return $ Node (LEmpty (stripTypeAnnotations tStripF t) :@: stripLAnns n) ch
+      return $! Node (LEmpty (stripTypeAnnotations tStripF t) :@: stripLAnns n) ch
 
     strip ch n@(tag -> LCollection t) =
-      return $ Node (LCollection (stripTypeAnnotations tStripF t) :@: stripLAnns n) ch
+      return $! Node (LCollection (stripTypeAnnotations tStripF t) :@: stripLAnns n) ch
 
-    strip ch n = return $ Node (tag n :@: (filter (not . lStripF) $ annotations n)) ch
+    strip ch n = return $! Node (tag n :@: (filter (not . lStripF) $ annotations n)) ch
 
     stripLAnns n = filter (not . lStripF) $ annotations n
 
@@ -982,7 +982,7 @@ repairProgram repairMsg symSOpt p =
     repairTQAnn n@((@~ isTQualified) -> Nothing) = n @+ TImmutable
     repairTQAnn n = n
 
-    rebuildMem symS anns ctor = return $ (\(nsymS, nanns) -> (nsymS, ctor nanns)) $ validateMem symS anns
+    rebuildMem symS anns ctor = return $! (\(nsymS, nanns) -> (nsymS, ctor nanns)) $ validateMem symS anns
 
     validateMem symS anns =
       let spa               = maybe ([DSpan $ GeneratedSpan repairMsg]) (const []) $ find isDSpan anns
@@ -991,7 +991,7 @@ repairProgram repairMsg symSOpt p =
       in (rsymS, anns ++ extraAnns)
 
     ensureUIDSpan symS uCtor uT sCtor sT ch (Node tg _) =
-      return $ ensureUID symS uCtor uT $ snd $ ensureSpan sCtor sT $ Node tg ch
+      return $! ensureUID symS uCtor uT $ snd $ ensureSpan sCtor sT $ Node tg ch
 
     ensureSpan :: (Eq (Annotation a)) => (Span -> Annotation a) -> (Annotation a -> Bool) -> K3 a -> ((), K3 a)
     ensureSpan ctor t n = addAnn () () (ctor $ GeneratedSpan repairMsg) t n
@@ -1006,13 +1006,13 @@ repairProgram repairMsg symSOpt p =
 -- | Fold an accumulator over all program UIDs.
 foldProgramUID :: (a -> UID -> a) -> a -> K3 Declaration -> (a, K3 Declaration)
 foldProgramUID uidF z d = runIdentity $ foldProgram onDecl onMem onExpr (Just onType) z d
-  where onDecl a n = return $ (dUID a n, n)
-        onExpr a n = foldTree (\a' n' -> return $ eUID a' n') a n >>= return . (,n)
-        onType a n = foldTree (\a' n' -> return $ tUID a' n') a n >>= return . (,n)
+  where onDecl a n = return $! (dUID a n, n)
+        onExpr a n = foldTree (\a' n' -> return $! eUID a' n') a n >>= return . (,n)
+        onType a n = foldTree (\a' n' -> return $! tUID a' n') a n >>= return . (,n)
 
-        onMem a mem@(Lifted    _ _ _ _ anns) = return $ (dMemUID a anns, mem)
-        onMem a mem@(Attribute _ _ _ _ anns) = return $ (dMemUID a anns, mem)
-        onMem a mem@(MAnnotation   _ _ anns) = return $ (dMemUID a anns, mem)
+        onMem a mem@(Lifted    _ _ _ _ anns) = return $! (dMemUID a anns, mem)
+        onMem a mem@(Attribute _ _ _ _ anns) = return $! (dMemUID a anns, mem)
+        onMem a mem@(MAnnotation   _ _ anns) = return $! (dMemUID a anns, mem)
 
         dUID a n = maybe a (\case {DUID b -> uidF a b; _ -> a}) $ n @~ isDUID
         eUID a n = maybe a (\case {EUID b -> uidF a b; _ -> a}) $ n @~ isEUID
@@ -1037,11 +1037,11 @@ duplicateProgramUIDs d = let uids = collectProgramUIDs d in uids \\ nub uids
 concatProgram :: K3 Declaration -> K3 Declaration -> Either String (K3 Declaration)
 concatProgram (tnc -> ptnc) (tnc -> ptnc') =
   case (ptnc, ptnc') of
-    ((DRole n, ch), (DRole n2, ch2)) | n == n2 -> return $ DC.role n $ ch++ch2
+    ((DRole n, ch), (DRole n2, ch2)) | n == n2 -> return $! DC.role n $ ch++ch2
     _ -> programError
 
   where programError = Left "Invalid program, expected top-level role."
 
 indexProgramDecls :: (Monad m) => K3 Declaration -> m (Map Int (K3 Declaration))
 indexProgramDecls prog = foldTree indexDecl Map.empty prog
-  where indexDecl idx d = return $ maybe idx (\case {DUID (UID i) -> Map.insert i d idx; _ -> idx}) $ d @~ isDUID
+  where indexDecl idx d = return $! maybe idx (\case {DUID (UID i) -> Map.insert i d idx; _ -> idx}) $ d @~ isDUID

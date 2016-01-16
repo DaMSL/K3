@@ -25,37 +25,37 @@ import qualified Data.Text as T
 import qualified Language.K3.Utils.PrettyText as PT
 
 type PPtr    = Int
-data PMatVar = PMatVar {pmvn :: Identifier, pmvloc :: UID, pmvptr :: PPtr}
+data PMatVar = PMatVar {pmvn :: !Identifier, pmvloc :: !UID, pmvptr :: !PPtr}
              deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 data Provenance =
     -- Atoms
-      PFVar        Identifier (Maybe UID)
-    | PBVar        PMatVar
+      PFVar        !Identifier !(Maybe UID)
+    | PBVar        !PMatVar
     | PTemporary   -- A local leading to no lineage of interest
 
     -- Terms
-    | PGlobal      Identifier
+    | PGlobal      !Identifier
     | PSet                              -- Non-deterministic (if-then-else or case)
     | PChoice                           -- One of the cases must be chosen ie. they're exclusive
     | PDerived                          -- A value derived from named children e.g. x + y ==> [x;y]
-    | PData        (Maybe [Identifier]) -- A value derived from a data constructor (optionally with named components)
-    | PRecord      Identifier
-    | PTuple       Int
+    | PData        !(Maybe [Identifier]) -- A value derived from a data constructor (optionally with named components)
+    | PRecord      !Identifier
+    | PTuple       !Int
     | PIndirection
     | POption
-    | PLambda      Identifier [PMatVar] -- Lambda argument identifier, and new bound variables introduced for closure-captures.
+    | PLambda      !Identifier ![PMatVar] -- Lambda argument identifier, and new bound variables introduced for closure-captures.
 
-    | PApply       (Maybe PMatVar) -- The lambda, argument, and return value provenances of the application.
+    | PApply       !(Maybe PMatVar) -- The lambda, argument, and return value provenances of the application.
                                    -- The apply also tracks any provenance variable binding needed for the lambda.
 
-    | PMaterialize [PMatVar]       -- A materialized return value scope, denoting provenance varibles bound in the child.
-    | PProject     Identifier      -- The source of the projection, and the provenance of the projected value if available.
-    | PAssign      Identifier      -- The provenance of the expression used for assignment.
+    | PMaterialize ![PMatVar]       -- A materialized return value scope, denoting provenance varibles bound in the child.
+    | PProject     !Identifier      -- The source of the projection, and the provenance of the projected value if available.
+    | PAssign      !Identifier      -- The provenance of the expression used for assignment.
     | PSend                        -- The provenance of the value being sent.
   deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
-data instance Annotation Provenance = PDeclared (K3 Provenance)
+data instance Annotation Provenance = PDeclared !(K3 Provenance)
                                     deriving (Eq, Ord, Read, Show, Generic)
 
 {- Provenance instances -}

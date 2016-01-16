@@ -10,7 +10,7 @@ import Control.Monad.State
 import Control.Monad.Trans.Either
 import Control.Monad.Writer
 
-import Data.Map  ( Map   )
+import Data.Map.Strict  ( Map   )
 import Data.Word ( Word8 )
 import qualified Data.HashTable.IO as HT
 
@@ -43,22 +43,22 @@ import Language.K3.Utils.Pretty(PrintConfig)
 --   cannot be separated from the monad definition.
 --
 data Value
-    = VBool        Bool
-    | VByte        Word8
-    | VInt         Int
-    | VReal        Double
-    | VString      String
-    | VAddress     Address
-    | VOption      (Maybe Value, VQualifier)
-    | VTuple       [(Value, VQualifier)]
-    | VRecord      (NamedMembers Value)
-    | VIndirection (IIndirection, VQualifier, EntityTag)
-    | VCollection  (IIndirection, Collection Value)
+    = VBool        !Bool
+    | VByte        !Word8
+    | VInt         !Int
+    | VReal        !Double
+    | VString      !String
+    | VAddress     !Address
+    | VOption      !(Maybe Value, VQualifier)
+    | VTuple       ![(Value, VQualifier)]
+    | VRecord      !(NamedMembers Value)
+    | VIndirection !(IIndirection, VQualifier, EntityTag)
+    | VCollection  !(IIndirection, Collection Value)
       -- Collections have both a mutable indirection version which is used where structural
       -- references are essential (e.g. self), and a cached version that is refreshed
       -- periodically. The cached version works well with Haskell's built-in typeclasses.
-    | VFunction    (IFunction, Closure Value, EntityTag)
-    | VTrigger     (Identifier, Maybe IFunction, EntityTag)
+    | VFunction    !(IFunction, Closure Value, EntityTag)
+    | VTrigger     !(Identifier, Maybe IFunction, EntityTag)
 
 -- | Runtime qualifier values. Used to construct environment entries.
 data VQualifier = MemImmut | MemMut deriving (Eq, Generic, Ord, Read, Show)
@@ -67,8 +67,8 @@ data VQualifier = MemImmut | MemMut deriving (Eq, Generic, Ord, Read, Show)
 --   In-memory values use stable names, while external values use an integer
 --   corresponding to their file offset.
 data EntityTag
-  = forall a . MemEntTag (StableName a)
-  | ExtEntTag Int
+  = forall a . MemEntTag !(StableName a)
+  | ExtEntTag !Int
 
 -- | A datastructure for named bindings
 type NamedBindings v = Map Identifier v
@@ -90,15 +90,15 @@ newtype SetAsOrdListMDS v = SetAsOrdListMDS [v]
 newtype BagAsOrdListMDS v = BagAsOrdListMDS [v]
 
 data PrimitiveMDS v
-    = MemDS    (ListMDS v)
-    | SeqDS    (ListMDS v)
-    | SetDS    (SetAsOrdListMDS v)
-    | SortedDS (BagAsOrdListMDS v)
+    = MemDS    !(ListMDS v)
+    | SeqDS    !(ListMDS v)
+    | SetDS    !(SetAsOrdListMDS v)
+    | SortedDS !(BagAsOrdListMDS v)
 
 data CollectionDataspace v
-    = InMemoryDS [v]
-    | InMemDS    (PrimitiveMDS v)
-    | ExternalDS (FileDataspace v)
+    = InMemoryDS ![v]
+    | InMemDS    !(PrimitiveMDS v)
+    | ExternalDS !(FileDataspace v)
 
 
 {- Collections and annotations -}
@@ -110,9 +110,9 @@ type NamedMembers v  = NamedBindings (v, VQualifier)
 -- | Collection implementation.
 --   The namespace contains lifted members, the dataspace contains final
 --   records, and the realization identifier is the instance's annotation combination name.
-data Collection v = Collection { namespace     :: CollectionNamespace v
-                               , dataspace     :: CollectionDataspace v
-                               , realizationId :: Identifier }
+data Collection v = Collection { namespace     :: !(CollectionNamespace v)
+                               , dataspace     :: !(CollectionDataspace v)
+                               , realizationId :: !Identifier }
 
 -- | Two-level namespacing of collection constituents. Collections have two levels of named values:
 --   i. global names, comprised of unambiguous annotation member names.
@@ -130,14 +130,14 @@ data Collection v = Collection { namespace     :: CollectionNamespace v
 -- to create proxy values for mutable fields during method contextualization.
 --
 data CollectionNamespace v =
-        CollectionNamespace { collectionNS :: NamedMembers v
-                            , annotationNS :: [(Identifier, NamedMembers v)] }
+        CollectionNamespace { collectionNS :: !(NamedMembers v)
+                            , annotationNS :: ![(Identifier, NamedMembers v)] }
 
 data CollectionConstructors v =
-  CollectionConstructors { emptyCtor   :: CEmptyConstructor v
-                         , initialCtor :: CInitialConstructor v
-                         , copyCtor    :: CCopyConstructor v
-                         , emplaceCtor :: CEmplaceConstructor v }
+  CollectionConstructors { emptyCtor   :: !(CEmptyConstructor v)
+                         , initialCtor :: !(CInitialConstructor v)
+                         , copyCtor    :: !(CCopyConstructor v)
+                         , emplaceCtor :: !(CEmplaceConstructor v) }
 
 -- | A collection initializer that populates default lifted attributes.
 type CEmptyConstructor v = () -> Interpretation Value
@@ -162,8 +162,8 @@ type CCopyConstructor v = Collection v -> Interpretation Value
 -- arguments that define the collection's contents.
 --
 data AEnvironment v =
-  AEnvironment { definitions  :: AnnotationDefinitions v
-               , realizations :: AnnotationCombinations v }
+  AEnvironment { definitions  :: !(AnnotationDefinitions v)
+               , realizations :: !(AnnotationCombinations v) }
 
 type AnnotationDefinitions v  = [(Identifier, NamedMembers v)]
 type AnnotationCombinations v = [(Identifier, CollectionConstructors v)]
@@ -178,8 +178,8 @@ type SEnvironment v = (IEnvironment v, AEnvironment v)
 --   These distinguish immutable and mutable values, enabling sharing of the latter kind
 --   at the environment level, rather than at the value level.
 data IEnvEntry v
-  = IVal v
-  | MVal (MVar v)
+  = IVal !v
+  | MVal !(MVar v)
 
 -- | Interpretation Environment.
 --   This is a hashtable of names to environment entries.
@@ -187,15 +187,15 @@ type IEnvironment v = HT.CuckooHashTable Identifier [IEnvEntry v]
 
 -- | Proxy values and paths, for alias synchronization.
 data ProxyStep
-    = Named             Identifier
-    | Temporary         Identifier
-    | Dataspace         (Identifier, EntityTag)
+    = Named             !Identifier
+    | Temporary         !Identifier
+    | Dataspace         !(Identifier, EntityTag)
     | ProxySelf
     | Dereference
     | MatchOption
-    | TupleField        Int
-    | RecordField       Identifier
-    | CollectionMember  Identifier
+    | TupleField        !Int
+    | RecordField       !Identifier
+    | CollectionMember  !Identifier
 
 type ProxyPath       = [ProxyStep]
 type ProxyPathStack  = [Maybe ProxyPath]
@@ -206,8 +206,8 @@ type Interpretation = EitherT InterpretationError (StateT IState (WriterT ILog I
 
 -- | Errors encountered during interpretation.
 data InterpretationError
-    = RunTimeInterpretationError String (Maybe (Span, UID))
-    | RunTimeTypeError String (Maybe (Span, UID))
+    = RunTimeInterpretationError !String !(Maybe (Span, UID))
+    | RunTimeTypeError !String !(Maybe (Span, UID))
   deriving (Eq, Read, Show)
 
 -- | Type synonym for interpreter engine and engine monad
@@ -221,19 +221,19 @@ type ILog = [String]
 type Globals = [Identifier]
 
 -- | Interpreter tracing and debugging
-data ITracer = ITracer { stackTrace   :: [(Span, UID)]
-                       , watchedExprs :: [UID]
-                       , watchedVars  :: [(UID, [Identifier])] }
+data ITracer = ITracer { stackTrace   :: ![(Span, UID)]
+                       , watchedExprs :: ![UID]
+                       , watchedVars  :: ![(UID, [Identifier])] }
                 deriving (Eq, Read, Show)
 
 -- | Type declaration for an Interpretation's state.
-data IState = IState { getGlobals     :: Globals
-                     , getEnv         :: IEnvironment Value
-                     , getAnnotEnv    :: AEnvironment Value
-                     , getStaticEnv   :: SEnvironment Value
-                     , getProxyStack  :: ProxyPathStack
-                     , getTracer      :: ITracer
-                     , getPrintConfig :: PrintConfig}
+data IState = IState { getGlobals     :: !Globals
+                     , getEnv         :: !(IEnvironment Value)
+                     , getAnnotEnv    :: !(AEnvironment Value)
+                     , getStaticEnv   :: !(SEnvironment Value)
+                     , getProxyStack  :: !ProxyPathStack
+                     , getTracer      :: !ITracer
+                     , getPrintConfig :: !PrintConfig}
 
 -- | An evaluated value type, produced from running an interpretation.
 type IResult a = ((Either InterpretationError a, IState), ILog)

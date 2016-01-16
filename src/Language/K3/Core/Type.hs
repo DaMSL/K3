@@ -73,53 +73,53 @@ data Type
     | TOption
     | TIndirection
     | TTuple
-    | TRecord [Identifier]
+    | TRecord ![Identifier]
     | TCollection
     | TFunction
     | TAddress
     | TSource
     | TSink
     | TTrigger
-    | TBuiltIn TypeBuiltIn
-    | TForall [TypeVarDecl] {- ^Should have one child representing the body. -}
+    | TBuiltIn !TypeBuiltIn
+    | TForall ![TypeVarDecl] {- ^Should have one child representing the body. -}
     | TDeclaredVar Identifier {- ^Represents the use of a declared type var. -}
     -- The following constructors are used primarily during type manifestation
     -- after typechecking is complete; they do not necessarily have an
     -- equivalent in the language syntax.
     | TTop
     | TBottom
-    | TExternallyBound [TypeVarDecl]
+    | TExternallyBound ![TypeVarDecl]
         -- ^Represents an externally chosen type variable binding.
-    | TRecordExtension [Identifier] [Identifier]
+    | TRecordExtension ![Identifier] ![Identifier]
         -- ^Represents the extension of a record.  The first list of identifiers
         --  names the labels corresponding to the children of this record
         --  extension; the second list names the type variables with which this
         --  record concatenates.
-    | TDeclaredVarOp [Identifier] TypeVariableOperator
+    | TDeclaredVarOp ![Identifier] !TypeVariableOperator
         -- ^Represents a deferred operation involving opaque variables.  This
         --  occurs when the type is constructed as the union or intersection
         --  of multiple bounds.  All but one of these bounds are opaque type
         --  variables; the other bound is a transparent type which is the sole
         --  child of this node.
-    | TMu Identifier
+    | TMu !Identifier
         -- ^Represents a mu-recursive binding.  This type is generated when a
         --  self-referential type is encountered.  This type has one child: the
         --  body of the type declaration.
 
     -- | Implementation Types. These should never be produced by the parser, nor should they be
     -- considered by the typechecker.
-    | TImperative ImperativeType
+    | TImperative !ImperativeType
   deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Types specific to an imperative implementation backend.
 data ImperativeType
     -- | A named type synonym, usually for the instantiation of a class. Requires the name of the
     -- class, and the template type parameters to instantiate with.
-    = TNamed Identifier [K3 Type]
+    = TNamed !Identifier ![K3 Type]
 
     -- | An imperative class type. Requires the name of the class, list of superclasses, and the
     -- list of named template variables.
-    | TClass Identifier [Identifier] [Identifier]
+    | TClass !Identifier ![Identifier] ![Identifier]
   deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | The built-in type references.
@@ -133,7 +133,7 @@ data TypeBuiltIn
 -- | Type variable declarations.  These consist of the identifier for the
 --   declared variable and, optionally, a type expression for the lower and
 --   upper bounds (respectively).
-data TypeVarDecl = TypeVarDecl Identifier (Maybe (K3 Type)) (Maybe (K3 Type))
+data TypeVarDecl = TypeVarDecl !Identifier !(Maybe (K3 Type)) !(Maybe (K3 Type))
   deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | The operations which may occur on a collection of opaque variables.
@@ -145,12 +145,12 @@ data instance Annotation Type
     = TMutable
     | TImmutable
     | TWitness
-    | TSpan       Span
-    | TUID        UID
-    | TAnnotation Identifier
-    | TProperty   PropertyT
-    | TApplyGen   Identifier SpliceEnv
-    | TSyntax     SyntaxAnnotation
+    | TSpan       !Span
+    | TUID        !UID
+    | TAnnotation !Identifier
+    | TProperty   !PropertyT
+    | TApplyGen   !Identifier !SpliceEnv
+    | TSyntax     !SyntaxAnnotation
   deriving (Eq, Ord, Read, Show, Generic)
 
 {- NFData instances for the Type AST -}

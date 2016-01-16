@@ -22,7 +22,7 @@ executable k3
 
     other-extensions: TemplateHaskell
 
-    ghc-options: -Wall -fno-warn-orphans -O2 -threaded
+    ghc-options: -Wall -fno-warn-orphans -O2 -threaded -funbox-strict-fields
 
     extensions:
       FlexibleContexts,
@@ -77,6 +77,7 @@ executable k3
         safe,
         shake,
         split,
+        strict-base-types,
         SafeSemaphore,
         template-haskell,
         text,

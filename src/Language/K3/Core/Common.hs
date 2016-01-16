@@ -80,7 +80,7 @@ type Identifier = String
 
 
 -- | Address implementation
-data Address = Address (String, Int) deriving (Eq, Ord, Typeable, Generic)
+data Address = Address !(String, Int) deriving (Eq, Ord, Typeable, Generic)
 
 defaultAddress :: Address
 defaultAddress = Address ("127.0.0.1", 40000)
@@ -88,15 +88,15 @@ defaultAddress = Address ("127.0.0.1", 40000)
 
 -- | Spans are either locations in the program source, or generated code.
 data Span
-    = Span String Int Int Int Int
+    = Span !String !Int !Int !Int !Int
         -- ^ Source name, start line and column, end line and column.
 
-    | GeneratedSpan String
+    | GeneratedSpan !String
         -- ^ Generator-specific metadata.
   deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Unique identifiers for AST nodes.
-data UID = UID Int deriving (Eq, Ord, Read, Show, Typeable, Generic)
+data UID = UID !Int deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 instance Hashable UID
 
@@ -105,7 +105,7 @@ gUID (UID i) = i
 
 
 {- Symbol generation -}
-data ParGenSymS = ParGenSymS { stride :: Int, offset :: Int, current :: Int }
+data ParGenSymS = ParGenSymS { stride :: !Int, offset :: !Int, current :: !Int }
                   deriving (Eq, Ord, Read, Show, Generic)
 
 zerosymS :: Int -> Int -> ParGenSymS

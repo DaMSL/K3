@@ -15,7 +15,7 @@ module Language.K3.Analysis.SEffects.Inference where
 
 import Control.Applicative
 import Control.Arrow hiding ( left )
-import Control.Monad.State
+import Control.Monad.State.Strict
 import Control.Monad.Trans.Except
 import Data.Functor.Identity
 
@@ -28,8 +28,11 @@ import Data.Maybe
 import Data.Tree
 import Data.Monoid
 
-import Data.IntMap           ( IntMap )
-import qualified Data.IntMap as IntMap
+import Data.IntMap                ( IntMap )
+import Data.Sequence              ( Seq )
+import qualified Data.IntMap   as IntMap
+import qualified Data.Sequence as Seq
+import qualified Data.Foldable as F
 
 import Debug.Trace
 
@@ -94,8 +97,8 @@ type FLCEnv = IntMap [Identifier]
 -- | A mapping from expression ids to a pair of effect and effect structure.
 type EFMap = IntMap (K3 Effect, K3 Effect)
 
-data EffectErrorCtxt = EffectErrorCtxt { ftoplevelExpr :: Maybe (K3 Expression)
-                                       , fcurrentExpr  :: Maybe (K3 Expression) }
+data EffectErrorCtxt = EffectErrorCtxt { ftoplevelExpr :: !(Maybe (K3 Expression))
+                                       , fcurrentExpr  :: !(Maybe (K3 Expression)) }
                       deriving (Eq, Read, Show, Generic)
 
 instance Monoid EffectErrorCtxt where
@@ -104,16 +107,16 @@ instance Monoid EffectErrorCtxt where
 
 -- | An effect inference environment.
 data FIEnv = FIEnv {
-               fcnt     :: ParGenSymS,
-               fpenv    :: FPEnv,
-               fenv     :: FEnv,
-               faenv    :: FAEnv,
-               fpbenv   :: FPBEnv,
-               fppenv   :: FPPEnv,
-               flcenv   :: FLCEnv,
-               efmap    :: EFMap,
-               fcase    :: [(FMatVar, PMatVar)],  -- Temporary storage stack for case variables.
-               ferrctxt :: EffectErrorCtxt
+               fcnt     :: !ParGenSymS,
+               fpenv    :: !FPEnv,
+               fenv     :: !FEnv,
+               faenv    :: !FAEnv,
+               fpbenv   :: !FPBEnv,
+               fppenv   :: !FPPEnv,
+               flcenv   :: !FLCEnv,
+               efmap    :: !EFMap,
+               fcase    :: ![(FMatVar, PMatVar)],  -- Temporary storage stack for case variables.
+               ferrctxt :: !EffectErrorCtxt
             }
             deriving (Eq, Read, Show, Generic)
 
@@ -160,13 +163,13 @@ fenv0 = BEnv.empty
 flkup :: FEnv -> Identifier -> Except Text (K3 Effect)
 flkup env x = BEnv.slookup env x
 
-flkupAll :: FEnv -> Identifier -> Except Text [K3 Effect]
+flkupAll :: FEnv -> Identifier -> Except Text (Seq (K3 Effect))
 flkupAll env x = BEnv.lookup env x
 
 fext :: FEnv -> Identifier -> K3 Effect -> FEnv
 fext env x f = BEnv.push env x f
 
-fsetAll :: FEnv -> Identifier -> [K3 Effect] -> FEnv
+fsetAll :: FEnv -> Identifier -> (Seq (K3 Effect)) -> FEnv
 fsetAll env x l = BEnv.set env x l
 
 fdel :: FEnv -> Identifier -> FEnv
@@ -181,7 +184,7 @@ fpenv0 :: FPEnv
 fpenv0 = IntMap.empty
 
 fplkup :: FPEnv -> Int -> Except Text (K3 Effect)
-fplkup env x = maybe err return $ IntMap.lookup x env
+fplkup env x = maybe err return $! IntMap.lookup x env
   where err = mkErrP msg env
         msg = "Unbound variable in effect pointer environment: " ++ show x
 
@@ -217,7 +220,7 @@ efmap0 :: EFMap
 efmap0 = IntMap.empty
 
 eflkup :: EFMap -> K3 Expression -> Except Text (K3 Effect, K3 Effect)
-eflkup efm e@((@~ isEUID) -> Just (EUID (UID uid))) = maybe lookupErr return $ IntMap.lookup uid efm
+eflkup efm e@((@~ isEUID) -> Just (EUID (UID uid))) = maybe lookupErr return $! IntMap.lookup uid efm
   where lookupErr = throwE $ PT.boxToString $ msg %$ PT.prettyLines e
         msg = [T.unwords $ map T.pack ["No effects found for", show uid]]
 
@@ -225,7 +228,7 @@ eflkup _ e = throwE $ PT.boxToString $ [T.pack "No UID found on "] %+ PT.prettyL
 
 efext :: EFMap -> K3 Expression -> K3 Effect -> K3 Effect -> Except Text EFMap
 efext efm e f s = case e @~ isEUID of
-  Just (EUID (UID i)) -> return $ IntMap.insert i (f,s) efm
+  Just (EUID (UID i)) -> return $! IntMap.insert i (f,s) efm
   _ -> throwE $ PT.boxToString $ [T.pack "No UID found on "] %+ PT.prettyLines e
 
 
@@ -248,7 +251,7 @@ fppenv0 :: FPPEnv
 fppenv0 = IntMap.empty
 
 fpplkup :: FPPEnv -> Int -> Except Text (K3 Provenance)
-fpplkup env x = maybe err return $ IntMap.lookup x env
+fpplkup env x = maybe err return $! IntMap.lookup x env
   where err = mkErrP msg env
         msg = "Unbound pointer in lineage environment during effects: " ++ show x
 
@@ -258,7 +261,7 @@ flcenv0 :: FLCEnv
 flcenv0 = IntMap.empty
 
 flclkup :: FLCEnv -> Int -> Except Text [Identifier]
-flclkup env x = maybe err return $ IntMap.lookup x env
+flclkup env x = maybe err return $! IntMap.lookup x env
   where err = mkErr $ "Unbound UID in closure environment: " ++ show x
 
 {- Error context helpers -}
@@ -280,13 +283,13 @@ mfiep f env = env {fpenv = f $ fpenv env}
 filkupe :: FIEnv -> Identifier -> Except Text (K3 Effect)
 filkupe env x = flkup (fenv env) x
 
-filkupalle :: FIEnv -> Identifier -> Except Text [K3 Effect]
+filkupalle :: FIEnv -> Identifier -> Except Text (Seq (K3 Effect))
 filkupalle env x = flkupAll (fenv env) x
 
 fiexte :: FIEnv -> Identifier -> K3 Effect -> FIEnv
 fiexte env x f = env {fenv=fext (fenv env) x f}
 
-fisetalle :: FIEnv -> Identifier -> [K3 Effect] -> FIEnv
+fisetalle :: FIEnv -> Identifier -> (Seq (K3 Effect)) -> FIEnv
 fisetalle env x fl = env {fenv=fsetAll (fenv env) x fl}
 
 fidele :: FIEnv -> Identifier -> FIEnv
@@ -406,7 +409,7 @@ fistore :: FIEnv -> Identifier -> UID -> K3 Effect -> Except Text FIEnv
 fistore fienv n u f = do
   f' <- filkupe fienv n
   case tag f' of
-    FBVar mv | (fmvn mv, fmvloc mv) == (n,u) -> return $ fiextp fienv (fmvptr mv) f
+    FBVar mv | (fmvn mv, fmvloc mv) == (n,u) -> return $! fiextp fienv (fmvptr mv) f
     _ -> throwE $ PT.boxToString $ [T.pack "Invalid store on pointer"] %$ PT.prettyLines f'
 
 fistorea :: FIEnv -> Identifier -> [(Identifier, UID, K3 Effect, Bool)] -> Except Text FIEnv
@@ -416,7 +419,7 @@ fistorea fienv n memF = do
 
   where storemem fmenv eacc (i,u,f,_) = BEnv.lookup fmenv i >>= \(f',_) -> store eacc i u f' f
         store eacc i u (tag -> FBVar mv) f
-          | (fmvn mv, fmvloc mv) == (i,u) = return $ fiextp eacc (fmvptr mv) f
+          | (fmvn mv, fmvloc mv) == (i,u) = return $! fiextp eacc (fmvptr mv) f
         store eacc _ _ _ _ = return eacc
 
         invalidMem i = mkErr $ "Invalid store on annotation member" ++ i
@@ -443,7 +446,7 @@ fisub fienv extInfOpt asStructure i df sf p = do
   return (rf, renv)
 
   where
-    extInferM env f = maybe (return f) (\(infF, infSt) -> return $ infF f infSt env) extInfOpt
+    extInferM env f = maybe (return f) (\(infF, infSt) -> return $! infF f infSt env) extInfOpt
 
     acyclicSub env _ subs _ (tag -> FFVar j) | i == j = return (env, subs, df)
 
@@ -478,7 +481,7 @@ fisub fienv extInfOpt asStructure i df sf p = do
         [lrf', argrf'] -> do
           (nef, nrf, nenv') <- simplifyApply nenv extInfOpt True Nothing [] lrf' argrf'
           let nrf' = if asStructure then nrf else case tnc nrf of { (FApply Nothing, [_,_]) -> nrf; _ -> nef }
-          return $ debugFFApp lrf argrf lrf' argrf' nef nrf $ (nenv', nsubs, nrf')
+          return $! debugFFApp lrf argrf lrf' argrf' nef nrf $ (nenv', nsubs, nrf')
         _ -> appSubErr f
 
       where
@@ -522,7 +525,7 @@ fisub fienv extInfOpt asStructure i df sf p = do
           (f', env') = fifreshbp env mvi (fmvloc mv) f
           (nf, nenv) = case mviE of
                          Left _  -> (f', env')
-                         Right l -> (f',) $ fisetalle env' mvi $ flip map l $ \ef -> case tag ef of
+                         Right l -> (f',) $ fisetalle env' mvi $ flip fmap l $ \ef -> case tag ef of
                            FBVar imv | imv == mv -> f'
                            _ -> ef
       in
@@ -644,8 +647,8 @@ simplifyApply fienv extInfOpt defer eOpt ef lrf arf = do
 
     argP e = provOf e >>= \case
                             (tag -> PApply Nothing)    -> return Nothing
-                            (tag -> PApply (Just mv))  -> return $ Just $ pbvar mv
-                            (tag -> PMaterialize [mv]) -> return $ Just $ pbvar mv
+                            (tag -> PApply (Just mv))  -> return $! Just $ pbvar mv
+                            (tag -> PMaterialize [mv]) -> return $! Just $ pbvar mv
                             _ -> argPErr e
 
     fexec ef' = Just $ fseq $ catMaybes ef'
@@ -672,21 +675,21 @@ simplifyApplyM extInfOpt defer eOpt ef lrf argrf = do
 {- FInfM helpers -}
 
 runFInfM :: FIEnv -> FInfM a -> (Either Text a, FIEnv)
-runFInfM env m = flip runState env $ runExceptT m
+runFInfM env m = flip runState env $! runExceptT m
 
 runFInfE :: FIEnv -> FInfM a -> Either Text (a, FIEnv)
 runFInfE env m = let (a,b) = runFInfM env m in a >>= return . (,b)
 
 runFInfES :: FIEnv -> FInfM a -> Either String (a, FIEnv)
-runFInfES env m = either (Left . T.unpack) Right $ runFInfE env m
+runFInfES env m = either (Left . T.unpack) Right $! runFInfE env m
 
 reasonM :: (Text -> Text) -> FInfM a -> FInfM a
 reasonM errf = mapExceptT $ \m -> m >>= \case
   Left  err -> get >>= \env -> (return . Left $ errf $ T.unlines [err, T.pack "Effect environment:", PT.pretty env])
-  Right r   -> return $ Right r
+  Right r   -> return $! Right r
 
 errorM :: Text -> FInfM a
-errorM msg = reasonM id $ throwE msg
+errorM msg = reasonM id $! throwE msg
 
 liftExceptM :: Except Text a -> FInfM a
 liftExceptM = mapExceptT contextualizeErr
@@ -695,9 +698,9 @@ liftExceptM = mapExceptT contextualizeErr
           let tle = maybe [T.pack "<nothing>"] PT.prettyLines $ ftoplevelExpr ctxt
           let cre = maybe [T.pack "<nothing>"] PT.prettyLines $ fcurrentExpr ctxt
           let ctxtmsg = PT.boxToString $ [msg] %$ [T.pack "On"] %$ cre %$ [T.pack "Toplevel"] %$ tle
-          return $ Left ctxtmsg
+          return $! Left ctxtmsg
 
-        contextualizeErr (runIdentity -> Right r) = return $ Right r
+        contextualizeErr (runIdentity -> Right r) = return $! Right r
 
 liftEitherM :: Either Text a -> FInfM a
 liftEitherM = either throwE return
@@ -892,8 +895,8 @@ reinferProgDeclEffects extInfOpt env dn prog = runFInfES env inferNamedDecl
     inferPlain        e = inferExprEffects extInfOpt e
     inferWithSimplify e = inferPlain e >>= simplifyExprEffects
 
-    rebuildDecl e d@(tnc -> (DGlobal  n t (Just _), ch)) = return $ Node (DGlobal  n t (Just e) :@: annotations d) ch
-    rebuildDecl e d@(tnc -> (DTrigger n t _, ch))        = return $ Node (DTrigger n t e        :@: annotations d) ch
+    rebuildDecl e d@(tnc -> (DGlobal  n t (Just _), ch)) = return $! Node (DGlobal  n t (Just e) :@: annotations d) ch
+    rebuildDecl e d@(tnc -> (DTrigger n t _, ch))        = return $! Node (DTrigger n t e        :@: annotations d) ch
     rebuildDecl _ d = return d
 
 
@@ -952,7 +955,7 @@ inferDeclEffect extInfOpt d@(tag -> DDataAnnotation n _ mems) = do
       mf <- case find isDEffect mas of
               Just (DEffect eff) -> either return return eff
               _ -> maybe (effectsOfType [] mt) (inferEffects extInfOpt) meOpt
-      return $ Just (mn, u, mf, lifted)
+      return $! Just (mn, u, mf, lifted)
 -}
 
 inferDeclEffect _ d = return d
@@ -973,7 +976,7 @@ inferDataAnnotationDeclEffect extInfOpt d@(tag -> DDataAnnotation n _ mems) = do
       mf <- case find isDEffect mas of
               Just (DEffect eff) -> either return return eff
               _ -> maybe (effectsOfType [] mt) (inferEffects extInfOpt) meOpt
-      return $ Just (mn, u, mf, lifted)
+      return $! Just (mn, u, mf, lifted)
 
 inferDataAnnotationDeclEffect _ d = return d
 
@@ -1095,7 +1098,7 @@ inferEffects extInfOpt expr = do
             TRecord ids ->
               case tnc rf of
                 (FData _, fdch) -> do
-                  idx <- maybe (memErr i esrc) return $ elemIndex i ids
+                  idx <- maybe (memErr i esrc) return $! elemIndex i ids
                   rt "rproject" False e mv (fexec ef, fdch !! idx)
                 (_,_) -> rt "project" False e mv (fexec ef, fnone)
             _ -> prjErr esrc
@@ -1174,19 +1177,19 @@ inferEffects extInfOpt expr = do
     fexec ef = Just $ fseq $ catMaybes ef
     popVars u i = fideleM i >> fidelepM i
 
-    matchLambdaEff f@(tag -> FLambda _) = return $ Just f
-    matchLambdaEff f@(tag -> FFVar _)   = return $ Just f
-    matchLambdaEff f@(tag -> FBVar _)   = return $ Just f
+    matchLambdaEff f@(tag -> FLambda _) = return $! Just f
+    matchLambdaEff f@(tag -> FFVar _)   = return $! Just f
+    matchLambdaEff f@(tag -> FBVar _)   = return $! Just f
     matchLambdaEff _ = return Nothing
 
     forceLambdaEff t@(isTFunction -> True) f = matchLambdaEff f >>= maybe (effectsOfType [] t) return
     forceLambdaEff _ f = return f
 
-    subIEff i (tnc -> (FData _, ch)) = return $ ch !! i
+    subIEff i (tnc -> (FData _, ch)) = return $! ch !! i
     subIEff _ _ = return fnone
 
     subEff _ (tnc -> (FData _, ch)) = return ch
-    subEff tl _ = return $ replicate (length tl) fnone
+    subEff tl _ = return $! replicate (length tl) fnone
 
     freshM asCase e i u t f =
       case e @~ isEProvenance of
@@ -1259,13 +1262,13 @@ inferEffects extInfOpt expr = do
             transform True mvl (tnc -> (FLambda i, [clf, bef, rf])) = do
               nbef <- transform False mvl bef
               nrf  <- transform True mvl rf
-              return $ flambda i clf nbef nrf
+              return $! flambda i clf nbef nrf
 
             -- Note a 3-child variant cannot exist yet since we have not performed simplification.
             transform False mvl (tnc -> (FApply (Just _), [_, _, ief, bef, _])) = do
               nief <- transform False mvl ief
               nbef <- transform False mvl bef
-              return $ fseq [nief, nbef]
+              return $! fseq [nief, nbef]
 
             transform True mvl (tnc -> (FApply (Just _), [_, _, _, _, rf])) = transform True mvl rf
 
@@ -1279,13 +1282,13 @@ inferEffects extInfOpt expr = do
               nief <- transform False mvl ief
               nbef <- transform False mvl bef
               nr <- transform True mvl r
-              return $ fapply Nothing nl na nief nbef nr
+              return $! fapply Nothing nl na nief nbef nr
 
             transform asStructure mvl (tnc -> (FApply Nothing, [l, a])) = do
               nl <- transform True mvl l
               na <- transform True mvl a
               (nef, nrf) <- simplifyApplyM extInfOpt True Nothing [] nl na
-              return $ debugXfApp nl na nef nrf $ if asStructure then nrf else
+              return $! debugXfApp nl na nef nrf $ if asStructure then nrf else
                 case tnc nrf of
                   (FApply Nothing, [_,_]) -> nrf
                   _ -> nef
@@ -1299,13 +1302,13 @@ inferEffects extInfOpt expr = do
 
             transform asStructure mvl (tnc -> (FApply Nothing, [r])) = do
               nr <- transform True mvl r
-              return $ fapplyRT Nothing nr
+              return $! fapplyRT Nothing nr
 
             transform False mvl (tnc -> (FScope _, [ief, bef, pef, _])) = do
               nief <- transform False mvl ief
               nbef <- transform False mvl bef
               npef <- transform False mvl pef
-              return $ fseq [nief, nbef, npef]
+              return $! fseq [nief, nbef, npef]
 
             transform True mvl (tnc -> (FScope _, [_, _, _, rf])) = transform True mvl rf
 
@@ -1322,7 +1325,7 @@ inferEffects extInfOpt expr = do
             transform False mvl (tnc -> (FSeq, ch)) = mapM (transform False mvl) ch >>= return . fseq
             transform False mvl (tnc -> (FLoop, [ch])) = do
               nch <- transform False mvl ch
-              return $ debugXfLoop ch $ floop nch
+              return $! debugXfLoop ch $ floop nch
               where debugXfLoop a b = if True then b else
                       flip trace b $ T.unpack $ PT.boxToString $ [T.pack "Transform loop"]
                                              %$ PT.prettyLines a
@@ -1350,7 +1353,7 @@ inferEffects extInfOpt expr = do
                           (FApply _, ch@[rf]) -> Just $ zip [True] ch
                           _ -> Nothing
       nchOpt <- maybe (return origChOpt) (mapM (\(s,c) -> pruneAndSimplify "appchsf" Nothing s pmvl $ Just c)) chStructure
-      return $ Just $ replaceCh pf $ catMaybes nchOpt
+      return $! Just $ replaceCh pf $ catMaybes nchOpt
 
     fmv (tag -> FBVar mv) = return mv
     fmv f = errorM $ PT.boxToString $ [T.pack "Invalid effect bound var: "] %$ PT.prettyLines f
@@ -1361,7 +1364,7 @@ inferEffects extInfOpt expr = do
     pmvOf  e = maybe (pmvErr e) (\case {EProvenance p -> pmvOfT e p; _ -> pmvErr e}) $ e @~ isEProvenance
     pmvErr e = errorM $ PT.boxToString $ [T.pack "No pmv found on "] %+ PT.prettyLines e
 
-    pmvOfT _ (tag -> PApply mvOpt) = return $ maybe [] (:[]) mvOpt
+    pmvOfT _ (tag -> PApply mvOpt) = return $! maybe [] (:[]) mvOpt
     pmvOfT _ (tag -> PMaterialize mvl) = return mvl
     pmvOfT e _ = pmvErr e
 
@@ -1412,7 +1415,7 @@ effectsOfType args t | isTFunction t =
   where mkArg i = "__arg" ++ show i
 
 effectsOfType [] _   = return fnone
-effectsOfType args _ = return $ foldl lam (flambda (last args) fnone ef fnone) $ init args
+effectsOfType args _ = return $! foldl lam (flambda (last args) fnone ef fnone) $ init args
   where
     lam rfacc a = flambda a fnone fnone rfacc
     ef = floop $ fseq $ concatMap (\i -> [fread $ pfvar i Nothing, fwrite $ pfvar i Nothing]) args ++ [fio]
@@ -1430,7 +1433,7 @@ collectionMemberEffect extInfOpt i ef sf esrc t psrc =
     (mrf, lifted) <- liftExceptM $ BEnv.lookup memsEnv i
     mrfs  <- fisubM extInfOpt True "self" sf mrf psrc
     mrfsc <- fisubM extInfOpt True "content" fnone mrfs ptemp
-    if not lifted then attrErr else return $ (Just $ fseq $ catMaybes ef, mrfsc)
+    if not lifted then attrErr else return $! (Just $ fseq $ catMaybes ef, mrfsc)
 
   where
     memErr  = errorM $ PT.boxToString $ [T.unwords $ map T.pack ["Unknown projection of ", i, "on"]]           %+ PT.prettyLines esrc
@@ -1483,7 +1486,7 @@ simplifyExprEffects expr = modifyTree simplifyEffAnns expr
       (Just (ESEffect f1), Just (EFStructure f2)) <- annsOf e
       nf1 <- simplifyEffects True f1
       nf2 <- simplifyEffects False f2
-      return $ ((e @<- (filter (not . isEffectAnn) $ annotations e)) @+ (ESEffect nf1)) @+ (EFStructure nf2)
+      return $! ((e @<- (filter (not . isEffectAnn) $ annotations e)) @+ (ESEffect nf1)) @+ (EFStructure nf2)
 
     annsOf e = return (e @~ isESEffect, e @~ isEFStructure)
 
@@ -1560,7 +1563,7 @@ categorizeProgramEffects p = foldExpression categorizeExpr emptyCatMap p >>= ret
     categorizeExpr cmacc e = (\f -> foldTree f cmacc e >>= return . (,e)) $ \cmacc' e' -> do
       UID u <- uidOf e'
       sc    <- categorizeExprEffects e'
-      return $ addCatMap cmacc' u sc
+      return $! addCatMap cmacc' u sc
 
     emptyCatMap = IntMap.empty
     addCatMap cm u c = IntMap.insert u c cm
@@ -1586,10 +1589,10 @@ categorizeExprEffects e = do
 --   All effects from FBVar targets will already have been lifted during default
 --   effect inference, or applied during regular effect inference.
 categorizeLocalEffects :: K3 Effect -> Either Text SymbolCategories
-categorizeLocalEffects (tag -> FRead  p)  = return $ emptyCategories {readSyms  = [p]}
-categorizeLocalEffects (tag -> FWrite p)  = return $ emptyCategories {writeSyms = [p]}
-categorizeLocalEffects (tag -> FIO)       = return $ emptyCategories {doesIO    = True}
-categorizeLocalEffects (tag -> FLambda _) = return $ emptyCategories
+categorizeLocalEffects (tag -> FRead  p)  = return $! emptyCategories {readSyms  = [p]}
+categorizeLocalEffects (tag -> FWrite p)  = return $! emptyCategories {writeSyms = [p]}
+categorizeLocalEffects (tag -> FIO)       = return $! emptyCategories {doesIO    = True}
+categorizeLocalEffects (tag -> FLambda _) = return $! emptyCategories
 categorizeLocalEffects (Node _ ch)        = foldM (\a c -> categorizeLocalEffects c >>= return . addCategories a) emptyCategories ch
 
 
@@ -1610,7 +1613,7 @@ noWritesOnProvenanceC p (SymbolCategories _ w _) = p `notElem` w
 noWritesOnBinding :: PIEnv -> Identifier -> UID -> SymbolCategories -> Either Text Bool
 noWritesOnBinding env i u (SymbolCategories _ w _) = runExcept $ do
   b <- mapM (piBindings env) w >>= return . nub . concat
-  return $ (i, u) `notElem` (rights b)
+  return $! (i, u) `notElem` (rights b)
 
 
 -- | Returns whether the given expression has only read effects.
@@ -1619,7 +1622,7 @@ readOnly :: Bool -> K3 Expression -> Either String Bool
 readOnly True (tnc -> (ELambda _, [b])) = readOnly False b
 readOnly _ e = either (Left . T.unpack) Right $ do
   symcat <- categorizeExprEffects e
-  return $ readOnlyC symcat
+  return $! readOnlyC symcat
 
 -- | Returns whether the given expression has no write effects.
 --   The first argument indicates whether lambda effects should be considered in terms of their body's effects.
@@ -1627,7 +1630,7 @@ noWrites :: Bool -> K3 Expression -> Either String Bool
 noWrites True (tnc -> (ELambda _, [b])) = noWrites False b
 noWrites _ e = either (Left . T.unpack) Right $ do
   symcat <- categorizeExprEffects e
-  return $ noWritesC symcat
+  return $! noWritesC symcat
 
 -- | Returns where the given expression has any writes on an identifier, UID pair.
 --   The first argument indicates whether lambda effects should be considered in terms of their body's effects.
@@ -1669,7 +1672,7 @@ instance Pretty (IntMap SymbolCategories) where
 
 instance Pretty FEnv where
   prettyLines fe = BEnv.foldl (\acc k v -> acc ++ prettyFrame k v) [] fe
-    where prettyFrame k v = concatMap prettyPair $ flip zip v $ replicate (length v) k
+    where prettyFrame k v = concatMap prettyPair $ flip zip (F.toList v) $ replicate (length v) k
 
 instance Pretty FAEnv where
   prettyLines fa = BEnv.foldl (\acc k v -> acc ++ prettyPair (k,v)) [] fa

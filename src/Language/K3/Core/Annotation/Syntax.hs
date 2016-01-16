@@ -16,10 +16,10 @@ import GHC.Generics (Generic)
 import Language.K3.Core.Common
 
 data SyntaxAnnotation
-  = EndpointDeclaration EndpointSpec EndpointBindings
-  | SourceComment Bool Bool Span String
+  = EndpointDeclaration !EndpointSpec !EndpointBindings
+  | SourceComment !Bool !Bool !Span !String
       -- ^ Comment annotations with: post-attachment flag, multiline flag, span and contents.
-  | LexicalName Identifier
+  | LexicalName !Identifier
       -- ^ Alpha-renaming annotations, tracking original variable name.
   deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
