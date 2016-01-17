@@ -550,6 +550,7 @@ foldNamedDeclExpression i exprF acc prog = foldProgram namedDeclF mkP mkP Nothin
 -- | Parallel foldMapTree on expressions.
 parFoldMapExpression :: (NFData a, NFData b) => ([b] -> K3 Expression -> Either a b) -> b -> K3 Expression -> Either a b
 parFoldMapExpression f x n@(Node _ []) = f [x] n
+parFoldMapExpression f x n | n @:? "Serialize" = foldMapTree f x n
 parFoldMapExpression f x n@(Node _ ch) =
     case spawnch of
       [] -> mapM (foldMapTree f x) (map snd seqch) >>= flip f n

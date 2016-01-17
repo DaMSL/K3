@@ -64,6 +64,9 @@ import Data.Text ( Text )
 import qualified Data.Text as T
 import qualified Language.K3.Utils.PrettyText as PT
 
+parallelSimplify :: Bool
+parallelSimplify = False
+
 traceLogging :: Bool
 traceLogging = False
 
@@ -575,8 +578,12 @@ betaReduction !penv !fenv !expr = betaReductionDelta penv fenv False expr >>= re
 -- Beta reduction with a boolean indicating if any substitutions were performed.
 betaReductionDelta :: PIEnv -> FIEnv -> Bool -> K3 Expression -> Either String (Bool, K3 Expression)
 betaReductionDelta !penv !fenv !restChanged !expr = do
-    (ne, r) <- parFoldMapExpression reduce (Nothing, False) expr
+    (ne, r) <- if parallelSimplify
+                 then parFoldMapExpression reduce (Nothing, False) expr
+                 else foldMapTree reduce (Nothing, False) expr
+
     return (restChanged || r, fromJust ne)
+
   where
     reduce !(onSub -> (ch, True))  !n = return $! (Just $! replaceCh n ch, True)
     reduce !(onSub -> (ch, False)) !n =
@@ -674,7 +681,10 @@ eliminateDeadCode !expr = eliminateDeadCodeDelta False expr >>= return . snd
 
 eliminateDeadCodeDelta :: Bool -> K3 Expression -> Either String (Bool, K3 Expression)
 eliminateDeadCodeDelta !restChanged !expr = do
-    (ne,r) <- parFoldMapExpression pruneExpr (Nothing,False) expr
+    (ne,r) <- if parallelSimplify
+                then parFoldMapExpression pruneExpr (Nothing,False) expr
+                else foldMapTree  pruneExpr (Nothing,False) expr
+
     return (restChanged || r, fromJust ne)
 
   where
@@ -1015,7 +1025,10 @@ encodeProgramTransformers prog = foldExpression (encodeTransformers False) False
 
 encodeTransformers :: Bool -> Bool -> K3 Expression -> Either String (Bool, K3 Expression)
 encodeTransformers noBR restChanged expr = do
-    (changed, eOpt) <- parFoldMapExpression encodeUntilFirst (False, Nothing) expr
+    (changed, eOpt) <- if parallelSimplify
+                         then parFoldMapExpression encodeUntilFirst (False, Nothing) expr
+                         else foldMapTree encodeUntilFirst (False, Nothing) expr
+
     maybe err (return . (restChanged || changed,)) eOpt
 
   where
@@ -1248,7 +1261,10 @@ fuseProgramFoldTransformers prog = mapExpression fuseFoldTransformers prog
 
 fuseFoldTransformers :: K3 Expression -> Either String (K3 Expression)
 fuseFoldTransformers expr = do
-    pr <- parFoldMapExpression fuseUntilFirst (False :!: Nothing) expr
+    pr <- if parallelSimplify
+            then parFoldMapExpression fuseUntilFirst (False :!: Nothing) expr
+            else foldMapTree fuseUntilFirst (False :!: Nothing) expr
+
     maybe (Left "Invalid fusion result") return $ P.snd pr
 
   where
