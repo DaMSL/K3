@@ -43,7 +43,7 @@ import Text.Printf
 
 import qualified Data.IntMap as I
 import qualified Data.HashMap.Strict as M
-import qualified Data.Map as MM
+import qualified Data.Map.Strict as MM
 import qualified Data.Set as S
 
 import Language.K3.Core.Common
@@ -86,9 +86,9 @@ instance Binary MZFlags
 instance Serialize MZFlags
 
 prepareInitialIState :: Bool -> K3 Declaration -> IState
-prepareInitialIState dbg dr = IState (M.fromList $! mapMaybe genHack (children dr)) MM.empty
+prepareInitialIState dbg dr = IState (M.fromList $! mapMaybe genHack (children dr)) M.empty
 
--- (foldl addGlobalPhaseBoundary MM.empty $! mapMaybe getMaybePhaseBoundary (children dr))
+-- (foldl addGlobalPhaseBoundary M.empty $! mapMaybe getMaybePhaseBoundary (children dr))
  where
   genHack :: K3 Declaration -> Maybe (DKey, K3 MExpr)
   genHack d@(tag -> DGlobal i _ _) = debugHack d $ Just ((Juncture (gUID d) i, In), (mAtom Referenced -??- "Hack"))
@@ -170,11 +170,11 @@ runInferM m st sc = runIdentity $! runExceptT $! runWriterT $! flip runReaderT s
 
 -- ** Non-scoping State
 data IState = IState { cTable                :: !(M.HashMap DKey (K3 MExpr))
-                     , globalPhaseBoundaries :: !(MM.Map Identifier (S.Set Identifier))
+                     , globalPhaseBoundaries :: !(M.HashMap Identifier (S.Set Identifier))
                      } deriving (Eq, Read, Show, Generic)
 
 defaultIState :: IState
-defaultIState = IState  M.empty MM.empty
+defaultIState = IState  M.empty M.empty
 
 type DKey = (Juncture, Direction)
 
@@ -182,14 +182,14 @@ constrain :: UID -> Identifier -> Direction -> K3 MExpr -> InferM ()
 constrain u i d m = let j = (Juncture u i) in
   logR j d m >> modify (\s -> s { cTable = M.insertWith (flip const) (j, d) (simplifyE m) (cTable s) })
 
-addGlobalPhaseBoundary :: MM.Map Identifier (S.Set Identifier) -> (Identifier, Identifier) -> MM.Map Identifier (S.Set Identifier)
-addGlobalPhaseBoundary m (gName, tName) = MM.insertWith S.union tName [gName] m
+addGlobalPhaseBoundary :: M.HashMap Identifier (S.Set Identifier) -> (Identifier, Identifier) -> M.HashMap Identifier (S.Set Identifier)
+addGlobalPhaseBoundary m (gName, tName) = M.insertWith S.union tName [gName] m
 
 isPseudoLocalInContext :: Identifier -> InferM Bool
 isPseudoLocalInContext i = do
   ct <- asks currentTrigger
   tm <- gets globalPhaseBoundaries
-  return $! maybe False (\tn -> i `S.member` (MM.findWithDefault S.empty tn tm)) ct
+  return $! maybe False (\tn -> i `S.member` (M.lookupDefault S.empty tn tm)) ct
 
 -- ** Scoping state
 data IScope = IScope { downstreams    :: ![Downstream]
@@ -296,6 +296,7 @@ materializeE e@(Node (t :@: _) cs) = case t of
     -- treat it as reference almost everywhere. Check projection decisions carefully, usually on
     -- collection transformers.
     constrain u anon In $! mITE moveableNow (mAtom Moved) (mAtom Referenced)
+
   ERecord is -> do
     u <- eUID e
 

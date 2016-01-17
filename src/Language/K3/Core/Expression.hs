@@ -58,7 +58,7 @@ import Data.Maybe (isJust)
 import Data.Tree
 import Data.Typeable
 
-import qualified Data.Map as M
+import qualified Data.Map.Strict as M
 
 import GHC.Generics (Generic)
 
