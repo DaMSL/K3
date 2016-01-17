@@ -15,9 +15,11 @@ import Data.List
 import Data.String
 
 import qualified Data.HashSet        as HashSet
-import qualified Data.Map.Strict     as Map
+import qualified Data.HashMap.Strict as Map
+import qualified Data.IntMap         as IntMap
 import Data.HashSet        ( HashSet )
-import Data.Map.Strict     ( Map )
+import Data.HashMap.Strict ( HashMap )
+import Data.IntMap.Strict  ( IntMap )
 
 import qualified Text.Parsec          as P
 import qualified Text.Parsec.Prim     as PP
@@ -54,9 +56,9 @@ type EndpointsBQG      = [(Identifier, EndpointInfo)]
     The outer key is the alias identifier, while the inner key is the frame level.
     The datatype maintains a level counter on every push or pop of the environment frame.
 -}
-type TAEnv        = Map Identifier (Map Int [K3 Type])
+type TAEnv        = HashMap Identifier (IntMap [K3 Type])
 data TypeAliasEnv = TypeAliasEnv !Int !TAEnv
-                  deriving (Eq, Ord, Read, Show)
+                  deriving (Eq, Read, Show)
 
 {-| Parser environment type.
     This includes two scoped frames, one for source metadata, and another as a
@@ -76,13 +78,13 @@ data ParseMode = Normal | Splice | SourcePattern
     This includes a parse mode, a UID counter, a list of generated declarations,
     a type alias environment and a parser environment as defined above.
 -}
-data ParserState = ParserState { pMode     :: ParseMode
-                               , pUid      :: Int
-                               , pEffId    :: Int
-                               , pGenDecls :: [K3 Declaration]
-                               , pTaEnv    :: TypeAliasEnv
-                               , pEnv      :: ParserEnv }
-                 deriving (Eq, Ord, Read, Show)
+data ParserState = ParserState { pMode     :: !ParseMode
+                               , pUid      :: !Int
+                               , pEffId    :: !Int
+                               , pGenDecls :: ![K3 Declaration]
+                               , pTaEnv    :: !TypeAliasEnv
+                               , pEnv      :: !ParserEnv }
+                 deriving (Eq, Read, Show)
 
 -- | Parser type synonyms
 type K3Parser          = PP.ParsecT String ParserState Identity
@@ -461,15 +463,18 @@ popFrame = modifyEnv $ \env -> (removeFrame env, currentFrame env)
 
 {- Type alias enviroment helpers -}
 lookupTAliasE :: Identifier -> TypeAliasEnv -> Maybe (K3 Type)
-lookupTAliasE n (TypeAliasEnv lvl env) = Map.lookup n env >>= Map.lookupLE lvl >>= tryHead . snd
+lookupTAliasE n (TypeAliasEnv lvl env) = do
+    nenv <- Map.lookup n env
+    ta <- IntMap.lookupLE lvl nenv
+    tryHead $! snd ta
   where tryHead []    = Nothing
         tryHead (h:_) = Just h
 
 appendTAliasEAtLevel :: Identifier -> K3 Type -> Int -> Int -> TypeAliasEnv -> TypeAliasEnv
 appendTAliasEAtLevel n t ilvl nlvl (TypeAliasEnv _ env) = TypeAliasEnv nlvl appendAlias
-  where slvl                 = Map.singleton ilvl [t]
+  where slvl                 = IntMap.singleton ilvl [t]
         appendAlias          = Map.insertWith appendLevel n slvl env
-        appendLevel _ lvlEnv = Map.insertWith (++) ilvl [t] lvlEnv
+        appendLevel _ lvlEnv = IntMap.insertWith (++) ilvl [t] lvlEnv
 
 appendTAliasE :: Identifier -> K3 Type -> TypeAliasEnv -> TypeAliasEnv
 appendTAliasE n t tae@(TypeAliasEnv lvl _) = appendTAliasEAtLevel n t lvl lvl tae
@@ -480,9 +485,9 @@ pushTAliasE taBindings tae@(TypeAliasEnv lvl _) =
 
 popTAliasE :: TypeAliasEnv -> TypeAliasEnv
 popTAliasE (TypeAliasEnv lvl env) = TypeAliasEnv (lvl-1) rebuildEnv
-  where rebuildEnv = Map.foldlWithKey deleteLevel Map.empty env
-        deleteLevel nEnv n lvlEnv = let nlvlEnv = Map.delete lvl lvlEnv
-                                    in if Map.null nlvlEnv then nEnv else Map.insert n nlvlEnv nEnv
+  where rebuildEnv = Map.foldlWithKey' deleteLevel Map.empty env
+        deleteLevel nEnv n lvlEnv = let nlvlEnv = IntMap.delete lvl lvlEnv
+                                    in if IntMap.null nlvlEnv then nEnv else Map.insert n nlvlEnv nEnv
 
 {- Helpers -}
 set :: [String] -> HashSet String

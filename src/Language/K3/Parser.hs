@@ -96,7 +96,7 @@ stitchK3 includePaths s = do
   searchPaths   <- if null includePaths then getSearchPath else return includePaths
   subFiles      <- processIncludes searchPaths (lines s) []
   subFileCtnts  <- trace (unwords ["subfiles:", show subFiles]) $ mapM readFile subFiles
-  return $ subFileCtnts ++ [s]
+  return $! subFileCtnts ++ [s]
 
 parseK3 :: Bool -> [FilePath] -> String -> IO (Either String (K3 Declaration))
 parseK3 noFeed includePaths s = do
@@ -110,8 +110,8 @@ parseK3WithIncludes :: Bool -> [(Bool, String)] -> K3 Declaration -> IO (Either 
 parseK3WithIncludes noFeed fileContents initProg = do
   let parseE = foldl chainValidParse (return (initProg, Nothing)) fileContents
   case parseE of
-    Left msg -> return $ Left msg
-    Right (prog, _) -> return $ Right prog
+    Left msg -> return $! Left msg
+    Right (prog, _) -> return $! Right prog
   where
     chainValidParse parse (asDriver, src) = parse >>= parseAndCompose src asDriver
 
@@ -217,7 +217,7 @@ dEndpoint kind name isSource =
 
         mkDecls n t (spec, eOpt, subdecls) = do
           epDecl <- trackEndpoint spec $ DC.endpoint n (mkEndpointT t) eOpt []
-          return $ epDecl:subdecls
+          return $! epDecl:subdecls
 
         qualifyT t = if null $ filter isTQualified $ annotations t then t @+ TImmutable else t
 
@@ -318,9 +318,9 @@ dControlAnnotation = namedIdentifier "control annotation" "control" $ rule
 
         mkCtrlAnn n svars (rw, exts) = DC.generator $ mpCtrlAnnotation n svars rw exts
 
-        cleanExpr e = return $ stripEUIDSpan e
-        cleanDecl (Left (MPRewriteDecl i c ds)) = return $ Left $ MPRewriteDecl i c $ map stripDUIDSpan ds
-        cleanDecl (Right d) = return $ Right $ stripDUIDSpan d
+        cleanExpr e = return $! stripEUIDSpan e
+        cleanDecl (Left (MPRewriteDecl i c ds)) = return $! Left $ MPRewriteDecl i c $ map stripDUIDSpan ds
+        cleanDecl (Right d) = return $! Right $ stripDUIDSpan d
 
 
 dTypeAlias :: K3Parser (Maybe (K3 Declaration))
@@ -486,7 +486,7 @@ eTerm = do
     eProject = prjWithAnnotations $ dot *> identifier
 
     attachProjection e (((i, tOpt), anns), sp) =
-      EUID # (return $ foldl (@+) (EC.project i e) $ [ESpan sp] ++ maybe [] ((:[]) . EPType . stripTUIDSpan) tOpt ++ anns)
+      EUID # (return $! foldl (@+) (EC.project i e) $ [ESpan sp] ++ maybe [] ((:[]) . EPType . stripTUIDSpan) tOpt ++ anns)
 
     eWithProperties    p = withProperties "" False eProperties p
 
@@ -577,9 +577,9 @@ eTuplePrefix = choice [try unit, try eNested, eTupleOrSend]
         delayOverrideEdge :: K3Parser (Either (K3 Literal) (Either (K3 Literal) (K3 Literal)))
         delayOverrideEdge = Right . Right <$> ((keyword "delay" *> keyword "override" *> keyword "edge") *> delayValue)
 
-        mkTupOrSend [e] Nothing              = return $ stripSpan <$> e
+        mkTupOrSend [e] Nothing              = return $! stripSpan <$> e
         mkTupOrSend [e] (Just (arg, delayO)) = mkDelay (EC.binop OSnd e arg) delayO
-        mkTupOrSend l Nothing                = return $ EC.tuple l
+        mkTupOrSend l Nothing                = return $! EC.tuple l
         mkTupOrSend l (Just (arg, delayO))   = (EC.binop OSnd <$> (EUID # return (EC.tuple l)) <*> pure arg) >>= \e -> mkDelay e delayO
 
         delayValue :: K3Parser (K3 Literal)
@@ -817,8 +817,8 @@ dAnnotationUse :: Maybe SpliceEnv -> AnnotationCtor a -> ApplyAnnCtor a -> K3Par
 dAnnotationUse sEnvOpt aCtor apCtor = try mpOrAnn
   where mpOrAnn   = mkMpOrAnn =<< ((,) <$> identifier <*> annParams)
         annParams = option [] (parens $ commaSep1 $ contextualizedSpliceParameter sEnvOpt)
-        mkMpOrAnn (n, [])    = return $ aCtor n
-        mkMpOrAnn (n,params) = return $ apCtor n $ mkSpliceEnv $ catMaybes params
+        mkMpOrAnn (n, [])    = return $! aCtor n
+        mkMpOrAnn (n,params) = return $! apCtor n $ mkSpliceEnv $ catMaybes params
 
 eCAnnotations :: K3Parser [Annotation Expression]
 eCAnnotations = try ((:[]) <$> p) <|> try (braces $ commaSep1 p)
@@ -916,10 +916,10 @@ svTerm = choice $ map try [ sVar
 
     mkLabelType (n,st) = spliceRecord [(spliceVIdSym, SLabel n), (spliceVTSym, SType $ stripTUIDSpan st)]
 
-    mkDecl [x] = return $ SDecl $ stripDUIDSpan x
+    mkDecl [x] = return $! SDecl $ stripDUIDSpan x
     mkDecl _   = P.parserFail "Invalid splice declaration"
 
-    mkLitRange ((tag -> LInt i), (tag -> LInt j)) | j > i = return $ spliceList [SLiteral (LC.int x) | x <- [i..j]]
+    mkLitRange ((tag -> LInt i), (tag -> LInt j)) | j > i = return $! spliceList [SLiteral (LC.int x) | x <- [i..j]]
     mkLitRange _ = P.parserFail "Invalid splice range"
 
     wrap l r p = between (symbol l) (symbol r) p
@@ -995,7 +995,7 @@ contextualizedSpliceParameter sEnvOpt = choice [try fromContextVar, try fromCont
     mkCtxtLt sEnv sn = do
       lv <- lookupSpliceE sn sEnv >>= ltLabel
       tv <- lookupSpliceE sn sEnv >>= ltType
-      return $ spliceRecord [(spliceVIdSym, lv), (spliceVTSym, tv)]
+      return $! spliceRecord [(spliceVIdSym, lv), (spliceVTSym, tv)]
 
 
 {- Effect signatures -}
@@ -1038,7 +1038,7 @@ effTerm asAttrMem = effApply fTerm <?> "effect term"
     lamApp     p = mkLamApp =<< some (try p)
     mkLamApp []  = P.parserFail "Invalid provenance lambda body"
     mkLamApp [p] = return p
-    mkLamApp l   = return $ Right $ foldl1 FSC.fapplyExt $ map (either id id) l
+    mkLamApp l   = return $! Right $ foldl1 FSC.fapplyExt $ map (either id id) l
 
     mkLambda i (Left  ef) = FSC.flambda i FSC.fnone ef FSC.fnone
     mkLambda i (Right rf) = FSC.flambda i FSC.fnone FSC.fnone rf
@@ -1069,7 +1069,7 @@ provTerm =  pApply pTerm <?> "provenance term"
     mkTerm p psfxOpt = maybe p ($ p) psfxOpt
 
     mkVar "fresh" = withEffectID $ \eid -> PC.pfvar ("fresh"++ show eid) Nothing
-    mkVar       i = return $ PC.pfvar i Nothing
+    mkVar       i = return $! PC.pfvar i Nothing
 
     mkPrj    p n = PC.pproject n p Nothing
     mkRec    p n = PC.precord n p
@@ -1157,7 +1157,7 @@ value = mkValueStream <$> (symbol "value" *> expr)
 builtin :: Bool -> K3Parser EndpointBuilder
 builtin isSource = mkBuiltin <$> builtinChannels <*> format
   where mkBuiltin idE formatE n t =
-          builtinSpec idE formatE >>= \s -> return $ endpointMethods isSource s idE formatE n t
+          builtinSpec idE formatE >>= \s -> return $! endpointMethods isSource s idE formatE n t
         builtinSpec idE formatE = BuiltinEP <$> S.symbolS idE <*> S.symbolS formatE
 
 file :: Bool -> String -> (String -> Bool -> String -> EndpointSpec) -> ExpressionParser
@@ -1165,7 +1165,7 @@ file :: Bool -> String -> (String -> Bool -> String -> EndpointSpec) -> Expressi
 file isSource sym ctor prsr = mkFileSrc <$> (symbol sym *> prsr) <*> textOrBinary <*> format
   where mkFileSrc argE asTxt formatE n t = do
           s <- spec argE asTxt formatE
-          return $ endpointMethods isSource s argE formatE n t
+          return $! endpointMethods isSource s argE formatE n t
 
         spec argE asTxt formatE = (\a f -> ctor a asTxt f) <$> S.exprS argE <*> S.symbolS formatE
         textOrBinary = (symbol "text" *> return True) <|> (symbol "binary" *> return False)
@@ -1178,7 +1178,7 @@ filemux = mkFMuxSrc <$> syms ["filemxsq", "filemux"] <*> eVariable <*> textOrBin
 
     mkFMuxSrc sym argE asTxt formatE n t = do
       s <- fMuxSpec (ctorOfSym sym) argE asTxt formatE
-      return $ endpointMethods True s argE formatE n t
+      return $! endpointMethods True s argE formatE n t
 
     fMuxSpec ctor argE asTxt formatE = (\a f -> ctor a asTxt f) <$> S.exprS argE <*> S.symbolS formatE
 
@@ -1196,7 +1196,7 @@ polyfile = mkPFSrc <$> syms ["polyfileseq", "polyfile"] <*> eVariable <*> textOr
     mkPFSrc sym argE asTxt formatE orderE rbsizeE n t = do
       s <- (\a f o sv -> (ctorOfSym sym) a asTxt f o sv)
               <$> S.exprS argE <*> S.symbolS formatE <*> S.exprS orderE <*> S.exprS rbsizeE
-      return $ endpointMethods True s argE formatE n t
+      return $! endpointMethods True s argE formatE n t
 
     ctorOfSym s =
       if s == "polyfile" then PolyFileMuxEP
@@ -1209,7 +1209,7 @@ network isSource = mkNetwork <$> (symbol "network" *> eTerminal) <*> textOrBinar
   where textOrBinary = (symbol "text" *> return True) <|> (symbol "binary" *> return False)
         mkNetwork addrE asText formatE n t = do
           s <- networkSpec addrE asText formatE
-          return $ endpointMethods isSource s addrE formatE n t
+          return $! endpointMethods isSource s addrE formatE n t
 
         networkSpec addrE asText formatE = (\a f -> NetworkEP a asText f) <$> S.exprS addrE <*> S.symbolS formatE
 
@@ -1329,9 +1329,9 @@ ensureUIDs p = traverse (parserWithUID . annotateDecl) p
 
     rebuildDecl (_ :@: as) uid tg =
       let d' = tg :@: as in
-      return $ unlessAnnotated (any isDUID) d' (d' @+ (DUID $ UID uid))
+      return $! unlessAnnotated (any isDUID) d' (d' @+ (DUID $ UID uid))
 
-    annotateNode test anns node = return $ unlessAnnotated test node (foldl (@+) node anns)
+    annotateNode test anns node = return $! unlessAnnotated test node (foldl (@+) node anns)
 
     annotateExpr :: (Eq (Annotation Expression)) => K3 Expression -> K3Parser (K3 Expression)
     annotateExpr = traverse (\e -> parserWithUID (\uid -> annotateNode (any isEUID) [EUID $ UID uid] e))
