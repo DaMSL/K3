@@ -73,9 +73,9 @@ import Language.K3.Utils.Pretty
 -- * Entry-Point
 
 data MZFlags =
-  MZFlags { isolateRuntimeMZ :: Bool
-          , isolateApplicationMZ :: Bool
-          , isolateQueryMZ :: Bool
+  MZFlags { isolateRuntimeMZ     :: !Bool
+          , isolateApplicationMZ :: !Bool
+          , isolateQueryMZ       :: !Bool
           }
  deriving (Eq, Generic, Ord, Read, Show)
 
@@ -169,8 +169,8 @@ runInferM :: InferM a -> IState -> IScope -> Either IError ((a, IState), [IRepor
 runInferM m st sc = runIdentity $ runExceptT $ runWriterT $ flip runReaderT sc $ runStateT m st
 
 -- ** Non-scoping State
-data IState = IState { cTable :: M.HashMap DKey (K3 MExpr)
-                     , globalPhaseBoundaries :: MM.Map Identifier (S.Set Identifier)
+data IState = IState { cTable                :: !(M.HashMap DKey (K3 MExpr))
+                     , globalPhaseBoundaries :: !(MM.Map Identifier (S.Set Identifier))
                      } deriving (Eq, Read, Show, Generic)
 
 defaultIState :: IState
@@ -192,16 +192,16 @@ isPseudoLocalInContext i = do
   return $ maybe False (\tn -> i `S.member` (MM.findWithDefault S.empty tn tm)) ct
 
 -- ** Scoping state
-data IScope = IScope { downstreams :: [Downstream]
-                     , nearestBind :: Maybe UID
-                     , pEnv :: PIEnv
-                     , fEnv :: FIEnv
-                     , topLevel :: Bool
-                     , currentTrigger :: Maybe Identifier
-                     , flags :: MZFlags
+data IScope = IScope { downstreams    :: ![Downstream]
+                     , nearestBind    :: !(Maybe UID)
+                     , pEnv           :: !PIEnv
+                     , fEnv           :: !FIEnv
+                     , topLevel       :: !Bool
+                     , currentTrigger :: !(Maybe Identifier)
+                     , flags          :: !MZFlags
                      }
 
-data Contextual a = Contextual a (Maybe UID) deriving (Eq, Ord, Read, Show)
+data Contextual a = Contextual !a !(Maybe UID) deriving (Eq, Ord, Read, Show)
 type Downstream = Contextual (K3 Expression)
 
 contextualizeNow :: a -> InferM (Contextual a)
@@ -220,7 +220,7 @@ withCurrentTrigger :: Identifier -> InferM a -> InferM a
 withCurrentTrigger ct = local (\s -> s { currentTrigger = Just ct })
 
 -- ** Reporting
-data IReport = IReport { juncture :: Juncture, direction :: Direction, constraint :: K3 MExpr }
+data IReport = IReport { juncture :: !Juncture, direction :: !Direction, constraint :: !(K3 MExpr) }
 
 logR :: Juncture -> Direction -> K3 MExpr -> InferM ()
 logR j d m = if reportVerbosity == None

@@ -25,9 +25,9 @@ import Language.K3.Utils.Pretty
 import Language.K3.Codegen.CPP.Materialization.Hints (Method(..), Direction(..))
 
 data MExpr
-  = MVar Juncture Direction
-  | MAtom Method
-  | MIfThenElse (K3 MPred)
+  = MVar !Juncture !Direction
+  | MAtom !Method
+  | MIfThenElse !(K3 MPred)
  deriving (Eq, Read, Show, Generic)
 
 data instance Annotation MExpr = MEReason String
@@ -65,8 +65,8 @@ data MPred
   = MNot
   | MAnd
   | MOr
-  | MOneOf (K3 MExpr) [Method]
-  | MBool Bool
+  | MOneOf !(K3 MExpr) ![Method]
+  | MBool !Bool
  deriving (Eq, Read, Show, Generic)
 
 data instance Annotation MPred = MPReason String
@@ -100,7 +100,7 @@ ppShortP p = case (tag p, children p) of
   (MOneOf m ms, _) -> printf "%s ∈ %s" (ppShortE m) (show ms)
   (MBool b, _) -> show b
 
-data Juncture = Juncture UID Identifier deriving (Eq, Ord, Read, Show, Generic)
+data Juncture = Juncture !UID !Identifier deriving (Eq, Ord, Read, Show, Generic)
 
 instance NFData    Juncture
 instance Binary    Juncture

@@ -63,18 +63,18 @@ evalMetaprogram :: Maybe MPEvalOptions
                 -> Maybe (K3 Declaration -> GeneratorM (K3 Declaration))
                 -> K3 Declaration -> IO (Either String (K3 Declaration))
 evalMetaprogram evalOpts analyzeFOpt repairFOpt prog =
-  runGeneratorM initGState $ synthesizedProg prog
+  runGeneratorM initGState $! synthesizedProg prog
   where
     synthesizedProg mp = do
-      localLog $ generatorInput mp
-      void $ modifyGEnvF_ $ \_ -> return emptyGeneratorEnv
+      localLog $! generatorInput mp
+      void $! modifyGEnvF_ $! \_ -> return emptyGeneratorEnv
       pWithDataAnns  <- runMpGenerators mp
       pWithMDataAnns <- applyDAnnGens pWithDataAnns
-      pWithDADecls   <- modifyGDeclsF $ \gd -> addDecls gd pWithMDataAnns
+      pWithDADecls   <- modifyGDeclsF $! \gd -> addDecls gd pWithMDataAnns
       analyzedP      <- analyzeF pWithDADecls
-      localLog $ debugAnalysis analyzedP
+      localLog $! debugAnalysis analyzedP
       pWithMCtrlAnns <- generatorWithEvalOptions (flip applyCAnnGens analyzedP)
-      pWithCADecls   <- modifyGDeclsF $ \gd -> addDecls gd pWithMCtrlAnns
+      pWithCADecls   <- modifyGDeclsF $! \gd -> addDecls gd pWithMCtrlAnns
       pRepaired      <- repairF pWithCADecls
       if pRepaired == mp then return pRepaired
                          else rcr    pRepaired -- Tail recursive fixpoint
@@ -88,7 +88,7 @@ evalMetaprogram evalOpts analyzeFOpt repairFOpt prog =
     addDecls genDecls p@(tag -> DRole n)
       | n == defaultRoleName =
           let (dd, cd) = generatorDeclsToList genDecls
-          in return $! (emptyGeneratorDecls, Node (DRole n :@: annotations p) $ children p ++ dd ++ cd)
+          in return $! (emptyGeneratorDecls, Node (DRole n :@: annotations p) $! children p ++ dd ++ cd)
 
     addDecls _ p = Left . boxToString $ [addErrMsg] %$ prettyLines p
 
@@ -101,7 +101,7 @@ evalMetaprogram evalOpts analyzeFOpt repairFOpt prog =
 defaultMetaAnalysis :: K3 Declaration -> GeneratorM (K3 Declaration)
 defaultMetaAnalysis p = do
     strippedP <- mapExpression removeTypes p
-    liftError (liftError return . translateProgramTypes . fst) $ inferProgramTypes strippedP
+    liftError (liftError return . translateProgramTypes . fst) $! inferProgramTypes strippedP
 
   where
     -- | Match any type annotation except pattern types which are user-defined in patterns.
@@ -109,7 +109,7 @@ defaultMetaAnalysis p = do
     liftError = either throwG
 
 defaultMetaRepair :: K3 Declaration -> GeneratorM (K3 Declaration)
-defaultMetaRepair p = return $! snd $ repairProgram "metaprogram" Nothing p
+defaultMetaRepair p = return $! snd $! repairProgram "metaprogram" Nothing p
 
 nullMetaAnalysis :: K3 Declaration -> GeneratorM (K3 Declaration)
 nullMetaAnalysis p = return p
@@ -125,20 +125,20 @@ runMpGenerators mp = mapTree evalMPDecl mp
     evalMPDecl ch d@(tag -> DGenerator mpd@(MPDataAnnotation n svars tvars mems)) =
       let extendGen genEnv =
             case lookupDGenE n genEnv of
-              Nothing -> Right $ addDGenE n (annotationSplicer n svars tvars mems) genEnv
-              Just _  -> Left $ unwords ["Duplicate metaprogrammed data annotation for", n]
+              Nothing -> Right $! addDGenE n (annotationSplicer n svars tvars mems) genEnv
+              Just _  -> Left $! unwords ["Duplicate metaprogrammed data annotation for", n]
       in modifyGEnvF_ extendGen >> rebuildNode (DC.generator mpd) (annotations d) ch
 
     evalMPDecl ch d@(tag -> DGenerator mpd@(MPCtrlAnnotation n svars rewriteRules extensions)) =
       let extendGen genEnv =
             case lookupCGenE n genEnv of
-              Nothing -> Right $ addCGenE n (exprPatternMatcher svars rewriteRules extensions) genEnv
-              Just _  -> Left $ unwords ["Duplicate metaprogrammed control annotation for", n]
+              Nothing -> Right $! addCGenE n (exprPatternMatcher svars rewriteRules extensions) genEnv
+              Just _  -> Left $! unwords ["Duplicate metaprogrammed control annotation for", n]
       in modifyGEnvF_ extendGen >> rebuildNode (DC.generator mpd) (annotations d) ch
 
     evalMPDecl ch (tag &&& annotations -> (t,anns)) = return $! Node (t :@: anns) ch
 
-    rebuildNode (Node (t :@: anns) _) nanns ch = return $! Node (t :@: (nub $ anns ++ nanns)) ch
+    rebuildNode (Node (t :@: anns) _) nanns ch = return $! Node (t :@: (nub $! anns ++ nanns)) ch
 
 
 applyDAnnGens :: K3 Declaration -> GeneratorM (K3 Declaration)
@@ -166,26 +166,26 @@ applyDAnnGens mp = mapProgram applyDAnnDecl applyDAnnMemDecl applyDAnnExprTree (
 
     applyDAnnExpr ch n@(tag -> EConstant (CEmpty t)) = do
       nt    <- applyDAnnTypeTree t
-      nanns <- mapM (eApplyAnn t) $ annotations n
-      rebuildNode (EC.constant $ CEmpty nt) (Just nanns) ch
+      nanns <- mapM (eApplyAnn t) $! annotations n
+      rebuildNode (EC.constant $! CEmpty nt) (Just nanns) ch
 
     applyDAnnExpr ch n = rebuildNode n Nothing ch
 
     applyDAnnType ch n@(tag -> TCollection) = do
-      nanns <- mapM (tApplyAnn $ head $ children n) $ annotations n
-      rebuildNode (TC.collection $ head $ children n) (Just nanns) ch
+      nanns <- mapM (tApplyAnn $! head $! children n) $! annotations n
+      rebuildNode (TC.collection $! head $! children n) (Just nanns) ch
 
     applyDAnnType ch n = rebuildNode n Nothing ch
 
     applyDAnnLiteral ch n@(tag -> LEmpty t) = do
       nt    <- applyDAnnTypeTree t
-      nanns <- mapM (lApplyAnn t) $ annotations n
+      nanns <- mapM (lApplyAnn t) $! annotations n
       rebuildNode (LC.empty nt) (Just nanns) ch
 
     applyDAnnLiteral ch n@(tag -> LCollection t) = do
       nt    <- applyDAnnTypeTree t
-      nanns <- mapM (lApplyAnn t) $ annotations n
-      rebuildNode (LC.collection nt $ children n) (Just nanns) ch
+      nanns <- mapM (lApplyAnn t) $! annotations n
+      rebuildNode (LC.collection nt $! children n) (Just nanns) ch
 
     applyDAnnLiteral ch n = rebuildNode n Nothing ch
 
@@ -205,7 +205,7 @@ applyDAnnGens mp = mapProgram applyDAnnDecl applyDAnnMemDecl applyDAnnExprTree (
     lApplyAnn _ x = return x
 
     rebuildNode (Node (t :@: anns) _) Nothing      ch = return $! Node (t :@: anns) ch
-    rebuildNode (Node (t :@: anns) _) (Just nanns) ch = return $! Node (t :@: (nub $ anns ++ nanns)) ch
+    rebuildNode (Node (t :@: anns) _) (Just nanns) ch = return $! Node (t :@: (nub $! anns ++ nanns)) ch
 
     rebuildNodeWithAnns (Node (t :@: _) ch) anns = return $! Node (t :@: anns) ch
 
@@ -216,7 +216,7 @@ applyDAnnGens mp = mapProgram applyDAnnDecl applyDAnnMemDecl applyDAnnExprTree (
         let postSCtxt = pushSCtxt nsEnv sCtxt
         maybe (spliceLookupErr annId)
               (expectSpliceAnnotation postSCtxt . ($ nsEnv))
-              $ lookupDSPGenE annId gEnv
+              $! lookupDSPGenE annId gEnv
 
       where
         expectSpliceAnnotation sctxt (SRGenDecl p) = do
@@ -232,8 +232,8 @@ applyDAnnGens mp = mapProgram applyDAnnDecl applyDAnnMemDecl applyDAnnExprTree (
           SGDecl decl ->
             case tag decl of
               DDataAnnotation n tvs mems -> do
-                nmems <- generateInSpliceCtxt sctxt $ mapM applyDAnnMemDecl mems
-                ndecl <- bindDAnnVars sctxt $ (DC.dataAnnotation n tvs nmems) @<- annotations decl
+                nmems <- generateInSpliceCtxt sctxt $! mapM applyDAnnMemDecl mems
+                ndecl <- bindDAnnVars sctxt $! (DC.dataAnnotation n tvs nmems) @<- annotations decl
                 modifyGDeclsF_ (Right . addDGenDecl annId ndecl) >> return (aCtor n)
 
               _ -> throwG $ boxToString $ ["Invalid data annotation splice"] %+ prettyLines decl
@@ -246,7 +246,7 @@ applyDAnnGens mp = mapProgram applyDAnnDecl applyDAnnMemDecl applyDAnnExprTree (
 applyCAnnGens :: MPEvalOptions -> K3 Declaration -> GeneratorM (K3 Declaration)
 applyCAnnGens opts mp = foldExpression applyCAnnExprTree False mp >>= return . snd
   where
-    applyCAnnExprTree changed e = foldMapRebuildTree (applyCAnnExpr $ mpSerial opts) changed e
+    applyCAnnExprTree changed e = foldMapRebuildTree (applyCAnnExpr $! mpSerial opts) changed e
 
     applyCAnnExpr True chChanged ch (Node (t :@: anns) _) =
       if or chChanged
@@ -273,8 +273,8 @@ applyCAnnotation targetE cAnnId sEnv = do
    let postSCtxt = pushSCtxt nsEnv sCtxt
    debugApply sCtxt nsEnv
    maybe (spliceLookupErr cAnnId)
-         (\g -> injectRewrite postSCtxt $ g targetE nsEnv)
-         $ lookupERWGenE cAnnId gEnv
+         (\g -> injectRewrite postSCtxt $! g targetE nsEnv)
+         $! lookupERWGenE cAnnId gEnv
 
   where
     injectRewrite sctxt (SRExpr p) = localLog debugPassThru >> p >>= bindEAnnVars sctxt
@@ -284,7 +284,7 @@ applyCAnnotation targetE cAnnId sEnv = do
       (rewriteE, decls) <- p
       rewriteESub       <- bindEAnnVars nsctxt rewriteE
       declsSub          <- mapM (bindDAnnVars nsctxt) decls
-      splicedDeclsSub   <- generateInSpliceCtxt nsctxt $ mapM spliceDecl declsSub
+      splicedDeclsSub   <- generateInSpliceCtxt nsctxt $! mapM spliceDecl declsSub
       localLog (debugRewrite rewriteESub)
       modifyGDeclsF_ (Right . addCGenDecls cAnnId splicedDeclsSub) >> return rewriteESub
 
@@ -305,7 +305,7 @@ evalBindings sctxt senv = evalMap (generateInSpliceCtxt sctxt) senv
   where eval (SVar i) = do
           sv <- expectEmbeddingSplicer i
           case sv of
-            SLabel j | i == j -> eval_var $ SVar j
+            SLabel j | i == j -> eval_var $! SVar j
             SVar _ -> eval_var sv
             _ -> return sv
 
@@ -321,7 +321,7 @@ evalBindings sctxt senv = evalMap (generateInSpliceCtxt sctxt) senv
         eval (SList    svs) = mapM eval svs >>= return . SList
 
         evalMap f m = mapM (\(k,v) -> f (eval v) >>= return . (k,)) (Map.toList m) >>= return . Map.fromList
-        chase (SVar i) = maybe (SVar i) chase $ lookupSCtxt i sctxt
+        chase (SVar i) = maybe (SVar i) chase $! lookupSCtxt i sctxt
         chase x = x
 
 -- TODO: handle LApplyGen in DProperty
@@ -349,31 +349,31 @@ validateSplice spliceParams spliceEnv =
 
 {- Splicer construction -}
 globalSplicer :: Identifier -> K3 Type -> Maybe (K3 Expression) -> K3Generator
-globalSplicer n t eOpt = Splicer $ \spliceEnv -> SRDecl $ do
-  nt <- generateInSpliceEnv spliceEnv $ spliceType t
+globalSplicer n t eOpt = Splicer $! \spliceEnv -> SRDecl $! do
+  nt <- generateInSpliceEnv spliceEnv $! spliceType t
   neOpt <- maybe (return Nothing) (\e -> generateInSpliceEnv spliceEnv (spliceExpression e) >>= return . Just) eOpt
   return $! DC.global n nt neOpt
 
 annotationSplicer :: Identifier -> [TypedSpliceVar] -> [TypeVarDecl] -> [Either MPAnnMemDecl AnnMemDecl] -> K3Generator
-annotationSplicer n spliceParams typeParams mems = Splicer $ \spliceEnv -> SRGenDecl $ do
+annotationSplicer n spliceParams typeParams mems = Splicer $! \spliceEnv -> SRGenDecl $! do
   let vspliceEnv = validateSplice spliceParams spliceEnv
-  nmems <- generateInSpliceEnv vspliceEnv $ mapM (either spliceMPAnnMem (\m -> spliceAnnMem m >>= return . (:[]))) mems
+  nmems <- generateInSpliceEnv vspliceEnv $! mapM (either spliceMPAnnMem (\m -> spliceAnnMem m >>= return . (:[]))) mems
   if isContentDependent
-    then return $! SGContentDependent $ \t -> withGUID n vspliceEnv (Just t) $ onGenerated nmems
-    else withGUID n vspliceEnv Nothing $ onGenerated nmems
+    then return $! SGContentDependent $! \t -> withGUID n vspliceEnv (Just t) $! onGenerated nmems
+    else withGUID n vspliceEnv Nothing $! onGenerated nmems
 
   where
-  onGenerated _     (Left i)  = SGNamed $ concat [n, "_", show i]
-  onGenerated nmems (Right i) = SGDecl $ DC.dataAnnotation (concat [n, "_", show i]) typeParams $ concat nmems
+  onGenerated _     (Left i)  = SGNamed $! concat [n, "_", show i]
+  onGenerated nmems (Right i) = SGDecl $! DC.dataAnnotation (concat [n, "_", show i]) typeParams $! concat nmems
 
   isContentDependent = any (`isInfixOf` n) ["VMapIndex", "MapE", "SortedMapE", "MapCE"]
 
 
 exprSplicer :: K3 Expression -> K3Generator
-exprSplicer e = Splicer $ \spliceEnv -> SRExpr $ generateInSpliceEnv spliceEnv $ spliceExpression e
+exprSplicer e = Splicer $! \spliceEnv -> SRExpr $! generateInSpliceEnv spliceEnv $! spliceExpression e
 
 typeSplicer :: K3 Type -> K3Generator
-typeSplicer t = Splicer $ \spliceEnv -> SRType $ generateInSpliceEnv spliceEnv $ spliceType t
+typeSplicer t = Splicer $! \spliceEnv -> SRType $! generateInSpliceEnv spliceEnv $! spliceType t
 
 {- Splice evaluation -}
 spliceDeclaration :: K3 Declaration -> DeclGenerator
@@ -383,18 +383,18 @@ spliceDecl :: K3 Declaration -> DeclGenerator
 spliceDecl d = case d of
   (tag -> DGlobal n t eOpt) -> do
     ((nn, nt, neOpt), nanns) <- spliceDeclParts n t eOpt >>= newAnns d
-    return $! Node (DGlobal nn nt neOpt :@: nanns) $ children d
+    return $! Node (DGlobal nn nt neOpt :@: nanns) $! children d
 
   (tag -> DTrigger n t e) -> do
     ((nn, nt, Just ne), nanns) <- spliceDeclParts n t (Just e) >>= newAnns d
-    return $! Node (DTrigger nn nt ne :@: nanns) $ children d
+    return $! Node (DTrigger nn nt ne :@: nanns) $! children d
 
   (tag -> DDataAnnotation n tvars mems) ->
     mapM spliceAnnMem mems >>= newAnns d >>= \(nmems, nanns) ->
-    return $! Node (DDataAnnotation n tvars nmems :@: nanns) $ children d
+    return $! Node (DDataAnnotation n tvars nmems :@: nanns) $! children d
 
   (tag -> DTypeDef n t) ->
-    spliceType t >>= newAnns d >>= \(nt, nanns) -> return $! Node (DTypeDef n nt :@: nanns) $ children d
+    spliceType t >>= newAnns d >>= \(nt, nanns) -> return $! Node (DTypeDef n nt :@: nanns) $! children d
 
   (Node (tg :@: _) ch) ->
     newAnns d () >>= \(_,nanns) -> return $! Node (tg :@: nanns) ch
@@ -405,13 +405,13 @@ spliceMPAnnMem :: MPAnnMemDecl -> GeneratorM [AnnMemDecl]
 spliceMPAnnMem (MPAnnMemDecl i c mems) = spliceWithValue c
   where
     spliceWithValue = \case
-      SVar v -> generatorWithSCtxt $ \sctxt -> do
+      SVar v -> generatorWithSCtxt $! \sctxt -> do
                   sv <- expectEmbeddingSplicer v
                   case sv of
-                    SLabel v' -> maybe (lookupErr v') spliceWithValue $ lookupSCtxt v' sctxt
+                    SLabel v' -> maybe (lookupErr v') spliceWithValue $! lookupSCtxt v' sctxt
                     _ -> spliceWithValue sv
 
-      SList svs -> mapM (\sv -> generateInExtendedSpliceEnv i sv $ mapM spliceAnnMem mems) svs >>= return . concat
+      SList svs -> mapM (\sv -> generateInExtendedSpliceEnv i sv $! mapM spliceAnnMem mems) svs >>= return . concat
       v -> throwG $ boxToString $ ["Invalid splice value in member generator "] %+ prettyLines v
 
     lookupErr v = throwG $ "Invalid loop target in member generator: " ++ show v
@@ -451,13 +451,13 @@ spliceExpression = mapTree doSplice
 spliceType :: K3 Type -> TypeGenerator
 spliceType = mapTree doSplice
   where
-    doSplice [] t@(tag -> TDeclaredVar i) = expectTypeSplicer i       >>= \nt   -> return $! foldl (@+) nt $ annotations t
+    doSplice [] t@(tag -> TDeclaredVar i) = expectTypeSplicer i       >>= \nt   -> return $! foldl (@+) nt $! annotations t
     doSplice ch t@(tag -> TRecord ids)    = mapM spliceIdentifier ids >>= \nids -> return $! Node (TRecord nids :@: annotations t) ch
     doSplice ch (Node tg _) = return $! Node tg ch
 
 spliceLiteral :: K3 Literal -> LiteralGenerator
 spliceLiteral = mapTree doSplice
-  where doSplice [] l@(tag -> LString s)      = expectLiteralSplicer s   >>= \ns   -> return $! foldl (@+) ns $ annotations l
+  where doSplice [] l@(tag -> LString s)      = expectLiteralSplicer s   >>= \ns   -> return $! foldl (@+) ns $! annotations l
         doSplice ch l@(tag -> LRecord ids)    = mapM expectIdSplicer ids >>= \nids -> return $! Node (LRecord nids    :@: annotations l) ch
         doSplice ch l@(tag -> LEmpty ct)      = spliceType ct            >>= \nct  -> return $! Node (LEmpty nct      :@: annotations l) ch
         doSplice ch l@(tag -> LCollection ct) = spliceType ct            >>= \nct  -> return $! Node (LCollection nct :@: annotations l) ch
@@ -484,24 +484,24 @@ spliceEAnnotation ea = return ea
 
 
 expectIdSplicer :: Identifier -> GeneratorM Identifier
-expectIdSplicer   i = generatorWithSCtxt $ \sctxt -> liftParser i idFromParts >>= evalIdPartsSplice sctxt
+expectIdSplicer   i = generatorWithSCtxt $! \sctxt -> liftParser i idFromParts >>= evalIdPartsSplice sctxt
 
 expectTypeSplicer :: Identifier -> TypeGenerator
-expectTypeSplicer i = generatorWithSCtxt $ \sctxt -> liftParser i typeEmbedding >>= evalTypeSplice sctxt
+expectTypeSplicer i = generatorWithSCtxt $! \sctxt -> liftParser i typeEmbedding >>= evalTypeSplice sctxt
 
 expectExprSplicer :: Identifier -> ExprGenerator
-expectExprSplicer i = generatorWithSCtxt $ \sctxt -> liftParser i exprEmbedding >>= evalExprSplice sctxt
+expectExprSplicer i = generatorWithSCtxt $! \sctxt -> liftParser i exprEmbedding >>= evalExprSplice sctxt
 
 expectLiteralSplicer :: String -> LiteralGenerator
-expectLiteralSplicer i = generatorWithSCtxt $ \sctxt -> liftParser i literalEmbedding >>= evalLiteralSplice sctxt
+expectLiteralSplicer i = generatorWithSCtxt $! \sctxt -> liftParser i literalEmbedding >>= evalLiteralSplice sctxt
 
 expectEmbeddingSplicer :: Identifier -> GeneratorM SpliceValue
-expectEmbeddingSplicer i = generatorWithSCtxt $ \sctxt -> do
+expectEmbeddingSplicer i = generatorWithSCtxt $! \sctxt -> do
     e <- liftParser i idFromParts
     either (evalSumEmbedding i sctxt) (return . SLabel) e
 
 expectBindSplicer :: Binder -> GeneratorM Binder
-expectBindSplicer (BSplice i) = generatorWithSCtxt $ \sctxt -> liftParser i bindEmbedding >>= evalBindSplice sctxt
+expectBindSplicer (BSplice i) = generatorWithSCtxt $! \sctxt -> liftParser i bindEmbedding >>= evalBindSplice sctxt
 expectBindSplicer b = return b
 
 evalIdPartsSplice :: SpliceContext -> Either [MPEmbedding] Identifier -> GeneratorM Identifier
@@ -552,15 +552,15 @@ evalSumEmbedding tg sctxt l = maybe sumError return =<< foldM concatSpliceVal No
     concatSpliceVal (Just (SLabel i)) se = evalEmbedding sctxt se >>= doConcat (SLabel i)
     concatSpliceVal (Just _) _           = sumError
 
-    doConcat (SLabel i) (SLabel j) = return . Just . SLabel $ i ++ j
+    doConcat (SLabel i) (SLabel j) = return . Just . SLabel $! i ++ j
     doConcat _ _ = sumError
 
 evalEmbedding :: SpliceContext -> MPEmbedding -> GeneratorM SpliceValue
 evalEmbedding _ (MPENull i) = return $! SLabel i
 
-evalEmbedding sctxt em@(MPEPath var path) = maybe evalErr (flip matchPath path) $ lookupSCtxt var sctxt
+evalEmbedding sctxt em@(MPEPath var path) = maybe evalErr (flip matchPath path) $! lookupSCtxt var sctxt
   where matchPath v [] = return v
-        matchPath v (h:t) = maybe evalErr (flip matchPath t) $ spliceRecordField v h
+        matchPath v (h:t) = maybe evalErr (flip matchPath t) $! spliceRecordField v h
         evalErr = spliceIdPathFail var path sctxt $ unwords ["lookup failed", "(", show em, ")"]
 
 evalEmbedding sctxt (MPEHProg expr) = evalHaskellProg sctxt expr
@@ -597,8 +597,8 @@ matchExpr e patE = matchTree matchTag e patE emptySpliceEnv
   where
     matchTag sEnv e1 e2@(tag -> EVariable i)
       | isPatternVariable i =
-          let nrEnv = spliceRecord $ (maybe [] typeRepr $ e1 @~ isEType) ++ [(spliceVESym, SExpr $ stripEUIDSpan e1)]
-              nsEnv = maybe sEnv (\n -> if null n then sEnv else addSpliceE n nrEnv sEnv) $ patternVariable i
+          let nrEnv = spliceRecord $! (maybe [] typeRepr $! e1 @~ isEType) ++ [(spliceVESym, SExpr $! stripEUIDSpan e1)]
+              nsEnv = maybe sEnv (\n -> if null n then sEnv else addSpliceE n nrEnv sEnv) $! patternVariable i
           in do
               localLog $ debugMatchPVar i
               matchTypesAndAnnotations (annotations e1) (annotations e2) nsEnv >>= return . (True,)
@@ -606,7 +606,7 @@ matchExpr e patE = matchTree matchTag e patE emptySpliceEnv
     matchTag sEnv e1@(tag -> EBindAs b) e2@(tag -> EBindAs (BSplice i))
       | isPatternVariable i =
           let nrEnv = spliceRecord [(spliceVBSym, SBinder b)]
-              nsEnv = maybe sEnv (\n -> if null n then sEnv else addSpliceE n nrEnv sEnv) $ patternVariable i
+              nsEnv = maybe sEnv (\n -> if null n then sEnv else addSpliceE n nrEnv sEnv) $! patternVariable i
           in do
               localLog $ debugMatchPVar i
               matchTypesAndAnnotations (annotations e1) (annotations e2) nsEnv >>= return . (False,)
@@ -622,13 +622,13 @@ matchExpr e patE = matchTree matchTag e patE emptySpliceEnv
       | x == y           = matchTAPair  e1 e2 sEnv
       | otherwise        = debugMismatch e1 e2 Nothing
 
-    matchITAPair e1 e2 sEnv = matchIdentifiers (extractIdentifiers $ tag e1) (extractIdentifiers $ tag e2) sEnv >>= matchTAPair e1 e2
+    matchITAPair e1 e2 sEnv = matchIdentifiers (extractIdentifiers $! tag e1) (extractIdentifiers $! tag e2) sEnv >>= matchTAPair e1 e2
     matchTAPair  e1 e2 sEnv = matchTypesAndAnnotations (annotations e1) (annotations e2) sEnv >>= return . (False,)
 
     matchIdentifiers :: [Identifier] -> [Identifier] -> SpliceEnv -> Maybe SpliceEnv
     matchIdentifiers ids patIds sEnv =
       if length ids /= length patIds then Nothing
-      else foldM bindIdentifier sEnv $ zip ids patIds
+      else foldM bindIdentifier sEnv $! zip ids patIds
 
     matchTypesAndAnnotations :: [Annotation Expression] -> [Annotation Expression] -> SpliceEnv
                              -> Maybe SpliceEnv
@@ -644,7 +644,7 @@ matchExpr e patE = matchTree matchTag e patE emptySpliceEnv
     bindIdentifier :: SpliceEnv -> (Identifier, Identifier) -> Maybe SpliceEnv
     bindIdentifier sEnv (a, b@(isPatternVariable -> True)) =
       let nrEnv = spliceRecord [(spliceVIdSym, SLabel a)]
-      in Just $ maybe sEnv (\n -> if null n then sEnv else addSpliceE n nrEnv sEnv) $ patternVariable b
+      in Just $! maybe sEnv (\n -> if null n then sEnv else addSpliceE n nrEnv sEnv) $! patternVariable b
 
     bindIdentifier sEnv (a,b) = if a == b then Just sEnv else Nothing
 
@@ -668,11 +668,11 @@ matchExpr e patE = matchTree matchTag e patE emptySpliceEnv
     extractIdentifiers (EBindAs  b) = bindingVariables b
     extractIdentifiers _ = []
 
-    typeRepr (EType ty) = [(spliceVTSym, SType $ stripTUIDSpan ty)]
+    typeRepr (EType ty) = [(spliceVTSym, SType $! stripTUIDSpan ty)]
     typeRepr _ = []
 
     ignoreUIDSpan a = not (isEUID a || isESpan a || isESyntax a)
-    ignoreTypes   a = not $ isEAnyType a
+    ignoreTypes   a = not $! isEAnyType a
 
     debugMismatch p1 p2 r =
       localLog (boxToString $ ["No match on "] %$ prettyLines p1 %$ ["and"] %$ prettyLines p2) >> r
@@ -690,10 +690,10 @@ matchType t patT = matchTree matchTag t patT emptySpliceEnv
   where matchTag sEnv t1 t2@(tag -> TDeclaredVar i)
           | isPatternVariable i =
               let extend n = if null n then Nothing
-                             else Just . (True,) $ addSpliceE n (spliceRecord [(spliceVTSym, SType $ stripTUIDSpan t1)]) sEnv
+                             else Just . (True,) $! addSpliceE n (spliceRecord [(spliceVTSym, SType $! stripTUIDSpan t1)]) sEnv
               in do
                    localLog $ debugMatchPVar i
-                   if matchTypeAnnotations t1 t2 then maybe Nothing extend $ patternVariable i else debugMismatch t1 t2 Nothing
+                   if matchTypeAnnotations t1 t2 then maybe Nothing extend $! patternVariable i else debugMismatch t1 t2 Nothing
 
         matchTag sEnv t1@(tag -> x) t2@(tag -> y)
           | x == y && matchTypeMetadata t1 t2 = Just (False, sEnv)
@@ -716,7 +716,7 @@ matchType t patT = matchTree matchTag t patT emptySpliceEnv
 --   Thus matching acts as a constraint on the presence of annotation and properties
 --   in any rewrite rules fired.
 matchAnnotationsE :: (Annotation Expression -> Bool) -> [Annotation Expression] -> [Annotation Expression] -> Bool
-matchAnnotationsE a2FilterF a1 a2 = all match $ filter a2FilterF a2
+matchAnnotationsE a2FilterF a1 a2 = all match $! filter a2FilterF a2
   where match (EProperty (ePropertyName -> n)) = any (matchPropertyByName n) a1
         match a = a `elem` a1
 
@@ -724,7 +724,7 @@ matchAnnotationsE a2FilterF a1 a2 = all match $ filter a2FilterF a2
         matchPropertyByName _ _ = False
 
 matchAnnotationsT :: (Annotation Type -> Bool) -> [Annotation Type] -> [Annotation Type] -> Bool
-matchAnnotationsT a2FilterF a1 a2 = all match $ filter a2FilterF a2
+matchAnnotationsT a2FilterF a1 a2 = all match $! filter a2FilterF a2
   where match (TProperty (tPropertyName -> n)) = any (matchPropertyByName n) a1
         match a = a `elem` a1
 
@@ -733,28 +733,28 @@ matchAnnotationsT a2FilterF a1 a2 = all match $ filter a2FilterF a2
 
 
 exprPatternMatcher :: [TypedSpliceVar] -> [PatternRewriteRule] -> [Either MPRewriteDecl (K3 Declaration)] -> K3Generator
-exprPatternMatcher spliceParams rules extensions = ExprRewriter $ \expr spliceEnv ->
+exprPatternMatcher spliceParams rules extensions = ExprRewriter $! \expr spliceEnv ->
     let vspliceEnv  = validateSplice spliceParams spliceEnv
         matchResult = foldl (tryMatch expr) Nothing rules
     in logValue (debugMatchResult matchResult)
-         $ maybe (inputSR expr) (exprDeclSR vspliceEnv) matchResult
+         $! maybe (inputSR expr) (exprDeclSR vspliceEnv) matchResult
 
   where
     logValue msg v = runIdentity (localLog msg >> return v)
 
-    inputSR expr = SRExpr $ return expr
+    inputSR expr = SRExpr $! return expr
 
     exprDeclSR spliceEnv (sEnv, rewriteE, ruleExts) =
       let msenv = mergeSpliceEnv spliceEnv sEnv in
-      SRRewrite . (, msenv) $ generateInSpliceEnv msenv $
+      SRRewrite . (, msenv) $! generateInSpliceEnv msenv $
         (\ a b -> (a, concat b)) <$> spliceExpression rewriteE <*> mapM spliceNonAnnotationTree (extensions ++ ruleExts)
 
     tryMatch _ acc@(Just _) _ = acc
     tryMatch expr Nothing (pat, rewrite, ruleExts) = do
-      nsEnv <- (localLogAction (tryMatchLogger expr pat) $ matchExpr expr pat)
+      nsEnv <- (localLogAction (tryMatchLogger expr pat) $! matchExpr expr pat)
       return (nsEnv, rewrite, ruleExts)
 
-    tryMatchLogger expr pat = maybe (Just $ debugMatchStep expr pat) (Just . debugMatchStepResult expr pat)
+    tryMatchLogger expr pat = maybe (Just $! debugMatchStep expr pat) (Just . debugMatchStepResult expr pat)
 
     debugMatchStep expr pat = boxToString $
           ["Trying match step "] %+ prettyLines pat %+ [" on "] %+ prettyLines expr
@@ -768,17 +768,17 @@ exprPatternMatcher spliceParams rules extensions = ExprRewriter $ \expr spliceEn
     spliceNonAnnotationTree (Left (MPRewriteDecl i c decls)) = spliceWithValue c
       where
         spliceWithValue c' = case c' of
-          SVar v -> generatorWithSCtxt $ \sctxt -> do
+          SVar v -> generatorWithSCtxt $! \sctxt -> do
                       sv <- expectEmbeddingSplicer v
                       case sv of
-                        SLabel v' -> maybe (lookupErr v') spliceWithValue $ lookupSCtxt v' sctxt
+                        SLabel v' -> maybe (lookupErr v') spliceWithValue $! lookupSCtxt v' sctxt
                         _ -> spliceWithValue sv
 
           SList svs -> do
-            dll <- forM svs $ \sv -> generateInExtendedSpliceEnv i sv $
-                     forM decls $ \d -> do
+            dll <- forM svs $! \sv -> generateInExtendedSpliceEnv i sv $
+                     forM decls $! \d -> do
                        nd <- mapTree (spliceNonAnnotationDecl) d
-                       generatorWithSCtxt $ \sctxt -> bindDAnnVars sctxt nd
+                       generatorWithSCtxt $! \sctxt -> bindDAnnVars sctxt nd
             return $! concat dll
 
           v -> throwG $ boxToString $ ["Invalid splice value in member generator "] %+ prettyLines v
@@ -789,13 +789,13 @@ exprPatternMatcher spliceParams rules extensions = ExprRewriter $ \expr spliceEn
 
     spliceNonAnnotationDecl ch d@(tag -> DGlobal  n t eOpt) =
       spliceDeclParts n t eOpt >>= \(nn, nt, neOpt) ->
-        return (overrideChildren ch $ foldl (@+) (DC.global nn nt neOpt) $ annotations d)
+        return (overrideChildren ch $! foldl (@+) (DC.global nn nt neOpt) $! annotations d)
 
     spliceNonAnnotationDecl ch d@(tag -> DTrigger n t e) =
       spliceDeclParts n t (Just e) >>= \(nn, nt, neOpt) ->
         case neOpt of
           Nothing -> throwG "Invalid trigger body resulting from pattern splicing"
-          Just ne -> return (overrideChildren ch $ foldl (@+) (DC.trigger nn nt ne) $ annotations d)
+          Just ne -> return (overrideChildren ch $! foldl (@+) (DC.trigger nn nt ne) $! annotations d)
 
     spliceNonAnnotationDecl _ _ = throwG "Invalid declaration in control annotation extensions"
 

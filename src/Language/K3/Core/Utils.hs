@@ -51,6 +51,8 @@ module Language.K3.Core.Utils
 , mapNamedDeclExpression
 , foldNamedDeclExpression
 
+, parFoldMapExpression
+
 , mapMaybeAnnotation
 , mapMaybeExprAnnotation
 , mapAnnotation
@@ -114,9 +116,13 @@ module Language.K3.Core.Utils
 
 import Control.Applicative
 import Control.Arrow
+import Control.DeepSeq
 import Control.Monad
+import Control.Monad.Par ( Par, runPar )
+import Control.Monad.Par.Combinator ( parMap )
 
 import Data.Hashable
+import Data.Function
 import Data.Functor.Identity
 import Data.List
 import Data.Maybe
@@ -540,6 +546,30 @@ foldNamedDeclExpression i exprF acc prog = foldProgram namedDeclF mkP mkP Nothin
         namedDeclF nacc d = return (nacc, d)
 
         mkP a b = return (a,b)
+
+-- | Parallel foldMapTree on expressions.
+parFoldMapExpression :: (NFData a, NFData b) => ([b] -> K3 Expression -> Either a b) -> b -> K3 Expression -> Either a b
+parFoldMapExpression f x n@(Node _ []) = f [x] n
+parFoldMapExpression f x n@(Node _ ch) =
+    case spawnch of
+      [] -> mapM (foldMapTree f x) (map snd seqch) >>= flip f n
+      _ -> runPar $ do
+              res <- parMap parRcr $ (map Left spawnch) ++ [Right seqch]
+              return $! (reorderCh res >>= flip f n)
+
+  where (seqch, spawnch) = partition (\(_, e) -> e @:? "Spawn") $ zip [(0::Int)..] ch
+
+        parRcr (Left (i,y)) = foldMapTree f x y >>= return . Left . (i,)
+        parRcr (Right l) = do
+          let (is, ys) = unzip l
+          r <- mapM (foldMapTree f x) ys
+          return $! Right $! zip is r
+
+        reorderCh m = do
+          l <- sequence m
+          let nl = concatMap (either (:[]) id) l
+          let sl = sortBy (compare `on` fst) nl
+          return $! map snd sl
 
 -- | Map a function over all program annotations, filtering null returns.
 mapMaybeAnnotation :: (Applicative m, Monad m)
