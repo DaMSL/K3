@@ -11,7 +11,7 @@ import Control.Monad.State
 import Control.Monad.Trans.Except
 
 import Data.List
-import qualified Data.Map as M
+import qualified Data.Map.Strict as M
 import qualified Data.Set as S
 
 import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
@@ -33,7 +33,7 @@ runCPPGenM :: CPPGenS -> CPPGenM a -> (Either CPPGenE a, CPPGenS)
 runCPPGenM s = flip runState s . runExceptT
 
 -- | Error messages thrown by C++ code generation.
-data CPPGenE = CPPGenE String deriving (Eq, Read, Show)
+data CPPGenE = CPPGenE !String deriving (Eq, Read, Show)
 
 -- -- | Throw a code generation error.
 throwE :: CPPGenE -> CPPGenM a
@@ -45,67 +45,67 @@ type CPPGenR = Doc
 -- | State carried around during C++ code generation.
 data CPPGenS = CPPGenS {
         -- | UUID counter for generating identifiers.
-        uuid :: Int,
+        uuid :: !Int,
 
         -- | Code necessary to initialize global declarations.
-        initializations :: [R.Statement],
+        initializations :: ![R.Statement],
 
-        staticDeclarations    :: [R.Statement],
-        staticInitializations :: [R.Statement],
+        staticDeclarations    :: ![R.Statement],
+        staticInitializations :: ![R.Statement],
 
         -- | User-defined global initializations
-        globalInitializations :: [R.Statement],
+        globalInitializations :: ![R.Statement],
 
         -- | Forward declarations for constructs as a result of cyclic scope.
-        forwards :: [R.Declaration],
+        forwards :: ![R.Declaration],
 
         -- | The global variables declared, for use in exclusion during λ-capture. Needs to be
         -- supplied ahead-of-time, due to cyclic scoping.
-        globals  :: [(Identifier, (K3 Type, Bool))], -- Whether it's a builtin
+        globals  :: ![(Identifier, (K3 Type, Bool))], -- Whether it's a builtin
 
-        patchables :: [(Identifier, (K3 Type, Bool))], -- Whether we need to set
+        patchables :: ![(Identifier, (K3 Type, Bool))], -- Whether we need to set
 
-        showables :: [(Identifier, K3 Type)],
+        showables :: ![(Identifier, K3 Type)],
 
         -- | Mapping of record signatures to corresponding record structure, for generation of
         -- record classes.
-        recordMap :: M.Map Identifier [(Identifier, K3 Type)],
+        recordMap :: !(M.Map Identifier [(Identifier, K3 Type)]),
 
         -- | Mapping of annotation class names to list of member declarations, for eventual
         -- declaration of composite classes.
-        annotationMap :: M.Map Identifier [AnnMemDecl],
+        annotationMap :: !(M.Map Identifier [AnnMemDecl]),
 
         -- | Map form annotation combinations actually encountered during the program, to
         --   the content types used in the combinations.
-        composites :: M.Map (S.Set Identifier) [K3 Type],
+        composites :: !(M.Map (S.Set Identifier) [K3 Type]),
 
         -- | List of triggers declared in a program, used to populate the dispatch table.
-        triggers :: [(Identifier, K3 Type)],
+        triggers :: ![(Identifier, K3 Type)],
 
         -- | The serialization method to use.
-        serializationMethod :: SerializationMethod,
+        serializationMethod :: !SerializationMethod,
 
         -- | Used to know if a global is fully applied
-        applyLevel :: Int,
+        applyLevel :: !Int,
 
         -- | Whether to optimize const refs
-        optRefs :: Bool,
+        optRefs :: !Bool,
 
         -- | Whether to optimize moves
-        optMoves :: Bool,
+        optMoves :: !Bool,
 
-        flags :: CPPCGFlags
+        flags :: !CPPCGFlags
 
     } deriving Show
 
 data CPPCGFlags
   = CPPCGFlags
-    { isolateLoopIndex :: Bool
-    , enableLifetimeProfiling :: Bool
-    , isolateRuntimeCG :: Bool
-    , isolateApplicationCG :: Bool
-    , isolateQueryCG :: Bool
-    , boxRecords :: Bool
+    { isolateLoopIndex        :: !Bool
+    , enableLifetimeProfiling :: !Bool
+    , isolateRuntimeCG        :: !Bool
+    , isolateApplicationCG    :: !Bool
+    , isolateQueryCG          :: !Bool
+    , boxRecords              :: !Bool
     } deriving (Eq, Generic, Ord, Read, Show)
 
 instance Binary CPPCGFlags

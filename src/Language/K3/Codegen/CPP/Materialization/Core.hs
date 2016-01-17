@@ -30,7 +30,7 @@ data MExpr
   | MIfThenElse !(K3 MPred)
  deriving (Eq, Read, Show, Generic)
 
-data instance Annotation MExpr = MEReason String
+data instance Annotation MExpr = MEReason !String
   deriving (Eq, Ord, Read, Show, Generic)
 
 instance NFData    MExpr
@@ -69,7 +69,7 @@ data MPred
   | MBool !Bool
  deriving (Eq, Read, Show, Generic)
 
-data instance Annotation MPred = MPReason String
+data instance Annotation MPred = MPReason !String
   deriving (Eq, Ord, Read, Show, Generic)
 
 instance NFData    MPred

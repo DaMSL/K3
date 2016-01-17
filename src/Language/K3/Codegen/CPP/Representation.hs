@@ -101,9 +101,9 @@ unaryParens e@(Call _ _) = stringify e
 unaryParens e = parens $ stringify e
 
 data Name
-    = Name Identifier
-    | Qualified Name Name
-    | Specialized [Type] Name
+    = Name !Identifier
+    | Qualified !Name !Name
+    | Specialized ![Type] !Name
   deriving (Eq, Ord, Read, Show)
 
 instance Stringifiable Name where
@@ -125,18 +125,18 @@ instance Stringifiable Primitive where
     stringify PString = stringify (Qualified (Name "K3") $ Name "base_string")
 
 data Type
-    = Const Type
-    | Function [Type] Type
+    = Const           !Type
+    | Function        ![Type] !Type
     | Inferred
-    | Named Name
-    | Parameter Identifier
-    | Pointer Type
-    | Primitive Primitive
-    | Reference Type
-    | RValueReference Type
-    | Static Type
-    | TypeLit Literal
-    | ConstExpr Expression
+    | Named           !Name
+    | Parameter       !Identifier
+    | Pointer         !Type
+    | Primitive       !Primitive
+    | Reference       !Type
+    | RValueReference !Type
+    | Static          !Type
+    | TypeLit         !Literal
+    | ConstExpr       !Expression
   deriving (Eq, Ord, Read, Show)
 
 pattern Address = Named (Name "Address")
@@ -171,11 +171,11 @@ instance Stringifiable Type where
     stringify (ConstExpr e) = stringify e
 
 data Literal
-    = LBool Bool
-    | LChar String
-    | LInt Int
-    | LDouble Double
-    | LString String
+    = LBool   !Bool
+    | LChar   !String
+    | LInt    !Int
+    | LDouble !Double
+    | LString !String
     | LNullptr
   deriving (Eq, Ord, Read, Show)
 
@@ -188,8 +188,8 @@ instance Stringifiable Literal where
     stringify (LNullptr) = "nullptr"
 
 data Capture
-    = ValueCapture (Maybe (Identifier, Maybe Expression))
-    | RefCapture (Maybe (Identifier, Maybe Expression))
+    = ValueCapture !(Maybe (Identifier, Maybe Expression))
+    | RefCapture   !(Maybe (Identifier, Maybe Expression))
     | ThisCapture
   deriving (Eq, Ord, Read, Show)
 
@@ -205,19 +205,19 @@ instance Stringifiable Capture where
 type IsMutable = Bool
 
 data Expression
-    = Binary Identifier Expression Expression
-    | Bind Expression [Expression] Int
-    | Call Expression [Expression]
-    | Dereference Expression
-    | TakeReference Expression
-    | Initialization Type [Expression]
-    | Lambda [Capture] [(Maybe Identifier, Type)] IsMutable (Maybe Type) [Statement]
-    | Literal Literal
-    | Project Expression Name
-    | Subscript Expression Expression
-    | Unary Identifier Expression
-    | Variable Name
-    | ExprOnType Type
+    = Binary         !Identifier !Expression !Expression
+    | Bind           !Expression ![Expression] !Int
+    | Call           !Expression ![Expression]
+    | Dereference    !Expression
+    | TakeReference  !Expression
+    | Initialization !Type ![Expression]
+    | Lambda         ![Capture] ![(Maybe Identifier, Type)] !IsMutable !(Maybe Type) ![Statement]
+    | Literal        !Literal
+    | Project        !Expression !Name
+    | Subscript      !Expression !Expression
+    | Unary          !Identifier !Expression
+    | Variable       !Name
+    | ExprOnType     !Type
   deriving (Eq, Ord, Read, Show)
 
 instance Stringifiable Expression where
@@ -273,11 +273,11 @@ bind f a n = Call (Variable (Qualified (Name "std") (Name "bind")))
                       ])
 
 data Declaration
-    = ClassDecl Name
-    | FunctionDecl Name [Type] Type
-    | ScalarDecl Name Type (Maybe Expression)
-    | TemplateDecl [(Identifier, Maybe Type)] Declaration
-    | UsingDecl (Either Name Name) (Maybe Name)
+    = ClassDecl    !Name
+    | FunctionDecl !Name ![Type] !Type
+    | ScalarDecl   !Name !Type !(Maybe Expression)
+    | TemplateDecl ![(Identifier, Maybe Type)] !Declaration
+    | UsingDecl    !(Either Name Name) !(Maybe Name)
   deriving (Eq, Ord, Read, Show)
 
 instance Stringifiable Declaration where
@@ -296,15 +296,15 @@ instance Stringifiable Declaration where
         rightAlias = maybe empty (\i -> space <> equals <+> stringify i) mn
 
 data Statement
-    = Assignment Expression Expression
-    | Block [Statement]
-    | Comment String
-    | ForEach Identifier Type Expression Statement
-    | Forward Declaration
-    | IfThenElse Expression [Statement] [Statement]
-    | Ignore Expression
-    | Pragma String
-    | Return Expression
+    = Assignment !Expression !Expression
+    | Block      ![Statement]
+    | Comment    !String
+    | ForEach    !Identifier !Type !Expression !Statement
+    | Forward    !Declaration
+    | IfThenElse !Expression ![Statement] ![Statement]
+    | Ignore     !Expression
+    | Pragma     !String
+    | Return     !Expression
   deriving (Eq, Ord, Read, Show)
 
 instance Stringifiable Statement where
@@ -325,14 +325,14 @@ instance Stringifiable Statement where
 type IsConst = Bool
 
 data Definition
-    = ClassDefn Name [Type] [Type] [Definition] [Definition] [Definition]
-    | FunctionDefn Name [(Maybe Identifier, Type)] (Maybe Type) [Expression] IsConst [Statement]
-    | GlobalDefn Statement
-    | GuardedDefn Identifier Definition
-    | IncludeDefn Identifier
-    | NamespaceDefn Identifier [Definition]
-    | TemplateDefn [(Identifier, Maybe Type)] Definition
-    | TypeDefn Type Identifier
+    = ClassDefn     !Name ![Type] ![Type] ![Definition] ![Definition] ![Definition]
+    | FunctionDefn  !Name ![(Maybe Identifier, Type)] !(Maybe Type) ![Expression] !IsConst ![Statement]
+    | GlobalDefn    !Statement
+    | GuardedDefn   !Identifier !Definition
+    | IncludeDefn   !Identifier
+    | NamespaceDefn !Identifier ![Definition]
+    | TemplateDefn  ![(Identifier, Maybe Type)] !Definition
+    | TypeDefn      !Type !Identifier
   deriving (Eq, Read, Show)
 
 instance Stringifiable Definition where
