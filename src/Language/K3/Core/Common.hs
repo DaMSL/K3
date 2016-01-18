@@ -143,6 +143,7 @@ forksymS i (ParGenSymS str off cur)
 gensym :: ParGenSymS -> (ParGenSymS, Int)
 gensym (ParGenSymS str off cur) = (ParGenSymS str off (cur + str), cur + off)
 
+instance NFData    ParGenSymS
 instance Binary    ParGenSymS
 instance Serialize ParGenSymS
 

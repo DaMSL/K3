@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DoAndIfThenElse #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -22,6 +23,7 @@
 module Language.K3.Analysis.HMTypes.Inference where
 
 import Control.Arrow ( (&&&) )
+import Control.DeepSeq
 import Control.Monad
 import Control.Monad.Identity
 import Control.Monad.State.Strict
@@ -166,6 +168,10 @@ data IDeclaredAction = IDAExtend     !QPType
 
 
 {- Type inference instances -}
+instance NFData IDeclaredAction
+instance NFData TVEnv
+instance NFData TIEnv
+
 instance Binary IDeclaredAction
 instance Binary TVEnv
 instance Binary TIEnv

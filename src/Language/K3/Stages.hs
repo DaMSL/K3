@@ -16,6 +16,8 @@ import Control.DeepSeq
 import Control.Exception
 import Control.Monad
 import Control.Monad.IO.Class
+import Control.Monad.Par.IO
+import Control.Monad.Par.Combinator
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Except
 
@@ -116,6 +118,12 @@ data TransformStSymS = TransformStSymS { uidSym :: !ParGenSymS, cseSym :: !ParGe
 type TransformM = ExceptT String (StateT TransformSt IO)
 
 {- Stage-based transform instances -}
+instance NFData StageSpec
+instance NFData CompilerSpec
+instance NFData TransformReport
+instance NFData TransformSt
+instance NFData TransformStSymS
+
 instance Binary StageSpec
 instance Binary CompilerSpec
 instance Binary TransformReport
@@ -592,17 +600,24 @@ parmapProgramDeclsBlock declPassesF block = do
   where
     runParallelBlock :: TransformSt -> [K3 Declaration] -> IO (Either String (TransformSt, [K3 Declaration]))
     runParallelBlock st ds = do
-      locks <- sequence $! newEmptyMVar <$ ds
-      sequence_ [runParallelDecl i lock d st | lock <- locks | d <- ds | i <- [0..]]
-      newSDs <- mapM takeMVar locks
+      newSDs <- runParIO $! parMapM (runParallelDecl st) $ zip [0..] ds
       return $! foldl mergeEitherStateDecl (Right (st, [])) newSDs
 
-    stateError :: IO a
-    stateError = throwIO $! userError "Invalid parallel compilation state."
+    runParallelDecl :: TransformSt -> (Int, K3 Declaration) -> ParIO (Either String (TransformSt, K3 Declaration))
+    runParallelDecl s (i, d) = liftIO $! flip (maybe stateError) (advanceTransformStSyms i s) $! \s' -> do
+      re <- runTransformM s' $! fixD (mapProgramDecls declPassesF) compareDAST d
+      return $! either Left (Right . swap) re
 
-    runParallelDecl :: Int -> MVar (Either String (TransformSt, K3 Declaration)) -> K3 Declaration -> TransformSt -> IO ThreadId
-    runParallelDecl i m d s = flip (maybe stateError) (advanceTransformStSyms i s) $! \s' ->
-      forkIO $! runTransformM s' (fixD (mapProgramDecls declPassesF) compareDAST d) >>= putMVar m . fmap swap
+    --runParallelBlock :: TransformSt -> [K3 Declaration] -> IO (Either String (TransformSt, [K3 Declaration]))
+    --runParallelBlock st ds = do
+    --  locks <- sequence $! newEmptyMVar <$ ds
+    --  sequence_ [runParallelDecl i lock d st | lock <- locks | d <- ds | i <- [0..]]
+    --  newSDs <- mapM takeMVar locks
+    --  return $! foldl mergeEitherStateDecl (Right (st, [])) newSDs
+
+    --runParallelDecl :: Int -> MVar (Either String (TransformSt, K3 Declaration)) -> K3 Declaration -> TransformSt -> IO ThreadId
+    --runParallelDecl i m d s = flip (maybe stateError) (advanceTransformStSyms i s) $! \s' ->
+    --  forkIO $! runTransformM s' (fixD (mapProgramDecls declPassesF) compareDAST d) >>= putMVar m . fmap swap
 
     mergeEitherStateDecl :: Either String (TransformSt, [K3 Declaration]) -> Either String (TransformSt, K3 Declaration)
                          -> Either String (TransformSt, [K3 Declaration])
@@ -612,6 +627,9 @@ parmapProgramDeclsBlock declPassesF block = do
       let resultSt = mergeTransformSt (declName newDecl) aggState newState
       in debugMergeReport (statistics $! report aggState) (statistics $! report newState) (statistics $! report resultSt)
           $! Right (resultSt, aggDecls++[newDecl])
+
+    stateError :: IO a
+    stateError = throwIO $! userError "Invalid parallel compilation state."
 
     debugMergeReport srp1 srp2 srprest r = if True then r else
       flip trace r $! boxToString $! ["Report 1"]      ++ (indent 2 $! map fst (Map.toList srp1)) ++

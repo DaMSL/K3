@@ -6,6 +6,7 @@
 
 module Language.K3.Analysis.Properties where
 
+import Control.DeepSeq
 import Control.Monad.State
 import Control.Monad.Trans.Either
 
@@ -45,6 +46,7 @@ instance Monoid PIEnv where
   mempty = PIEnv mempty mempty
   mappend (PIEnv e a) (PIEnv e' a') = PIEnv (e <> e') (a <> a')
 
+instance NFData    PIEnv
 instance Binary    PIEnv
 instance Serialize PIEnv
 

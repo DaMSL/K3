@@ -25,6 +25,7 @@ import qualified Data.Graph as G
 import qualified Data.List as L
 
 import Control.Arrow
+import Control.DeepSeq
 
 import Data.Foldable
 import Data.Maybe (fromJust, fromMaybe, mapMaybe)
@@ -82,6 +83,7 @@ data MZFlags =
 defaultMZFlags :: MZFlags
 defaultMZFlags = MZFlags { isolateRuntimeMZ = False, isolateApplicationMZ = False, isolateQueryMZ = False }
 
+instance NFData MZFlags
 instance Binary MZFlags
 instance Serialize MZFlags
 

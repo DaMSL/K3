@@ -10,6 +10,7 @@
 module Language.K3.Analysis.Core where
 
 import Control.Arrow
+import Control.DeepSeq
 import Control.Monad
 
 import Data.Binary
@@ -83,6 +84,11 @@ data AIVEnv = AIVEnv { avtenv :: !AVTraversalEnv }
               deriving (Eq, Read, Show, Generic)
 
 {- Instances -}
+instance NFData    IndexedScope
+instance NFData    VarPosEnv
+instance NFData    AIVEnv
+instance NFData    (Annotation BVector)
+
 instance Binary    IndexedScope
 instance Binary    VarPosEnv
 instance Binary    AIVEnv

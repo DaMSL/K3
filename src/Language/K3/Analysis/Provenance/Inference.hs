@@ -30,6 +30,7 @@ module Language.K3.Analysis.Provenance.Inference (
 
 import Control.Applicative
 import Control.Arrow hiding ( left )
+import Control.DeepSeq
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Except
 import Data.Functor.Identity
@@ -146,6 +147,9 @@ mergePIEnv d agg new =
 type PInfM = ExceptT Text (State PIEnv)
 
 {- Provenance instances -}
+instance NFData ProvErrorCtxt
+instance NFData PIEnv
+
 instance Binary ProvErrorCtxt
 instance Binary PIEnv
 

@@ -15,6 +15,7 @@ module Language.K3.Analysis.SEffects.Inference where
 
 import Control.Applicative
 import Control.Arrow hiding ( left )
+import Control.DeepSeq
 import Control.Monad.State.Strict
 import Control.Monad.Trans.Except
 import Data.Functor.Identity
@@ -143,6 +144,9 @@ type FInfM = ExceptT Text (State FIEnv)
 type ExtInferF a = K3 Effect -> a -> FIEnv -> K3 Effect
 
 {- Effect instances -}
+instance NFData EffectErrorCtxt
+instance NFData FIEnv
+
 instance Binary EffectErrorCtxt
 instance Binary FIEnv
 
