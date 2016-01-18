@@ -261,7 +261,7 @@ def gen_yaml(role_path, script_path)
   extra_args << "ms_gc_interval=" + $options[:gc_epoch] if $options[:gc_epoch]
   extra_args << "tm_resolution=" + $options[:gc_epoch] if $options[:gc_epoch] && $options[:gc_epoch].to_i < 1000
   extra_args << "sw_event_driver_sleep=" + $options[:msg_delay] if $options[:msg_delay]
-  extra_args << "corrective_mode=false" if $options[:no_corrective]
+  extra_args << ("corrective_mode=" + $options[:corrective] ? "true" : "false")
   extra_args << "pmap_overlap_factor=" + $options[:map_overlap] if $options[:map_overlap]
   if $options[:batch_size]
     extra_args << "sw_poly_batch_size=" + $options[:batch_size]
@@ -779,6 +779,7 @@ def main()
   $options[:logging] = :none
   $options[:profile] = :none
   $options[:isobatch] = true
+  $options[:corrective] = false
 
   uid = nil
 
@@ -825,7 +826,7 @@ def main()
     opts.on("--dots", "Get the awesome dots") { $options[:dots] = true }
     opts.on("--gc-epoch [MS]", "Set gc epoch time (ms)") { |i| $options[:gc_epoch] = i }
     opts.on("--msg-delay [MS]", "Set switch message delay (ms)") { |i| $options[:msg_delay] = i }
-    opts.on("--no-correctives", "Run in no-corrective mode") { $options[:no_corrective] = true }
+    opts.on("--corrective", "Run in corrective mode") { $options[:corrective] = true }
     opts.on("--batch-size [SIZE]", "Set the batch size") {|s| $options[:batch_size] = s }
     opts.on("--no-reserve", "Prevent reserve on the poly buffers") { $options[:no_poly_reserve] = true }
     opts.on("--event-profile", "Run with event profiling") { $options[:event_profile] = true }
