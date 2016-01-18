@@ -139,7 +139,7 @@ end
 def run_create_k3_local(k3_cpp_name, k3_cpp_path, k3_root_path, k3_path, script_path)
   stage "[3] Creating K3 cpp file locally"
   compile = File.join(script_path, "..", "run", "compile.sh")
-  res = run("time #{compile} -1 #{k3_path} +RTS -N -RTS")
+  res = run("time #{compile} -1 #{k3_path} +RTS -A1G -N -c -s -RTS") 
 
   src_path = File.join(k3_root_path, "__build")
   # copy to work directory
@@ -318,7 +318,10 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
     `mv #{f_path} #{f_final_path}`
 
     # Extract time, which is in the master's stdout. Currently checking all stdout.
-    time = `grep -r '.*Total time.*ms.*' #{node_sandbox_path}/stdout_*`
+    time = ""
+    Dir.glob(File.join(node_sandbox_path, "stdout_*")) do |out_file|
+      time = `cat -v #{out_file} | grep '.*Total time.*ms.*'`
+    end
     puts time if time != ""
     File.open(File.join(sandbox_path, "time.txt"), 'w') { |file| file.write(time) } if time != ""
 
