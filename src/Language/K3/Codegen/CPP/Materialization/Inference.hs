@@ -27,7 +27,7 @@ import qualified Data.List as L
 import Control.Arrow
 
 import Data.Foldable
-import Data.Maybe (fromMaybe, mapMaybe)
+import Data.Maybe (fromJust, fromMaybe, mapMaybe)
 import Data.Traversable
 import Data.Tree
 
@@ -86,18 +86,22 @@ instance Binary MZFlags
 instance Serialize MZFlags
 
 prepareInitialIState :: Bool -> K3 Declaration -> IState
-prepareInitialIState dbg dr = IState (M.fromList $! mapMaybe genHack (children dr)) M.empty
+prepareInitialIState dbg dr = IState (M.fromList initCTable) M.empty initNames
 
--- (foldl addGlobalPhaseBoundary M.empty $! mapMaybe getMaybePhaseBoundary (children dr))
  where
-  genHack :: K3 Declaration -> Maybe (DKey, K3 MExpr)
-  genHack d@(tag -> DGlobal i _ _) = debugHack d $ Just ((Juncture (gUID d) i, In), (mAtom Referenced -??- "Hack"))
-  genHack _ = Nothing
+  (initCTable, initNames) = foldl genHack ([], I.empty) $! children dr
+
+  genHack (cacc, iacc) d@(tag -> DGlobal i _ _) = debugHack d $
+    let p = hashJunctureName i in
+    (cacc ++ [((Juncture (gUID d) p, In), (mAtom Referenced -??- "Hack"))], I.insert p i iacc)
+
+  genHack acc _ = acc
 
   gUID d = let Just (DUID u) = d @~ isDUID in u
   gPrv d = maybe ("N",ptemp) (\(DProvenance provE) -> either (("U"),) (("I"),) provE) $! d @~ isDProvenance
 
-  debugHack d r@(Just ((j, _), _)) =
+  debugHack d r@([], _) = r
+  debugHack d r@((last . fst) -> ((j, _), _)) =
     if dbg
       then let (a,p) = gPrv d
            in flip trace r $ boxToString $ ["Init IState " ++ a ++ " global " ++ show j]
@@ -123,7 +127,7 @@ optimizeMaterialization dbg mzfs is (p, f) d = runExceptT $! inferMaterializatio
  where
   inferMaterialization = case runInferM (materializeD d) defaultIState defaultIScope of
     Left (IError msg) -> throwError msg
-    Right ((_, IState ct _), r) -> liftIO (formatIReport reportVerbosity r) >> (debugInfer ct $ return ct)
+    Right ((_, IState ct _ ins), r) -> liftIO (formatIReport reportVerbosity r) >> (debugInfer ct $ return (ct, ins))
    where defaultIState = is
          defaultIScope = IScope { downstreams = []
                                 , nearestBind = Nothing
@@ -139,13 +143,13 @@ optimizeMaterialization dbg mzfs is (p, f) d = runExceptT $! inferMaterializatio
 
          debugCTEntry acc k v = acc ++ [show k ++ " => "] %$ (indent 2 $ prettyLines v)
 
-  solveMaterialization ct = case runSolverM solveAction defaultSState of
+  solveMaterialization (ct, ins) = case runSolverM solveAction defaultSState of
     Left (SError msg) -> throwError msg
-    Right (_, SState mp) -> return mp
+    Right (_, SState mp) -> return (mp, ins)
    where
     solveAction = (mkDependencyList ct d >>= flip solveForAll ct)
 
-  attachMaterialization k m = return $! attachD <$> k
+  attachMaterialization k (m, ins) = return $! attachD <$> k
    where
      attachD g = case g of
        DGlobal i t (Just e) :@: as -> (DGlobal i t (Just $! attachE <$> e)) :@: as
@@ -157,7 +161,7 @@ optimizeMaterialization dbg mzfs is (p, f) d = runExceptT $! inferMaterializatio
        (t :@: as) -> (t :@: (EMaterialization as' : as))
       where
         Just u = e @~ isEUID >>= getUID
-        as' = MM.fromList [((i, r), q) | ((Juncture u' i, r), q) <- M.toList m, u' == u]
+        as' = MM.fromList [((fromJust $! I.lookup i ins, r), q) | ((Juncture u' i, r), q) <- M.toList m, u' == u]
 
 -- * Types
 
@@ -171,15 +175,16 @@ runInferM m st sc = runIdentity $! runExceptT $! runWriterT $! flip runReaderT s
 -- ** Non-scoping State
 data IState = IState { cTable                :: !(M.HashMap DKey (K3 MExpr))
                      , globalPhaseBoundaries :: !(M.HashMap Identifier (S.Set Identifier))
+                     , internedNames         :: !(I.IntMap Identifier)
                      } deriving (Eq, Read, Show, Generic)
 
 defaultIState :: IState
-defaultIState = IState  M.empty M.empty
+defaultIState = IState  M.empty M.empty I.empty
 
 type DKey = (Juncture, Direction)
 
-constrain :: UID -> Identifier -> Direction -> K3 MExpr -> InferM ()
-constrain u i d m = let j = (Juncture u i) in
+constrain :: UID -> Int -> Direction -> K3 MExpr -> InferM ()
+constrain u i d m = let j = Juncture u i in
   logR j d m >> modify (\s -> s { cTable = M.insertWith (flip const) (j, d) (simplifyE m) (cTable s) })
 
 addGlobalPhaseBoundary :: M.HashMap Identifier (S.Set Identifier) -> (Identifier, Identifier) -> M.HashMap Identifier (S.Set Identifier)
@@ -238,8 +243,8 @@ formatIReport rv ir = do
   putStrLn "--- Begin Materialization Inference Report ---"
   for_ ir $ \(IReport (Juncture u i) d m) -> case rv of
     None -> return ()
-    Short -> printf "J%d/%s/%s: %s / %s\n" (gUID u) i (show d) (ppShortE m) (ppShortE $ simplifyE m)
-    Long -> printf "--- Juncture %d/%s/%s:\n%s" (gUID u) i (show d) (boxToString $ prettyLines m %+ prettyLines (simplifyE m))
+    Short -> printf "J%d/%d/%s: %s / %s\n" (gUID u) i (show d) (ppShortE m) (ppShortE $ simplifyE m)
+    Long -> printf "--- Juncture %d/%d/%s:\n%s" (gUID u) i (show d) (boxToString $ prettyLines m %+ prettyLines (simplifyE m))
   putStrLn "--- End Materialization Inference Report ---"
 
 -- ** Errors
@@ -259,6 +264,15 @@ ePrv e = maybe (throwError $ IError "Invalid EProvenance") (\(EProvenance p) -> 
 eEff :: K3 Expression -> InferM (K3 Effect)
 eEff e = maybe (throwError $ IError "Invalid ESEffect") (\(ESEffect f) -> return f) (e @~ isESEffect)
 
+internName :: Identifier -> InferM Int
+internName n = (modify $! \s -> s { internedNames = extend n $! internedNames s }) >> return ptr
+  where extend n ns = I.alter (const $ Just n) ptr ns
+        ptr = hashJunctureName n
+
+uninternName :: Int -> InferM Identifier
+uninternName i = get >>= \s -> maybe err return $! I.lookup i $! internedNames s
+  where err = throwError $ IError $ "Could not unintern " ++ show i
+
 chasePPtr :: PPtr -> InferM (K3 Provenance)
 chasePPtr p = do
   ppEnv <- asks $! ppenv . pEnv
@@ -268,8 +282,8 @@ chasePPtr p = do
 
 bindPoint :: Contextual (K3 Provenance) -> InferM (Maybe Juncture)
 bindPoint (Contextual p u) = case tag p of
-  PFVar i _ | Just u' <- u -> return $! Just $! Juncture u' i
-  PBVar (PMatVar i u' _) -> return $! Just $! Juncture u' i
+  PFVar i _ | Just u' <- u -> internName i >>= \ptr -> return $! Just $! Juncture u' ptr
+  PBVar (PMatVar i u' _) -> internName i >>= \ptr -> return $! Just $! Juncture u' ptr
   PProject _ -> bindPoint (Contextual (head $! children p) u)
   _ -> return Nothing
 
@@ -311,8 +325,8 @@ materializeE e@(Node (t :@: _) cs) = case t of
 
         -- Determine if the field argument is moveable within the current expression.
         moveableNow <- ePrv c >>= contextualizeNow >>= isMoveableNow
-
-        constrain u i In $! mITE (moveableNow -&&- (mNot $! mBool ila)) (mAtom Moved) (mAtom Copied)
+        iptr <- internName i
+        constrain u iptr In $! mITE (moveableNow -&&- (mNot $! mBool ila)) (mAtom Moved) (mAtom Copied)
 
   ELambda i -> do
     let [body] = cs
@@ -341,7 +355,8 @@ materializeE e@(Node (t :@: _) cs) = case t of
     let standardPath = mITE ehw (mITE (mBool $! argShouldBeMoved) (mAtom Moved) (mAtom Copied)) (mAtom Forwarded)
     let topLPath = mITE (mBool topL -&&- mBool iRun) (mAtom Copied) (fSourceOverride standardPath)
 
-    constrain u i In topLPath
+    iptr <- internName i
+    constrain u iptr In topLPath
 
     cls <- ePrv e >>= \case
       (tag -> PLambda _ cls) -> return cls
@@ -358,7 +373,9 @@ materializeE e@(Node (t :@: _) cs) = case t of
       outerP <- chasePPtr ptr
       moveable <- contextualizeNow outerP >>= isMoveableNow
 
-      constrain u name In $! mITE needsOwn (mITE moveable (mAtom Moved) (mAtom Copied)) (mAtom ConstReferenced)
+
+      nptr <- internName name
+      constrain u nptr In $! mITE needsOwn (mITE moveable (mAtom Moved) (mAtom Copied)) (mAtom ConstReferenced)
 
     clps <- sequence [withNearestBind u (contextualizeNow $! pbvar m) | m <- cls]
     nrvo <- mOr <$> traverse (`occursIn` fProv) (ci:clps)
@@ -370,8 +387,9 @@ materializeE e@(Node (t :@: _) cs) = case t of
       (tag -> EProject "fold", tag &&& children -> (ELambda i, [il@(tag &&& children -> (ELambda ele, _))])) -> do
         xu <- eUID x
         ilu <- eUID il
-        constrain xu i In (mAtom Moved -??- "Fold Override")
-        constrain ilu i In (mAtom Moved -??- "Fold Override")
+        iptr <- internName i
+        constrain xu  iptr In (mAtom Moved -??- "Fold Override")
+        constrain ilu iptr In (mAtom Moved -??- "Fold Override")
       _ -> return ()
 
     contextualizeNow x >>= \x' -> withDownstreams [x'] $ materializeE f
@@ -430,8 +448,9 @@ materializeE e@(Node (t :@: _) cs) = case t of
 
       let bindNeedsOwn = ehw
       let bindConflict = bsehr -||- bsehw
-      constrain u name In $! mITE bindConflict (mITE bindNeedsOwn (mAtom Copied) (mAtom Referenced)) (mAtom Referenced)
-      constrain u name Ex $! mITE (mOneOf (mVar u name In) [Copied, Moved]) (mAtom Moved) (mAtom Referenced)
+      nptr <- internName name
+      constrain u nptr In $! mITE bindConflict (mITE bindNeedsOwn (mAtom Copied) (mAtom Referenced)) (mAtom Referenced)
+      constrain u nptr Ex $! mITE (mOneOf (mVar u nptr In) [Copied, Moved]) (mAtom Moved) (mAtom Referenced)
 
   ELetIn i -> do
     let [initL, body] = cs
@@ -452,7 +471,8 @@ materializeE e@(Node (t :@: _) cs) = case t of
 
     u <- eUID e
     let moveable = imn -&&- ico
-    constrain u i In $! mITE moveable (mAtom Moved) (mAtom Copied)
+    iptr <- internName i
+    constrain u iptr In $! mITE moveable (mAtom Moved) (mAtom Copied)
 
   ECaseOf i -> do
     let [initB, some, none] = cs
@@ -472,7 +492,8 @@ materializeE e@(Node (t :@: _) cs) = case t of
 
     (ehw, _) <- hasWriteIn ip some'
     let caseNeedsOwn = ehw
-    constrain u i In $! mITE caseNeedsOwn (mITE sourceMoveable (mAtom Moved) (mAtom Copied)) (mAtom Referenced)
+    iptr <- internName i
+    constrain u iptr In $! mITE caseNeedsOwn (mITE sourceMoveable (mAtom Moved) (mAtom Copied)) (mAtom Referenced)
 
   EIfThenElse -> do
     let [cond, thenB, elseB] = cs
@@ -546,7 +567,8 @@ hasWriteIn (Contextual p cp) (Contextual e ce) = case tag e of
     -- a move.
     closurePs <- for cls $ \m@(PMatVar n u _) -> do
       occurs <- occursIn (Contextual p cp) (Contextual (pbvar m) ce)
-      return $! occurs -&&- mOneOf (mVar u n In) [Moved]
+      nptr <- internName n
+      return $! occurs -&&- mOneOf (mVar u nptr In) [Moved]
     return (mBool False, foldr (-||-) (mBool False) closurePs)
 
   EOperate OApp -> do
@@ -593,7 +615,8 @@ isPseudoGlobal p = case tag p of
   (PGlobal n) -> isPseudoLocalInContext n >>= \pl -> return (mBool (not pl) -??- "Is Pseudo Local?")
   (PBVar (PMatVar n u ptr)) -> do
     parent <- chasePPtr ptr >>= isPseudoGlobal
-    return $! mOneOf (mVar u n In) [Referenced, ConstReferenced, Forwarded] -&&- parent
+    nptr <- internName n
+    return $! mOneOf (mVar u nptr In) [Referenced, ConstReferenced, Forwarded] -&&- parent
   (PProject _) -> isPseudoGlobal (head $! children p)
   PSet -> mOr <$> traverse isPseudoGlobal (children p)
   (PRecord _) -> mOr <$> traverse isPseudoGlobal (children p)
@@ -610,7 +633,8 @@ occursIn a@(Contextual pa ca) b@(Contextual pb cb) = case tag pb of
     PBVar (PMatVar n' u' _) | n' == n && u' == u -> return (mBool True)
     _ -> do
       pOccurs <- chasePPtr ptr >>= \p' -> occursIn a (Contextual p' cb)
-      return $! (mOneOf (mVar u n In) [Referenced, ConstReferenced, Forwarded] -&&- pOccurs)
+      nptr <- internName n
+      return $! (mOneOf (mVar u nptr In) [Referenced, ConstReferenced, Forwarded] -&&- pOccurs)
         -??- (if u == (UID 43168) then boxToString $ ["occursIn RCRF"] %$ prettyLines pa %$ prettyLines pb else "")
 
   PSet -> mOr <$> traverse (\pb' -> occursIn a (Contextual pb' cb)) (children pb)
@@ -620,10 +644,12 @@ occursIn a@(Contextual pa ca) b@(Contextual pb cb) = case tag pb of
 
 ownedByContext :: Contextual (K3 Provenance) -> InferM (K3 MPred)
 ownedByContext (Contextual p c) = case tag p of
-  PFVar i _ | Just u' <- c -> return $! mOneOf (mVar u' i In) [Copied, Moved]
+  PFVar i _ | Just u' <- c -> internName i >>= \iptr -> return $! mOneOf (mVar u' iptr In) [Copied, Moved]
   PBVar (PMatVar i u' ptr) -> do
     transitive <- chasePPtr ptr >>= \p' -> ownedByContext (Contextual p' c)
-    return $! mOneOf (mVar u' i In) [Copied, Moved] -||- (mOneOf (mVar u' i In) [Referenced] -&&- transitive)
+    iptr <- internName i
+    return $! mOneOf (mVar u' iptr In) [Copied, Moved]
+              -||- (mOneOf (mVar u' iptr In) [Referenced] -&&- transitive)
   PProject _ -> ownedByContext (Contextual (head $! children p) c)
   _ -> return (mBool True)
 

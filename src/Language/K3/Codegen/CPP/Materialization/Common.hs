@@ -3,6 +3,7 @@
 module Language.K3.Codegen.CPP.Materialization.Common where
 
 import Control.Arrow
+import Data.Hashable
 
 import Language.K3.Core.Annotation
 import Language.K3.Core.Common
@@ -17,8 +18,14 @@ rollAppChain :: K3 Expression -> (K3 Expression, [K3 Expression])
 rollAppChain e@(tag &&& children -> (EOperate OApp, [f, x])) = let (f', xs) = rollAppChain f in (f', xs ++ [e])
 rollAppChain e = (e, [])
 
-anon :: Identifier
-anon = "!"
+anon :: Int
+anon = hashJunctureName "!"
+
+anonS :: Identifier
+anonS = "!"
+
+hashJunctureName :: Identifier -> Int
+hashJunctureName = hash
 
 isNonScalarType :: K3 Type -> Bool
 isNonScalarType t = case t of

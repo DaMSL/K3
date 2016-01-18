@@ -364,9 +364,9 @@ inline e = do
           -- isSM = isAP || isRA
           isSM = False
 
-      eleMove <- getKType c >>= \(tag &&& children -> (TCollection, [t])) -> return $ getInMethodFor anon p == Moved && isNonScalarType t
+      eleMove <- getKType c >>= \(tag &&& children -> (TCollection, [t])) -> return $ getInMethodFor anonS p == Moved && isNonScalarType t
 
-      let accMove = gMoveByDE (if forceMoveP e then Moved else getInMethodFor anon e) z zv
+      let accMove = gMoveByDE (if forceMoveP e then Moved else getInMethodFor anonS e) z zv
 
       accVar <- genSym
       eleVar <- genSym
@@ -623,7 +623,7 @@ inline e = do
 
       let reifyArg (x, xv, m) = do
             let orderAgnosticP = R.isOrderAgnostic xv
-            let moveArg = if x @:? "Move" then Moved else getInMethodFor anon m
+            let moveArg = if x @:? "Move" then Moved else getInMethodFor anonS m
             if moveArg `elem` [Moved, Forwarded]
               then do
                 let castMoveP = maybe True (\m -> needsMoveCast m xv) (getKTypeP x)

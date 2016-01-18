@@ -47,7 +47,7 @@ isMEReason _ = False
 
 instance Pretty (K3 MExpr) where
   prettyLines (Node (t :@: as) cs) = case t of
-    MVar (Juncture u i) d -> [printf "MVar %d/%s/%s%s" (gUID u) i (show d) reason]
+    MVar (Juncture u i) d -> [printf "MVar %d/%d/%s%s" (gUID u) i (show d) reason]
     MAtom m -> [printf "MAtom %s%s" (show m) reason]
     MIfThenElse p -> [printf "MIfThenElse%s" reason] ++ ["|"] ++ (shift "+- " "|  " $ prettyLines p) ++ drawSubTrees cs
    where
@@ -55,7 +55,7 @@ instance Pretty (K3 MExpr) where
 
 ppShortE :: K3 MExpr -> String
 ppShortE m = case tag m of
-  MVar (Juncture u i) d -> printf "%d/%s/%s" (gUID u) i (show d)
+  MVar (Juncture u i) d -> printf "%d/%d/%s" (gUID u) i (show d)
   MAtom t -> show t
   MIfThenElse p ->
     let [t, e] = children m
@@ -100,7 +100,7 @@ ppShortP p = case (tag p, children p) of
   (MOneOf m ms, _) -> printf "%s ∈ %s" (ppShortE m) (show ms)
   (MBool b, _) -> show b
 
-data Juncture = Juncture !UID !Identifier deriving (Eq, Ord, Read, Show, Generic)
+data Juncture = Juncture !UID !Int deriving (Eq, Ord, Read, Show, Generic)
 
 instance NFData    Juncture
 instance Binary    Juncture
