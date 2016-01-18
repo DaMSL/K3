@@ -89,7 +89,7 @@ prepareInitialIState :: Bool -> K3 Declaration -> IState
 prepareInitialIState dbg dr = IState (M.fromList initCTable) M.empty initNames
 
  where
-  (initCTable, initNames) = foldl genHack ([], I.empty) $! children dr
+  (initCTable, initNames) = foldl genHack ([], I.singleton anon anonS) $! children dr
 
   genHack (cacc, iacc) d@(tag -> DGlobal i _ _) = debugHack d $
     let p = hashJunctureName i in
