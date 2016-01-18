@@ -598,6 +598,7 @@ parmapProgramDeclsBlock declPassesF block = do
       Right (st', nblock) -> put st' >> return nblock
 
   where
+    {-
     runParallelBlock :: TransformSt -> [K3 Declaration] -> IO (Either String (TransformSt, [K3 Declaration]))
     runParallelBlock st ds = do
       newSDs <- runParIO $! parMapM (runParallelDecl st) $ zip [0..] ds
@@ -607,17 +608,18 @@ parmapProgramDeclsBlock declPassesF block = do
     runParallelDecl s (i, d) = liftIO $! flip (maybe stateError) (advanceTransformStSyms i s) $! \s' -> do
       re <- runTransformM s' $! fixD (mapProgramDecls declPassesF) compareDAST d
       return $! either Left (Right . swap) re
+    -}
 
-    --runParallelBlock :: TransformSt -> [K3 Declaration] -> IO (Either String (TransformSt, [K3 Declaration]))
-    --runParallelBlock st ds = do
-    --  locks <- sequence $! newEmptyMVar <$ ds
-    --  sequence_ [runParallelDecl i lock d st | lock <- locks | d <- ds | i <- [0..]]
-    --  newSDs <- mapM takeMVar locks
-    --  return $! foldl mergeEitherStateDecl (Right (st, [])) newSDs
+    runParallelBlock :: TransformSt -> [K3 Declaration] -> IO (Either String (TransformSt, [K3 Declaration]))
+    runParallelBlock st ds = do
+      locks <- sequence $! newEmptyMVar <$ ds
+      sequence_ [runParallelDecl i lock d st | lock <- locks | d <- ds | i <- [0..]]
+      newSDs <- mapM takeMVar locks
+      return $! foldl mergeEitherStateDecl (Right (st, [])) newSDs
 
-    --runParallelDecl :: Int -> MVar (Either String (TransformSt, K3 Declaration)) -> K3 Declaration -> TransformSt -> IO ThreadId
-    --runParallelDecl i m d s = flip (maybe stateError) (advanceTransformStSyms i s) $! \s' ->
-    --  forkIO $! runTransformM s' (fixD (mapProgramDecls declPassesF) compareDAST d) >>= putMVar m . fmap swap
+    runParallelDecl :: Int -> MVar (Either String (TransformSt, K3 Declaration)) -> K3 Declaration -> TransformSt -> IO ThreadId
+    runParallelDecl i m d s = flip (maybe stateError) (advanceTransformStSyms i s) $! \s' ->
+      forkIO $! runTransformM s' (fixD (mapProgramDecls declPassesF) compareDAST d) >>= putMVar m . fmap swap
 
     mergeEitherStateDecl :: Either String (TransformSt, [K3 Declaration]) -> Either String (TransformSt, K3 Declaration)
                          -> Either String (TransformSt, [K3 Declaration])
