@@ -354,60 +354,43 @@ inline e = do
       (ce, cv) <- inline c
       (ze, zv) <- inline z
 
-      let isAP = isJust $ p @~ (\case { EProperty (ePropertyName -> "AccumulatingTransformer") -> True
-                                      ; _ -> False
-                                      })
-          isRA = isJust $ f @~ (\case { EProperty (ePropertyName -> "ReturnsArgument") -> True
-                                      ; _ -> False
-                                      })
+      -- Accumulating Function
+      fs <- genSym
+      fe <- reify (RDecl fs Nothing) f
 
-          -- isSM = isAP || isRA
-          isSM = False
-
-      eleMove <- getKType c >>= \(tag &&& children -> (TCollection, [t])) -> return $ getInMethodFor anon p == Moved && isNonScalarType t
-
-      let accMove = gMoveByDE (if forceMoveP e then Moved else getInMethodFor anon e) z zv
-
+      -- Initial Accumulator
       accVar <- genSym
+      let movedAcc = gMoveByDE (if forceMoveP e then Moved else getInMethodFor anon e) z zv
+      let accDecl = R.Forward $ R.ScalarDecl (R.Name accVar) R.Inferred (Just movedAcc)
+
+      -- Index Variable
       eleVar <- genSym
+      movedEle <- do
+        (tag &&& children -> (TCollection, [t])) <- getKType c
+        return $ if getInMethodFor anon p == Moved && isNonScalarType t
+                   then R.Move $ R.Variable $ R.Name eleVar
+                   else R.Variable $ R.Name eleVar
 
-      let accDecl = R.Forward $ R.ScalarDecl (R.Name accVar) R.Inferred (Just accMove)
+      -- TODO: Inline Apply
 
-      (fe, fb) <- inlineApply isSM (if isSM then RForget else RName (R.Variable $ R.Name accVar) (Just True)) f
-                    [ (if isSM then id else R.Move) $ R.Variable $ R.Name accVar
-                    , (if eleMove then R.Move else id) $ R.Variable $ R.Name eleVar
-                    ]
+      -- Core Loop
+      -- TODO: Double Reify on Embedded Folds
+      let loopBody = R.Assignment
+                      (R.Variable $ R.Name accVar)
+                      (R.Call
+                       (R.Variable $ R.Name fs)
+                       [ R.Move $ R.Variable $ R.Name accVar
+                       , movedEle
+                       ])
+      let loop = R.ForEach eleVar (R.Reference R.Inferred) cv (R.Block [loopBody])
 
-      let loopBody = fb
-
-
-      -- loopIndexIsIsolated <- gets (isolateLoopIndex . flags)
-
-      let loop = R.ForEach eleVar ((if isolateApplicationP then id else R.Reference) $ R.Inferred) cv (R.Block loopBody)
-
-      let bb = if null fe then loop else R.Block (fe ++ [loop])
-
-      return (ze ++ [accDecl] ++ ce ++ [bb], R.Move $ R.Variable $ R.Name accVar)
-
-      -- Leaving this here for later.
-      -- let isVectorizeProp  = \case { EProperty (ePropertyName -> "Vectorize")  -> True; _ -> False }
-      -- let isInterleaveProp = \case { EProperty (ePropertyName -> "Interleave") -> True; _ -> False }
-
-      -- let vectorizePragma = case e @~ isVectorizeProp of
-      --                         Nothing -> []
-      --                         Just (EProperty (ePropertyValue -> Nothing)) -> [R.Pragma "clang vectorize(enable)"]
-      --                         Just (EProperty (ePropertyValue -> Just (tag -> LInt i))) ->
-      --                             [ R.Pragma "clang loop vectorize(enable)"
-      --                             , R.Pragma $ "clang loop vectorize_width(" ++ show i ++ ")"
-      --                             ]
-
-      -- let interleavePragma = case e @~ isInterleaveProp of
-      --                          Nothing -> []
-      --                          Just (EProperty (ePropertyValue -> Nothing)) -> [R.Pragma "clang interleave(enable)"]
-      --                          Just (EProperty (ePropertyValue -> Just (tag -> LInt i))) ->
-      --                              [ R.Pragma "clang loop interleave(enable)"
-      --                              , R.Pragma $ "clang loop interleave_count(" ++ show i ++ ")"
-      --                              ]
+      -- Extra Reification for Query Isolation.
+      (xe, xv) <- if isolateQueryP
+                    then do
+                     q <- genSym
+                     return ([R.Forward $ R.ScalarDecl (R.Name q) R.Inferred (Just $ R.Variable $ R.Name accVar)], q)
+                    else return ([], accVar)
+      return (ze ++ [accDecl] ++ ce ++ fe ++ [loop] ++ xe, R.Move $ R.Variable $ R.Name xv)
 
     p@(InsertWith c) :$: k :$: w | c `dataspaceIn` stlAssocDSs && doInlineP -> do
       (ce, cv) <- inline c
@@ -594,11 +577,6 @@ inline e = do
 
       return (ce ++ [ue] ++ ie ++ [resultDecl] ++ [R.Block (advance ++ wfe ++ wfb)]
             , R.Variable $ R.Name result)
-
-    Fold _ :$: _ :$: _  | isolateQueryP && not (e @:? "QueryIsolated") -> do
-      g <- genSym
-      es <- guardDReify (RDecl g Nothing) (e @:+ "QueryIsolated")
-      return (es, R.Variable $ R.Name g)
 
     f :$: x | isolateApplicationP && e @:? "FusionSource" && not (e @:? "ApplicationIsolated") -> do
       g <- genSym
