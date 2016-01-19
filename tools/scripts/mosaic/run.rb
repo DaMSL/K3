@@ -40,7 +40,9 @@ end
 def run_mosaic(k3_path, mosaic_path, source)
   stage "[1] Creating mosaic files"
   args = ""
-  args << "--no-deletes " unless $options[:use_deletes]
+  args << "--no-gen-deletes " unless $options[:gen_deletes]
+  args << "--no-gen-correctives " unless $options[:corrective]
+  args << "--no-gen-single-vid " unless !$options[:isobatch]
   run("#{File.join(mosaic_path, "tests", "auto_test.py")} --workdir #{$workdir} --no-interp #{args} -d -f #{source}")
 
   # change the k3 file to use the dynamic path
@@ -138,7 +140,7 @@ end
 # create the k3 cpp file locally
 def run_create_k3_local(k3_cpp_name, k3_cpp_path, k3_root_path, k3_path, script_path)
   stage "[3] Creating K3 cpp file locally"
-  compile = File.join(script_path, "..", "run", "compile.sh")
+  compile = File.join(script_path, "..", "run", "compile_mosaic.sh")
   res = run("time #{compile} -1 #{k3_path} +RTS -A1G -N -c -s -RTS") 
 
   src_path = File.join(k3_root_path, "__build")
@@ -261,7 +263,7 @@ def gen_yaml(role_path, script_path)
   extra_args << "ms_gc_interval=" + $options[:gc_epoch] if $options[:gc_epoch]
   extra_args << "tm_resolution=" + $options[:gc_epoch] if $options[:gc_epoch] && $options[:gc_epoch].to_i < 1000
   extra_args << "sw_event_driver_sleep=" + $options[:msg_delay] if $options[:msg_delay]
-  extra_args << ("corrective_mode=" + $options[:corrective] ? "true" : "false")
+  extra_args << "corrective_mode=" + $options[:corrective]
   extra_args << "pmap_overlap_factor=" + $options[:map_overlap] if $options[:map_overlap]
   if $options[:batch_size]
     extra_args << "sw_poly_batch_size=" + $options[:batch_size]
@@ -277,7 +279,7 @@ def gen_yaml(role_path, script_path)
     extra_args << "pmap_buckets=" + (num_nodes * 4).to_s if num_nodes > 16
   end
   extra_args << "replicas=" + $options[:replicas] if $options[:replicas]
-  extra_args << "isobatch_mode=false" if !$options[:isobatch]
+  extra_args << "isobatch_mode=" + $options[:isobatch]
   cmd << "--extra-args " << extra_args.join(',') << " " if extra_args.size > 0
 
   yaml = run("#{File.join(script_path, "gen_yaml.py")} #{cmd}")
@@ -844,7 +846,7 @@ def main()
     opts.on("--buckets [INT]", "Number of buckets (partitioning)") { |s| $options[:buckets] = s }
     opts.on("--replicas [INT]", "Number of replicas in consistent hashing (for partitioning)") { |s| $options[:replicas] = s }
     opts.on("--query [NAME]", "Name of query to run (optional, derived from path)") { |s| $options[:query] = s }
-    opts.on("--use-deletes", "Generate deletes") { $options[:use_deletes] = true }
+    opts.on("--gen-deletes", "Generate deletes") { $options[:gen_deletes] = true }
 
     # Compile args synonyms
     opts.on("--compileargs [STRING]", "Pass arguments to compiler (distributed only)") { |s| $options[:compileargs] = s }
