@@ -1,0 +1,40 @@
+diff --git i/lib/k3/Core/Messaging.k3 w/lib/k3/Core/Messaging.k3
+index 595f36b..52d8eda 100644
+--- i/lib/k3/Core/Messaging.k3
++++ w/lib/k3/Core/Messaging.k3
+@@ -27,7 +27,7 @@ control PartitionShuffleWithMissing[lbl: label, dest_trg: expr, nodes: expr, sen
+     let partition_table = (((($.[e].group_by_generic @:HGroupBy)
+                                      ((\v -> ($[nodes].at (index_by_hash v.key)).addr) @:Projection)
+                                      ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
+-                                     empty $::[t] @IntMap) @:Fuse) @ManualFusion)
++                                     empty $::[t] @IntMap) @:Fuse) )
+     in $[nodes].iterate (\n ->
+     (partition_table.lookup { key: n.addr, value: empty $::[t] @IntMap }
+         (\_ -> ($[dest_trg], n.addr) <- $[lbl]_send_ty_default)
+@@ -43,7 +43,7 @@ control PartitionShuffleWithMissing[lbl: label, dest_trg: expr, nodes: expr, sen
+     let partition_table = (((($.[e].group_by_generic @:HGroupBy)
+                                      ((\v -> ($[nodes].at (index_by_hash v.key)).addr) @:Projection)
+                                      ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
+-                                     empty $::[t] @StrMap) @:Fuse) @ManualFusion)
++                                     empty $::[t] @StrMap) @:Fuse) )
+     in $[nodes].iterate (\n ->
+     (partition_table.lookup { key: n.addr, value: empty $::[t] @StrMap }
+         (\_ -> ($[dest_trg], n.addr) <- $[lbl]_send_ty_default)
+@@ -60,7 +60,7 @@ control PartitionShuffleWithMissing[lbl: label, dest_trg: expr, nodes: expr, sen
+     let partition_table = (((($.[e].group_by @:HGroupBy)
+                                      ((\v -> ($[nodes].at (index_by_hash v.key)).addr) @:Projection)
+                                      ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
+-                                     empty $::[t] @Map) @:Fuse) @ManualFusion)
++                                     empty $::[t] @Map) @:Fuse) )
+     in $[nodes].iterate (\n ->
+     (partition_table.lookup { key: n.addr, value: empty $::[t] @Map }
+         (\_ -> ($[dest_trg], n.addr) <- $[lbl]_send_ty_default)
+@@ -76,7 +76,7 @@ control PartitionShuffleWithMissing[lbl: label, dest_trg: expr, nodes: expr, sen
+     let partition_table = (((((($.[e].group_by @:HGroupBy)
+                                      ((\v -> ($[nodes].at (index_by_hash v.key)).addr) @:Projection)
+                                      ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
+-                                     empty $::[t] @Map) @:Fuse) @ManualFusion)
++                                     empty $::[t] @Map) @:Fuse) )
+ 				    .fold
+ 				      (\a -> \e -> (a.insert e; a))
+ 				      empty {key: address, value: collection $::[t] @Map} @Map)

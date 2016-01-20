@@ -112,7 +112,7 @@ end
 
 def setup_build_profile(profile)
   profile.fetch("patches", []).each do |p|
-    `git apply #{p}`
+    `git apply #{$options.fetch(:patch_prefix, ".")}/#{p}`
   end
 
   if profile.has_key? "build_opts"
@@ -126,7 +126,7 @@ end
 
 def teardown_build_profile(profile)
   profile.fetch("patches", []).each do |p|
-    `git apply -R #{p}`
+    `git apply -R #{$options.fetch(:patch_prefix, ".")}/#{p}`
   end
 end
 
@@ -377,6 +377,7 @@ def main()
 
     opts.on("-x", "--build-profile-set [PATH]", String, "Set of Build Profiles") { |x| $options[:build_profile_set] = x }
     opts.on("-y", "--build-profile [KEY]", String, "Build Profile to use.") { |y| $options[:build_profile] = y }
+    opts.on("-z", "--patch-dir [KEY]", String, "Directory to look for patches") { |z| $options[:patch_dir] = z }
 
     opts.on("-c", "--check", "Check correctness") { $options[:check] = true }
     opts.on("-s", "--submit", "Submit binary") { $options[:submit] = true }
