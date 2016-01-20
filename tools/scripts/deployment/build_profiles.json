@@ -4,11 +4,13 @@
     },
 
     "unboxed_app_isolation": {
-        "build_opts": "-j 16 --cg-options isolateApplication=True --fstage isolateApplication=True:cinclude=isolateApplication"
+        "build_opts": "-j 16 --cg-options isolateApplication=True --fstage isolateApplication=True:cinclude=isolateApplication",
+        "patches": ["manual_fusion_source.patch"]
     },
 
     "unboxed_query_isolation": {
-        "build_opts": "-j 16 --cg-options isolateQuery=True --fstage isolateQuery=True:cexclude=Decl-FT"
+        "build_opts": "-j 16 --cg-options isolateQuery=True --fstage isolateQuery=True:cexclude=Decl-FT",
+        "patches": ["manual_fusion_disable.patch"]
     },
 
     "unboxed_runtime_isolation": {
@@ -26,11 +28,13 @@
     },
 
     "boxed_app_isolation": {
-        "build_opts": "-j 16 --cg-options boxRecords=True:isolateApplication=True --fstage isolateApplication=True:cinclude=isolateApplication"
+        "build_opts": "-j 16 --cg-options boxRecords=True:isolateApplication=True --fstage isolateApplication=True:cinclude=isolateApplication",
+        "patches": ["manual_fusion_disable.patch"]
     },
 
     "boxed_query_isolation": {
-        "build_opts": "-j 16 --cg-options boxRecords=True:isolateQuery=True --fstage isolateQuery=True:cexclude=Decl-FT"
+        "build_opts": "-j 16 --cg-options boxRecords=True:isolateQuery=True --fstage isolateQuery=True:cexclude=Decl-FT",
+        "patches": ["manual_fusion_disable.patch"]
     },
 
     "boxed_runtime_isolation": {
@@ -44,55 +48,57 @@
     },
 
     "unboxed_no_isolation_memory": {
-        "cxx_opts": "-DK3_JEMALLOC -DK3_HEAP_SERIES",
+        "cxx_opts": "-DK3_JEMALLOC -DK3_HEAP_SERIES -ljemalloc",
         "build_opts": "-j 16"
     },
 
     "unboxed_app_isolation_memory": {
-        "cxx_opts": "-DK3_JEMALLOC -DK3_HEAP_SERIES",
-        "build_opts": "-j 16 --cg-options isolateApplication=True --fstage isolateApplication=True:cinclude=isolateApplication"
+        "cxx_opts": "-DK3_JEMALLOC -DK3_HEAP_SERIES -ljemalloc",
+        "build_opts": "-j 16 --cg-options isolateApplication=True --fstage isolateApplication=True:cinclude=isolateApplication",
+        "patches": ["manual_fusion_disable.patch"]
     },
 
     "unboxed_query_isolation_memory": {
-        "cxx_opts": "-DK3_JEMALLOC -DK3_HEAP_SERIES",
+        "cxx_opts": "-DK3_JEMALLOC -DK3_HEAP_SERIES -ljemalloc",
         "build_opts": "-j 16 --cg-options isolateQuery=True --fstage isolateQuery=True:cexclude=Decl-FT"
     },
 
     "unboxed_runtime_isolation_memory": {
-        "cxx_opts": "-DK3_JEMALLOC -DK3_HEAP_SERIES",
+        "cxx_opts": "-DK3_JEMALLOC -DK3_HEAP_SERIES -ljemalloc",
         "build_opts": "-j 16 --cg-options isolateRuntime=True --fstage isolateRuntime=True",
         "patches": ["manual_fusion_disable.patch", "direct_broadcast.patch"]
     },
 
     "unboxed_full_isolation_memory": {
-        "cxx_opts": "-DK3_JEMALLOC -DK3_HEAP_SERIES",
+        "cxx_opts": "-DK3_JEMALLOC -DK3_HEAP_SERIES -ljemalloc",
         "build_opts": "-j 16 --cg-options isolateApplication=True:isolateQuery=True:isolateRuntime=True --fstage isolateApplication=True:isolateQuery=True:isolateRuntime=True:cinclude=Optimize-NoBR",
         "patches": ["manual_fusion_disable.patch", "direct_broadcast.patch"]
     },
 
     "boxed_no_isolation_memory": {
-        "cxx_opts": "-DK3_JEMALLOC -DK3_HEAP_SERIES",
+        "cxx_opts": "-DK3_JEMALLOC -DK3_HEAP_SERIES -ljemalloc",
         "build_opts": "-j 16 --cg-options boxRecords=True"
     },
 
     "boxed_app_isolation_memory": {
-        "cxx_opts": "-DK3_JEMALLOC -DK3_HEAP_SERIES",
-        "build_opts": "-j 16 --cg-options boxRecords=True:isolateApplication=True --fstage isolateApplication=True:cinclude=isolateApplication"
+        "cxx_opts": "-DK3_JEMALLOC -DK3_HEAP_SERIES -ljemalloc",
+        "build_opts": "-j 16 --cg-options boxRecords=True:isolateApplication=True --fstage isolateApplication=True:cinclude=isolateApplication",
+        "patches": ["manual_fusion_disable.patch"]
     },
 
     "boxed_query_isolation_memory": {
-        "cxx_opts": "-DK3_JEMALLOC -DK3_HEAP_SERIES",
+        "cxx_opts": "-DK3_JEMALLOC -DK3_HEAP_SERIES -ljemalloc",
         "build_opts": "-j 16 --cg-options boxRecords=True:isolateQuery=True --fstage isolateQuery=True:cexclude=Decl-FT"
     },
 
     "boxed_runtime_isolation_memory": {
-        "cxx_opts": "-DK3_JEMALLOC -DK3_HEAP_SERIES",
+        "cxx_opts": "-DK3_JEMALLOC -DK3_HEAP_SERIES -ljemalloc",
         "build_opts": "-j 16 --cg-options boxRecords=True:isolateRuntime=True --fstage isolateRuntime=True",
         "patches": ["manual_fusion_disable.patch", "direct_broadcast.patch"]
     },
 
     "boxed_full_isolation_memory": {
-        "cxx_opts": "-DK3_JEMALLOC -DK3_HEAP_SERIES",
+        "cxx_opts": "-DK3_JEMALLOC -DK3_HEAP_SERIES -ljemalloc",
         "build_opts": "-j 16 --cg-options boxRecords=True:isolateApplication=True:isolateQuery=True:isolateRuntime=True --fstage isolateApplication=True:isolateQuery=True:isolateRuntime=True:cinclude=Optimize-NoBR",
         "patches": ["manual_fusion_disable.patch", "direct_broadcast.patch"]
     }
