@@ -14,7 +14,9 @@ k3_globals:
 
   q6_selectivity_date_lbound: 19920102
   q6_selectivity_date_ubound: 19920102
-  q18_selectivity_sum_quantity_threshold: 0
+
+  q18_selectivity_sum_quantity_threshold: 328
+
   q22_selectivity_valid_phones: []
 volumes:
   - {host: /local, container: /local}

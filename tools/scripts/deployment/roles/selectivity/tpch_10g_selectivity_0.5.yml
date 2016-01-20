@@ -14,7 +14,9 @@ k3_globals:
 
   q6_selectivity_date_lbound: 19920102
   q6_selectivity_date_lbound: 19950618
-  q18_selectivity_sum_quantity_threshold: 0
+
+  q18_selectivity_sum_quantity_threshold: 159
+
   q22_selectivity_valid_phones: [ {key: "10", value: ()}, {key: "11", value: ()}, {key: "12", value: ()}, {key: "13", value: ()},
                                   {key: "14", value: ()}, {key: "15", value: ()}, {key: "16", value: ()}, {key: "17", value: ()},
                                   {key: "18", value: ()}, {key: "19", value: ()}, {key: "20", value: ()}, {key: "21", value: ()},
