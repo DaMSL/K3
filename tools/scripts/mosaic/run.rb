@@ -263,7 +263,7 @@ def gen_yaml(role_path, script_path)
   extra_args << "ms_gc_interval=" + $options[:gc_epoch] if $options[:gc_epoch]
   extra_args << "tm_resolution=" + $options[:gc_epoch] if $options[:gc_epoch] && $options[:gc_epoch].to_i < 1000
   extra_args << "sw_event_driver_sleep=" + $options[:msg_delay] if $options[:msg_delay]
-  extra_args << "corrective_mode=" + $options[:corrective]
+  extra_args << "corrective_mode=" + ($options[:corrective]).to_s
   extra_args << "pmap_overlap_factor=" + $options[:map_overlap] if $options[:map_overlap]
   if $options[:batch_size]
     extra_args << "sw_poly_batch_size=" + $options[:batch_size]
@@ -273,13 +273,13 @@ def gen_yaml(role_path, script_path)
   extra_args << "do_profiling=true" if $options[:event_profile]
   extra_args << "do_tracing=true" if $options[:str_trace]
   if $options[:buckets]
-    extra_args << "pmap_buckets=" + $options[:buckets]
+    extra_args << "pmap_buckets=" + ($options[:buckets]).to_s
   else
     # if we have more than 16 nodes, we need more buckets
     extra_args << "pmap_buckets=" + (num_nodes * 4).to_s if num_nodes > 16
   end
   extra_args << "replicas=" + $options[:replicas] if $options[:replicas]
-  extra_args << "isobatch_mode=" + $options[:isobatch]
+  extra_args << "isobatch_mode=" + ($options[:isobatch]).to_s
   cmd << "--extra-args " << extra_args.join(',') << " " if extra_args.size > 0
 
   yaml = run("#{File.join(script_path, "gen_yaml.py")} #{cmd}")
