@@ -1137,6 +1137,8 @@ mosaicAnalyzeAccumulatorIndependence (SLabel v) (SExpr e) =
 
 mosaicAnalyzeAccumulatorIndependence _ _ = error "Invalid arguments for mosaicAnalyzeIndependence"
 
+mosaicLogIndex :: SpliceValue -> SpliceValue -> SpliceValue
+mosaicLogIndex (SLabel lbl) (SExpr e) = trace (unwords ["Index", lbl]) $ SExpr e
 
 mosaicLogStaging :: SpliceValue -> SpliceValue -> SpliceValue -> SpliceValue
 mosaicLogStaging (SLabel lbl) (SLabel op) (SExpr e) = trace (unwords ["Stage", lbl, "op:", op]) $ SExpr e
