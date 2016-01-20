@@ -1,8 +1,9 @@
 #!/usr/bin/env ruby
-require 'rest-client'
-require 'optparse'
+require 'csv'
 require 'json'
+require 'optparse'
 require 'pathname'
+require 'rest-client'
 
 RC = RestClient
 
@@ -338,7 +339,7 @@ def postprocess(dir)
   if File.exists?(stats_file)
     $stats = JSON.parse(File.read(stats_file))
   end
-  CSV.open("#{out_folder}/#{$options[:job_set]}/stats.csv", "wb") do |outf|
+  CSV.open("#{dir}/#{$options[:job_set]}/stats.csv", "wb") do |outf|
     outf << ["variant", "query", "role", "trials", "average", "stddev"]
     puts "Summary"
     for key, val in $stats
@@ -348,7 +349,7 @@ def postprocess(dir)
       var = val.map{|x| (x - avg) * (x - avg)}.reduce(:+) / (1.0 * cnt)
       dev = Math.sqrt(var)
       puts "\t#{key} => Successful Trials: #{cnt}/#{$options[:trials]}. Avg: #{avg}. StdDev: #{dev}"
-      outf << [dir, key[:name], key[:role], cnt, avg, dev]
+      outf << [dir, key[:name], key[:role], cnt, avg.round(2), dev.round(2)]
     end
   end
 end
