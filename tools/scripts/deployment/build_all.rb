@@ -270,12 +270,13 @@ end
 def harvest(statuses, out_folder)
   puts("Harvesting results")
   results = {}
+  `mkdir -p #{out_folder}/#{$options[:job_set]}`
   CSV.open("#{out_folder}/#{$options[:job_set]}/raw.csv", "wb") do |rawf|
+    run_folder = "#{out_folder}/#{$options[:job_set]}/#{info["role"]}_#{info["name"]}"
+    `mkdir -p #{run_folder}`
+
     for job_id, info in statuses
       if info['status'] == "FINISHED"
-        run_folder = "#{out_folder}/#{$options[:job_set]}/#{info["role"]}_#{info["name"]}"
-        `mkdir -p #{run_folder}`
-
         # GET tar from each node
         tars = info['sandbox'].select { |x| x =~ /.*.tar/}
         for tar in tars
