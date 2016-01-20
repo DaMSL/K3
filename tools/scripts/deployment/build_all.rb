@@ -113,6 +113,7 @@ end
 
 def setup_build_profile(profile)
   profile.fetch("patches", []).each do |p|
+    puts "Applying #{p}..."
     `git apply #{$options.fetch(:patch_dir, ".")}/#{p}`
   end
 
@@ -127,6 +128,7 @@ end
 
 def teardown_build_profile(profile)
   profile.fetch("patches", []).each do |p|
+    puts "Reverting #{p}..."
     `git apply -R #{$options.fetch(:patch_dir, ".")}/#{p}`
   end
 end
