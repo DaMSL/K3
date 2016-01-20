@@ -270,42 +270,47 @@ end
 def harvest(statuses, out_folder)
   puts("Harvesting results")
   results = {}
-  for job_id, info in statuses
-    if info['status'] == "FINISHED"
-      run_folder = "#{out_folder}/#{$options[:job_set]}/#{info["role"]}_#{info["name"]}"
-      `mkdir -p #{run_folder}`
+  CSV.open("#{out_folder}/#{$options[:job_set]}/raw.csv", "wb") do |rawf|
+    for job_id, info in statuses
+      if info['status'] == "FINISHED"
+        run_folder = "#{out_folder}/#{$options[:job_set]}/#{info["role"]}_#{info["name"]}"
+        `mkdir -p #{run_folder}`
 
-      # GET tar from each node
-      tars = info['sandbox'].select { |x| x =~ /.*.tar/}
-      for tar in tars
-        url = "http://qp2:5000/fs/jobs/#{info["name"]}/#{job_id}/#{tar}"
-        name = File.basename(tar, ".tar")
-        `mkdir -p #{run_folder}/#{job_id}/#{name}`
-        response = RC.get(url)
-        file = File.new("#{run_folder}/#{job_id}/#{name}/sandbox.tar", 'w')
-        file.write response
-        file.close
-        `tar -xvf #{run_folder}/#{job_id}/#{name}/sandbox.tar -C #{run_folder}/#{job_id}/#{name}`
-      end
-      # Find the master tar, for results.csv
-      master_tar = tars.select { |x| x =~ /.*\.0_.*/}[0]
-      name = File.basename(master_tar, ".tar")
-      master_folder = "#{run_folder}/#{job_id}/#{name}/"
-      results[job_id] = info
-      results[job_id].merge!({"status" => "RAN", "output" => master_folder})
-      time_file = "#{master_folder}/time.csv"
-      file = File.open(time_file, "rb")
-      time_ms = file.read.strip.to_i
-      puts "\t#{info} Ran in #{time_ms} ms."
-      group_key = {:role => info["role"], :name => info["name"]}
-      if not $stats.has_key?(group_key)
-        $stats[group_key] = [time_ms]
+        # GET tar from each node
+        tars = info['sandbox'].select { |x| x =~ /.*.tar/}
+        for tar in tars
+          url = "http://qp2:5000/fs/jobs/#{info["name"]}/#{job_id}/#{tar}"
+          name = File.basename(tar, ".tar")
+          `mkdir -p #{run_folder}/#{job_id}/#{name}`
+          response = RC.get(url)
+          file = File.new("#{run_folder}/#{job_id}/#{name}/sandbox.tar", 'w')
+          file.write response
+          file.close
+          `tar -xvf #{run_folder}/#{job_id}/#{name}/sandbox.tar -C #{run_folder}/#{job_id}/#{name}`
+        end
+        # Find the master tar, for results.csv
+        master_tar = tars.select { |x| x =~ /.*\.0_.*/}[0]
+        name = File.basename(master_tar, ".tar")
+        master_folder = "#{run_folder}/#{job_id}/#{name}/"
+        results[job_id] = info
+        results[job_id].merge!({"status" => "RAN", "output" => master_folder})
+        time_file = "#{master_folder}/time.csv"
+        file = File.open(time_file, "rb")
+        time_ms = file.read.strip.to_i
+        puts "\t#{info} Ran in #{time_ms} ms."
+        group_key = {:role => info["role"], :name => info["name"]}
+        if not $stats.has_key?(group_key)
+          $stats[group_key] = [time_ms]
+        else
+          $stats[group_key] << time_ms
+        end
+        _, run_date, variant = out_folder.split("/")
+        job_set = $options[:job_set]
+        rawf << [job_id, run_date, variant, job_set, info["role"], info["name"], time_ms]
       else
-        $stats[group_key] << time_ms
+        results[job_id] = { "status" =>  "FAILED" }
+        puts "\t#{job_id} FAILED."
       end
-    else
-      results[job_id] = { "status" =>  "FAILED" }
-      puts "\t#{job_id} FAILED."
     end
   end
 
