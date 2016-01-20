@@ -218,7 +218,7 @@ inline :: K3 Expression -> CPPGenM ([R.Statement], R.Expression)
 inline e = do
   isolateApplicationP <- gets (isolateApplicationCG . flags)
   isolateQueryP <- gets (isolateQueryCG . flags)
-  let doInlineP = not (isolateApplicationP || isolateQueryP)
+  let doInlineP = True
   case e of
     (tag &&& annotations -> (EConstant (CEmpty t), as)) ->
       case annotationComboIdE as of
@@ -726,7 +726,7 @@ reify :: RContext -> K3 Expression -> CPPGenM [R.Statement]
 reify r e = do
   isolateApplicationP <- gets (isolateApplicationCG . flags)
   isolateQueryP <- gets (isolateQueryCG . flags)
-  let doInlineP = not (isolateApplicationP || isolateQueryP)
+  let doInlineP = True
   case (r, e) of
     (RForget, Fold _ :$: _ :$: _) | doInlineP -> do
       (ee, _) <- inline e
