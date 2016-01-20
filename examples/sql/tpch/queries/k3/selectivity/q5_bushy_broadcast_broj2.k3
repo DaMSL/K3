@@ -46,8 +46,8 @@ order by
 declare q5_selectivity_regions: collection { key: string, value: () } @ StrMap
   = {| key: string, value: () | {key: "ASIA", value: ()} |} @ StrMap
 
-declare q5_selectivity_date_lbound: int = 19940101
-declare q5_selectivity_date_ubound: int = 19950101
+declare q5_selectivity_orderdate_lbound: int = 19940101
+declare q5_selectivity_orderdate_ubound: int = 19950101
 
 declare master : address
 declare clear_enabled : bool = false

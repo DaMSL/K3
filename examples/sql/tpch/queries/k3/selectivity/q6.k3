@@ -1,8 +1,8 @@
 include "tpch/benchmark.k3"
 include "Annotation/Set.k3"
 
-declare q6_selectivity_date_lbound: int = 19940101
-declare q6_selectivity_date_ubound: int = 19950101
+declare q6_selectivity_shipdate_lbound: int = 19940101
+declare q6_selectivity_shipdate_ubound: int = 19950101
 
 declare lineitem_r : lineitem_r
 declare lineitem   : mut q6_lineitem_bag
@@ -12,8 +12,8 @@ declare results    : collection {revenue: real} @Collection
 trigger q6_local : () = \_ -> (
   (ignore
     ((( (lineitem
-        .filter  (\r ->     ( r.l_shipdate >= q6_selectivity_date_lbound )
-                        and ( r.l_shipdate <  q6_selectivity_date_ubound )
+        .filter  (\r ->     ( r.l_shipdate >= q6_selectivity_shipdate_lbound )
+                        and ( r.l_shipdate <  q6_selectivity_shipdate_ubound )
                         and ( r.l_discount >= ( 0.05 ) )
                         and ( r.l_discount <= ( 0.07 ) )
                         and ( r.l_quantity < 24 )
