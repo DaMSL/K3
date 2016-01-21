@@ -29,7 +29,7 @@
 
     "boxed_app_isolation": {
         "build_opts": "-j 16 --cg-options boxRecords=True:isolateApplication=True --fstage isolateApplication=True:cinclude=isolateApplication",
-        "patches": ["manual_fusion_disable.patch"]
+        "patches": ["manual_fusion_source.patch"]
     },
 
     "boxed_query_isolation": {
@@ -55,7 +55,7 @@
     "unboxed_app_isolation_memory": {
         "cxx_opts": "-DK3_JEMALLOC -DK3_HEAP_SERIES -ljemalloc",
         "build_opts": "-j 16 --cg-options isolateApplication=True --fstage isolateApplication=True:cinclude=isolateApplication",
-        "patches": ["manual_fusion_disable.patch"]
+        "patches": ["manual_fusion_source.patch"]
     },
 
     "unboxed_query_isolation_memory": {
@@ -83,7 +83,7 @@
     "boxed_app_isolation_memory": {
         "cxx_opts": "-DK3_JEMALLOC -DK3_HEAP_SERIES -ljemalloc",
         "build_opts": "-j 16 --cg-options boxRecords=True:isolateApplication=True --fstage isolateApplication=True:cinclude=isolateApplication",
-        "patches": ["manual_fusion_disable.patch"]
+        "patches": ["manual_fusion_source.patch"]
     },
 
     "boxed_query_isolation_memory": {
