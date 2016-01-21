@@ -1117,7 +1117,7 @@ mosaicExecuteNonMatchingPartitions execV execE execT relations@(SList relsvs) (S
         invalidRelErr = error "Invalid relation id/type in ExecNMPartition"
         relErr = error "Could not find relation in ExecNMPartition"
 
-mosaicExecuteNonMatchingPartitions _ _ _ _ _ = error "Invalid arguments for mosaicExecuteNonMatchingPartitions"
+mosaicExecuteNonMatchingPartitions _ _ _ _ _ _ = error "Invalid arguments for mosaicExecuteNonMatchingPartitions"
 
 
 mosaicDistributedPlanner :: SpliceValue -> SpliceValue
