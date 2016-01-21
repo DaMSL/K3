@@ -2121,7 +2121,15 @@ mapAccumulation onAccumF onRetVarF i expr = runIdentity $! do
 
     -- TODO: using symbols as lineage here will provide better alias tracking.
     -- TODO: test in-place modification property
+
+    -- Element accumulation
     returnAsAccumulator (shadowed, _) _ e@(PPrjAppVarSeq j "insert" v)
+      | i == j && not shadowed && notAccessedIn v =
+          if True then return (Right True, onAccumF e)
+          else trace ("onAccumF " ++ pretty e) $ return (Right True, onAccumF e)
+
+    -- Container accumulation
+    returnAsAccumulator (shadowed, _) _ e@(PPrjAppVarSeq j "extend" v)
       | i == j && not shadowed && notAccessedIn v =
           if True then return (Right True, onAccumF e)
           else trace ("onAccumF " ++ pretty e) $ return (Right True, onAccumF e)
