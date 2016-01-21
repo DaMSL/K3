@@ -108,6 +108,9 @@ hasMoveProperty ae = case ae of
 forceMoveP :: K3 Expression -> Bool
 forceMoveP e = isJust (e @~ hasMoveProperty)
 
+deepHasFusionSource :: K3 Expression -> Bool
+deepHasFusionSource f = f @:? "FusionSource" || case f of { f' :$: _ -> deepHasFusionSource f'; _ -> False }
+
 hasBoxableProperty :: Annotation Expression -> Bool
 hasBoxableProperty ae = case ae of
                        (EProperty s) -> ePropertyName s == "Boxable"
@@ -575,7 +578,7 @@ inline e = do
       return (ce ++ [ue] ++ ie ++ [resultDecl] ++ [R.Block (advance ++ wfe ++ wfb)]
             , R.Variable $ R.Name result)
 
-    f :$: x | isolateApplicationP && e @:? "FusionSource" && not (e @:? "ApplicationIsolated") -> do
+    f :$: x | isolateApplicationP && deepHasFusionSource f && not (e @:? "ApplicationIsolated") -> do
       g <- genSym
       es <- guardDReify (RDecl g Nothing) (e @:+ "ApplicationIsolated")
       return (es, R.Variable $ R.Name g)
@@ -588,7 +591,7 @@ inline e = do
       (fe, fv) <- inline f
       let xs = map (last . children) as
       let inline' e' =
-            if e @:? "FusionSource" && isolateApplicationP then do
+            if deepHasFusionSource f && isolateApplicationP then do
               g <- genSym
               es <- reify (RDecl g Nothing) e'
               return (es, R.Variable $ R.Name g)
