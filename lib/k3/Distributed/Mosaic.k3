@@ -24,8 +24,27 @@ control MosaicLoader
 
 }
 
-// Create base relation indexes for Mosaic warmup map accesses.
+// Skip indexing for distributed execution.
 control MosaicIndex [ lbl          : label
+                    , relation     : label
+                    , key_type     : type
+                    , lookup_probe : expr
+                    , index_probe  : expr
+                    , missing_fn   : expr
+                    , present_fn   : expr
+                    , index_key    : [labeltype]
+                    , index_value  : [labeltype]]
+{
+  ((?e.filter ?filterF)
+      .fold   ?foldF (?acc1 : ?t1)
+  )
+  => (((($.[e]) @:{PartitionConstraint "$[|partitionConstraint 'lookup_probe 'index_probe|]"}
+        ).fold $.[foldF] $.[acc1])
+     ) @MosaicLogIndex(id=lbl)
+}
+
+// Create base relation indexes for Mosaic warmup map accesses.
+control MosaicIndex2[ lbl          : label
                     , relation     : label
                     , key_type     : type
                     , lookup_probe : expr
@@ -51,25 +70,6 @@ control MosaicIndex [ lbl          : label
       $.[e].iterate (\t -> $[lbl]_index.upsert_with $[index_probe] $[missing_fn] $[present_fn])
     )
   }
-}
-
-control MosaicIndex2[ lbl          : label
-                    , relation     : label
-                    , key_type     : type
-                    , lookup_probe : expr
-                    , index_probe  : expr
-                    , missing_fn   : expr
-                    , present_fn   : expr
-                    , index_key    : [labeltype]
-                    , index_value  : [labeltype]]
-{
-  // Skip indexing for distributed execution.
-  ((?e.filter ?filterF)
-      .fold   ?foldF (?acc1 : ?t1)
-  )
-  => (((($.[e]) @:{PartitionConstraint "$[|partitionConstraint 'lookup_probe 'index_probe|]"}
-        ).fold $.[foldF] $.[acc1])
-     ) @MosaicLogIndex(id=lbl)
 }
 
 control MosaicLogIndex[id: label] {
