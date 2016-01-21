@@ -103,7 +103,7 @@ trigger lineitem_orders : () = \_ -> (
 
       , frequency_threshold  = [$ 1000.0 ]
 
-      , lhs_query = [$  ((lineitem.filter  (\l -> l.l_shipdate > 19950315 ))
+      , lhs_query = [$  ((lineitem.filter  (\l -> l.l_shipdate > q3_selectivity_shipdate_lbound ))
                                   .group_by (\l -> l.l_orderkey)
                                             (\acc -> \l -> acc + (l.l_extendedprice * (1 - l.l_discount)))
                                             0.0)
@@ -112,7 +112,7 @@ trigger lineitem_orders : () = \_ -> (
                     ]
       , lhs_query_clear = [$ lineitem = empty q3_lineitem_r @Collection ]
 
-      , rhs_query = [$ ((orders.filter  (\o -> o.o_orderdate < 19950315 ))
+      , rhs_query = [$ ((orders.filter  (\o -> o.o_orderdate < q3_selectivity_orderdate_ubound ))
                                .group_by (\o -> o.o_orderkey)
                                          (\_ -> \o -> { od : o.o_orderdate
                                                       , ck : o.o_custkey
