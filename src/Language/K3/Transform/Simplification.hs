@@ -619,7 +619,11 @@ betaReductionDelta env expr = foldMapTree reduce ([], False) expr >>= return . f
 
     onSub ch = (concat *** any id) $ unzip ch
 
-    skipBetaReduce n = any isENoBetaReduce $ filter isEUserProperty $ annotations n
+    skipBetaReduce n =
+      let viableAs = case n of
+            PAppLam _ _ _ lamAs appAs -> lamAs ++ appAs
+            _ -> annotations n
+      in any isENoBetaReduce $ filter isEUserProperty viableAs
 
     cleanExpr e = stripExprAnnotations cleanAnns (const False) e
     cleanAnns a = isEUID a || isESpan a || isAnyETypeOrEffectAnn a
