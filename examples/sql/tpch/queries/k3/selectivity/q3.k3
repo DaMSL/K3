@@ -225,12 +225,7 @@ declare finalizeResult: () -> () = \_ -> (
 )
 
 typedef q3_result = collection {orderkey: int, revenue: real, orderdate: string, shippriority: int} @Collection
-declare finalize : collection {key: address, value: q3_result} @Map -> () = \x -> (
-  (x.iterate (\t ->
-    t.value.iterate (\v ->
-      (results_sink, me) <- (v.orderkey, v.revenue, v.orderdate, v.shippriority)
-   )))
-)
+declare finalize : collection {key: address, value: q3_result} @Map -> () = \x -> ()
 
 // For ktrace:
 declare results: q3_result
