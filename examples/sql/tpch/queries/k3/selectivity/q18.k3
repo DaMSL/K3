@@ -262,16 +262,16 @@ trigger loc_aggregate : loc_q_by_ncodt_map = \vals -> (
 
 typedef q18_result = collection {name: string, custkey: int, orderkey: int, orderdate:string, totalprice: real, sum: real} @Collection
 declare finalize : collection {key: address, value: q18_result} @Map -> () = \x -> (
-  (x.iterate (\t ->
-    t.value.iterate (\v ->
-      (results_sink, me) <- (v.name,
-                             v.custkey,
-                             v.orderkey,
-                             v.orderdate,
-                             v.totalprice,
-                             v.sum)
-    )
-   ))
+  // (x.iterate (\t ->
+  //   t.value.iterate (\v ->
+      // (results_sink, me) <- (v.name,
+      //                        v.custkey,
+      //                        v.orderkey,
+      //                        v.orderdate,
+      //                        v.totalprice,
+      //                        v.sum)
+   //  )
+   // ))
 )
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
