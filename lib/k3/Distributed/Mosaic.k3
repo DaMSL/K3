@@ -555,7 +555,7 @@ control MosaicExecutePartitions [ lbl : label
       );
 
       // Perform deduplication as necessary for final join result.
-      $[| mosaicFinalAccumulatePartition 'V.identifier 'T.typ |]
+      $[| mosaicFinalAccumulatePartition 'V.identifier 'T.typ |];
 
       // Signal the next stage to execute at the master.
       ($.[dest], master) <- ()
