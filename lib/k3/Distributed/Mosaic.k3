@@ -550,9 +550,12 @@ control MosaicExecutePartitions [ lbl : label
           $[| mosaicAssignInputPartitions 'relations "pid" "_exec_parts" "_exec_part" |];
 
           // Execute query over partitions and merge with assignment target.
-          $[| mosaicAccumulatePartition 'V.identifier 'E.expr 'T.typ (Just "_exec_part") |]
+          $[| mosaicIncrAccumulatePartition 'V.identifier 'E.expr 'T.typ (Just "_exec_part") |]
         ))
       );
+
+      // Perform deduplication as necessary for final join result.
+      $[| mosaicFinalAccumulatePartition 'V.identifier 'T.typ |]
 
       // Signal the next stage to execute at the master.
       ($.[dest], master) <- ()
@@ -586,7 +589,7 @@ control MosaicExecuteStage[ lbl : label ]
     declare $[lbl]_collected : mut $::[T]
 
     trigger $[lbl]_collect_exec : $::[T] = \c -> (
-      $[| mosaicAccumulatePartition (concatLabel 'lbl (SLabel "_collected")) (EC.variable "c") 'T.typ Nothing |];
+      $[| mosaicIncrAccumulatePartition (concatLabel 'lbl (SLabel "_collected")) (EC.variable "c") 'T.typ Nothing |];
       ( $#[v] = $[lbl]_collected.fold $.[accF] $.[z];
         ($.[dest], me) <- ()
       ) @OnCounter(id=[# $[lbl]_collect], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
