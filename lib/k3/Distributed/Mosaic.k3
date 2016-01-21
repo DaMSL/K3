@@ -542,7 +542,7 @@ control MosaicExecutePartitions [ lbl : label
 {
   (?V = (?E : ?T); (?dest, me) <- ())
     =>
-      $[| mosaicExecuteNonMatchingPartitions 'V.identifier 'E.expr 'T.typ 'relations 'joinOrder |];
+      $[| mosaicExecuteNonMatchingPartitions 'V.identifier 'E.expr 'T.typ 'relations 'joinOrder (Just "_exec_part") |];
 
       $[partitions].iterate (\part_ids ->
         part_ids.value.iterate (\pid -> (
@@ -550,7 +550,7 @@ control MosaicExecutePartitions [ lbl : label
           $[| mosaicAssignInputPartitions 'relations "pid" "_exec_parts" "_exec_part" |];
 
           // Execute query over partitions and merge with assignment target.
-          $[| mosaicAccumulatePartition 'V.identifier 'E.expr 'T.typ |]
+          $[| mosaicAccumulatePartition 'V.identifier 'E.expr 'T.typ (Just "_exec_part") |]
         ))
       );
 
@@ -586,7 +586,7 @@ control MosaicExecuteStage[ lbl : label ]
     declare $[lbl]_collected : mut $::[T]
 
     trigger $[lbl]_collect_exec : $::[T] = \c -> (
-      $[| mosaicAccumulatePartition (concatLabel 'lbl (SLabel "_collected")) (EC.variable "c") 'T.typ |];
+      $[| mosaicAccumulatePartition (concatLabel 'lbl (SLabel "_collected")) (EC.variable "c") 'T.typ Nothing |];
       ( $#[v] = $[lbl]_collected.fold $.[accF] $.[z];
         ($.[dest], me) <- ()
       ) @OnCounter(id=[# $[lbl]_collect], eq=[$ peers.size()], reset=[$ false], profile=[$ false])

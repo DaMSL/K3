@@ -1007,8 +1007,8 @@ mosaicAssignInputPartitions (SList relsvs) partIdVar partMapSuffix currentPartSu
 mosaicAssignInputPartitions _ _ _ _ = error "Invalid expression for mosaicAssignInputPartitions"
 
 
-mosaicAccumulatePartition :: SpliceValue -> SpliceValue -> SpliceValue -> SpliceValue
-mosaicAccumulatePartition (SLabel v) (SExpr e) (SType ty) =
+mosaicAccumulatePartition :: SpliceValue -> SpliceValue -> SpliceValue -> Maybe String -> SpliceValue
+mosaicAccumulatePartition (SLabel v) (SExpr e) (SType ty) relationSuffix =
   case tnc ty of
     (TCollection, [telem@(tnc -> (TRecord ids, tch))])
       -> case (ty @~ isTAnnotation, ty @~ isMultiIndexVMap) of
@@ -1027,12 +1027,12 @@ mosaicAccumulatePartition (SLabel v) (SExpr e) (SType ty) =
                  vcol_e = EC.applyMany (EC.project "fold" vgb_e) [vcolacc_e, vcolz_e]
              in
              SExpr $ EC.binop OSeq
-               (EC.applyMany (EC.project "iterate" e)
+               (EC.applyMany (EC.project "iterate" $ replaceRelations e)
                  [EC.lambda "x" $ EC.applyMany (EC.project "insert" $ EC.variable v) [EC.variable "x"]])
                (EC.assign v vcol_e)
 
            (Just (TAnnotation "Map"), _) ->
-             SExpr $ EC.applyMany (EC.project "iterate" e)
+             SExpr $ EC.applyMany (EC.project "iterate" $ replaceRelations e)
               [EC.lambda "x" $ EC.applyMany (EC.project "insert_with" $ EC.variable v)
                 [ EC.variable "x"
                 , EC.lambda "old" $ EC.lambda "new" $
@@ -1040,7 +1040,7 @@ mosaicAccumulatePartition (SLabel v) (SExpr e) (SType ty) =
                               , ("value", EC.binop OAdd (EC.project "value" $ EC.variable "old") $ EC.project "value" $ EC.variable "new")] ]]
 
            (_, Just (TAnnotation "MultiIndexVMap")) ->
-             SExpr $ EC.applyMany (EC.project "iterate" e)
+             SExpr $ EC.applyMany (EC.project "iterate" $ replaceRelations e)
               [EC.lambda "x" $ EC.applyMany (EC.project "insert_with" $ EC.variable v)
                 [ EC.constant $ CInt 0
                 , EC.variable "x"
@@ -1050,14 +1050,23 @@ mosaicAccumulatePartition (SLabel v) (SExpr e) (SType ty) =
 
            _ -> error $ boxToString $ ["Invalid partition collection in mosaicAccumulatePartition: "] %$ prettyLines ty
 
-    (TInt, [])  -> SExpr $ EC.assign v $ EC.binop OAdd (EC.variable v) e
-    (TReal, []) -> SExpr $ EC.assign v $ EC.binop OAdd (EC.variable v) e
+    (TInt, [])  -> SExpr $ EC.assign v $ EC.binop OAdd (EC.variable v) $ replaceRelations e
+    (TReal, []) -> SExpr $ EC.assign v $ EC.binop OAdd (EC.variable v) $ replaceRelations e
     _ -> error "Invalid accumulator type in mosaicAccumulatePartition"
 
-  where isMultiIndexVMap (TAnnotation "MultiIndexVMap") = True
-        isMultiIndexVMap _ = False
+  where
+    isMultiIndexVMap (TAnnotation "MultiIndexVMap") = True
+    isMultiIndexVMap _ = False
 
-mosaicAccumulatePartition _ _ _ = error "Invalid arguments for mosaicAccumulatePartition"
+    replaceRelations x = maybe x (\sfx -> runIdentity $! modifyTree (replaceRel sfx) x) relationSuffix
+
+    replaceRel sfx n@(tag &&& (@~ isBaseOrMaterializedRelation) -> (EVariable i, Just _)) =
+      return $ (EC.variable $ i ++ sfx) @<- annotations n
+
+    replaceRel _ n = return n
+
+
+mosaicAccumulatePartition _ _ _ _ = error "Invalid arguments for mosaicAccumulatePartition"
 
 
 mosaicAccumulatorMerge :: SpliceValue -> SpliceValue
@@ -1070,8 +1079,8 @@ mosaicAccumulatorMerge (SExpr e) = SExpr $
 mosaicAccumulatorMerge _ = error "Invalid arguments for mosaicAccumulatorMerge"
 
 
-mosaicExecuteNonMatchingPartitions :: SpliceValue -> SpliceValue -> SpliceValue -> SpliceValue -> SpliceValue -> SpliceValue
-mosaicExecuteNonMatchingPartitions execV execE execT relations@(SList relsvs) (SList josvs) =
+mosaicExecuteNonMatchingPartitions :: SpliceValue -> SpliceValue -> SpliceValue -> SpliceValue -> SpliceValue -> Maybe String -> SpliceValue
+mosaicExecuteNonMatchingPartitions execV execE execT relations@(SList relsvs) (SList josvs) relationSuffix =
     SExpr $ foldl accExecE EC.unit josvs
 
   where accExecE accE (SRecord jsvs) = maybe paramErr (execNM accE)
@@ -1100,7 +1109,7 @@ mosaicExecuteNonMatchingPartitions execV execE execT relations@(SList relsvs) (S
 
         accAssignE _ _ _ = error "Invalid non-match relation in ExecNMPartition"
 
-        doExecE = case mosaicAccumulatePartition execV execE execT of
+        doExecE = case mosaicAccumulatePartition execV execE execT relationSuffix of
                     SExpr e -> e
                     _ -> error "Invalid partition accumulator expr in ExecNMPartition"
 
