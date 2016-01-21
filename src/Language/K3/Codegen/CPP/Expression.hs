@@ -468,9 +468,8 @@ inline e = do
       (ce, cv) <- inline c
       (ke, kv) <- inline k
 
-      inRecordType <- getKType k >>= genCType
+      recordType <- getKType k >>= genCType
 
-      let recordType = if boxRecordsP then (R.Box inRecordType) else inRecordType
       let keyField = if boxRecordsP then R.Project (R.Dereference kv) (R.Name "key") else R.Project kv (R.Name "key")
 
       mapi <- genSym
