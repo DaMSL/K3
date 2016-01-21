@@ -221,6 +221,7 @@ inline :: K3 Expression -> CPPGenM ([R.Statement], R.Expression)
 inline e = do
   isolateApplicationP <- gets (isolateApplicationCG . flags)
   isolateQueryP <- gets (isolateQueryCG . flags)
+  boxRecordsP <- gets (boxRecords . flags)
   let doInlineP = True
   case e of
     (tag &&& annotations -> (EConstant (CEmpty t), as)) ->
@@ -462,6 +463,47 @@ inline e = do
 
       return (ce ++ [ue] ++ ke ++ [existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb) (wfe ++ wfb)]
             , R.Initialization R.Unit [])
+
+    p@(UpsertWith c) :$: k :$: n :$: w | c `dataspaceIn` ["IntMap"] && doInlineP -> do
+      (ce, cv) <- inline c
+      (ke, kv) <- inline k
+
+      inRecordType <- getKType k >>= genCType
+
+      let recordType = if boxRecordsP then (R.Box inRecordType) else inRecordType
+      let keyField = if boxRecordsP then R.Project (R.Dereference kv) (R.Name "key") else R.Project kv (R.Name "key")
+
+      mapi <- genSym
+      let mapiDecl = R.Forward $ R.ScalarDecl (R.Name mapi) (R.Pointer R.Inferred)
+                       (Just $ R.Call (R.Project cv (R.Name "get_mapi")) [])
+      let sizeCheck = R.Binary "==" (R.Project (R.Dereference $ R.Variable $ R.Name mapi) (R.Name "size")) (R.Literal $ R.LInt 0)
+
+      let insertionRecord = R.CCast (R.Pointer R.Void) (R.SCast (R.Const $ R.Pointer $ R.Void) (R.TakeReference kv))
+      let insertCall = R.SCast (R.Pointer recordType)
+                         (R.Call (R.Variable $ R.Name "mapi_insert") [R.Variable $ R.Name mapi, insertionRecord])
+
+      placement <- genSym
+      let placementDecl = R.Forward $ R.ScalarDecl (R.Name placement) (R.Pointer R.Inferred) (Just insertCall)
+
+      (nfe, nfs) <- inlineApply (RName (R.Dereference $ R.Variable $ R.Name placement) (Just True)) n [R.Initialization R.Unit []]
+
+      let missingBranch = [placementDecl] ++ nfe ++ nfe ++ nfs
+
+      existing <- genSym
+      let existingDecl = R.Forward $ R.ScalarDecl (R.Name existing) (R.Pointer R.Inferred)
+                           (Just $ R.SCast (R.Pointer recordType)
+                             (R.Call (R.Variable $ R.Name "mapi_find") [R.Variable $ R.Name mapi, keyField]))
+
+      let existingCheck = R.Binary "==" (R.Variable $ R.Name existing) (R.Literal R.LNullptr)
+
+      (wfe, wfs) <- inlineApply (RName (R.Dereference $ R.Variable $ R.Name existing) (Just True)) w
+                                [R.Move (R.Dereference $ R.Variable $ R.Name existing)]
+
+      let nonEmptyCase = R.IfThenElse existingCheck missingBranch (wfe ++ wfs)
+      let nonEmptyBranch = [existingDecl, nonEmptyCase]
+      let fullCase = R.IfThenElse sizeCheck missingBranch nonEmptyBranch
+
+      return (ce ++ ke ++ [mapiDecl, fullCase], R.Initialization R.Unit [])
 
     p@(Lookup c) :$: k :$: n :$: w | c `dataspaceIn` stlAssocDSs && doInlineP -> do
       (ce, cv) <- inline c
