@@ -67,8 +67,8 @@ control MosaicIndex2[ lbl          : label
   ((?e.filter ?filterF)
       .fold   ?foldF (?acc1 : ?t1)
   )
-  => (($.[e].fold $.[foldF] $.[acc1]
-      ) @:{PartitionConstraint "$[|partitionConstraint 'lookup_probe 'index_probe|]"}
+  => (((($.[e]) @:{PartitionConstraint "$[|partitionConstraint 'lookup_probe 'index_probe|]"}
+        ).fold $.[foldF] $.[acc1])
      ) @MosaicLogIndex(id=lbl)
 }
 
