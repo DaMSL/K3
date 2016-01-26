@@ -1,7 +1,7 @@
 import logging
 import datetime
 import uuid
-from enum import enum, Enum
+import enum
 
 
 heartbeat_delay = 60  # secs. move to common
@@ -34,7 +34,7 @@ CompileState = enum.Enum('CompileState', 'INIT DISPATCH CLIENT_WAIT SUBMIT COMPI
 compileTerminatedStates = ['COMPLETE', 'FAILED', 'KILLED']
 
 compileStageValues = ['both', 'cpp', 'bin']
-class CompileStage(Enum):
+class CompileStage(enum.Enum):
   FIRST = '-1'
   SECOND = '-2'
   BOTH = ''
