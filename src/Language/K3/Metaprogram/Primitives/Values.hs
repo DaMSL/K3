@@ -404,14 +404,12 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
                 let pn = mkName $ relpfx
                 let sn = mkName $ relpfx ++ [reln]
 
-                let ht_lbl = reln ++ "_ht"
-                let rv_lbl = "part_"++reln
+                (ht_lbl, lquery_v) <- case relpfx of
+                                        []  -> (reln ++ "_ht", Nothing)
+                                        [x] -> (x, Just $ EC.variable $ x ++ "_pidx")
+                                        _   -> (pn, Just $ EC.variable $ "out_" ++ pn)
 
-                lquery_v <- case relpfx of
-                              []  -> Nothing
-                              [_] -> Just $ EC.variable $ reln ++ "_pidx"
-                              _   -> Just $ EC.variable $ "out_" ++ pn
-
+                let rv_lbl = "part_" ++ reln
                 let rquery_v = EC.variable $ reln ++ "_pidx"
 
 
@@ -496,7 +494,8 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
                 -- Outer join parameters
                 let lhs_nonmatch_lbl = "outer_" ++ intercalate "_" relpfx
                 let lhs_nonmatch_rels = map SLabel relpfx
-                let lhs_nonmatch_ty = mkSetT $ TC.record $ map (\i -> ("part_" ++ i, TC.int)) relpfx
+                let lhs_nonmatch_elem_ty = TC.record $ map (\i -> ("part_" ++ i, TC.int)) relpfx
+                let lhs_nonmatch_ty = mkSetT lhs_nonmatch_elem_ty
 
                 let nm_build_e = EC.lambda "acc" $ EC.lambda "lpt" $ EC.binop OSeq
                                     (EC.applyMany (EC.project "insert" $ EC.variable "acc") [EC.variable "lpt"])
@@ -508,8 +507,7 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
                 let nm_obuild_e = EC.lambda "acc" $ EC.lambda "lv" $ EC.applyMany (EC.project "fold" $ EC.project "value" $ EC.variable "lv")
                                    [nm_ibuild_e, EC.variable "acc"]
 
-                let lhs_nonmatch_e = EC.applyMany (EC.project "fold" $ EC.variable ht_lbl)
-                                      [nm_obuild_e, mkSetEmpty $ TC.record $ map (\i -> ("part_" ++ i, TC.int)) relpfx]
+                let lhs_nonmatch_e = EC.applyMany (EC.project "fold" $ EC.variable ht_lbl) [nm_obuild_e, mkSetEmpty lhs_nonmatch_elem_ty]
 
                 -- Join result
                 let (orfields, olfields) = partition ((== reln) . fst . fst . snd) $ zip [0..] oSchema
@@ -556,7 +554,7 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
                 let rvals_e = EC.record $ (map (\i -> ("part_"++i, EC.project ("part_" ++ i) $ EC.variable "lcp")) relpfx)
                                             ++ [("part_" ++ reln, EC.project ("part_" ++ reln) $ EC.variable "rcp")]
 
-                let lhs_pmlam_e  = EC.lambda "_" $ EC.unit -- TODO missing case for outer join
+                let lhs_pmlam_e  = EC.lambda "_" $ EC.unit
 
                 let lhs_rcplam_e = EC.lambda "cpacc" $ EC.lambda "rcp" $
                                       EC.binop OSeq (EC.applyMany (EC.project "insert" $ EC.variable "cpacc") [rvals_e])
@@ -569,10 +567,12 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
 
                 let lhs_cpnval_e = EC.applyMany (EC.project "fold" $ EC.project "value" $ EC.variable "y") [lhs_lcplam_e, lhs_cpz_e]
                 let lhs_cpnlam_e = EC.lambda "y"  $
-                                      EC.applyMany (EC.project "insert" $ EC.variable result_id)
-                                        [EC.record
-                                          [("key", rkeys_e),
-                                           ("value", lhs_cpnval_e)]]
+                                      EC.binop OSeq
+                                        (EC.applyMany (EC.project "erase"  $ EC.variable lhs_nonmatch_lbl) [EC.variable "y"])
+                                        (EC.applyMany (EC.project "insert" $ EC.variable result_id)
+                                           [EC.record
+                                             [("key", rkeys_e),
+                                              ("value", lhs_cpnval_e)]])
 
                 let lhs_cplam_e  = EC.lambda "x"  $ EC.applyMany (EC.project "iterate" $ EC.project "value" $ EC.variable "lv") [lhs_cpnlam_e]
                 let lhs_pplam_e  = EC.lambda "lv" $ EC.applyMany (EC.project "iterate" $ EC.project "value" $ EC.variable "rv") [lhs_cplam_e]
