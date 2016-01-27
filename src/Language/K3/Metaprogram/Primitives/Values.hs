@@ -561,21 +561,17 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
                                                     (EC.variable "cpacc")
 
                 let lhs_lcplam_e = EC.lambda "cpacc" $ EC.lambda "lcp" $
-                                      EC.applyMany (EC.project "fold" $ EC.project "value" $ EC.variable "x") [lhs_rcplam_e, EC.variable "cpacc"]
+                                      EC.binop OSeq
+                                        (EC.applyMany (EC.project "erase" $ EC.variable lhs_nonmatch_lbl)
+                                           [EC.record $ (map (\i -> ("part_"++i, EC.project ("part_" ++ i) $ EC.variable "lcp")) relpfx)])
+                                        (EC.applyMany (EC.project "fold" $ EC.project "value" $ EC.variable "x") [lhs_rcplam_e, EC.variable "cpacc"])
 
                 let lhs_cpz_e = mkColEmpty result_elem_val_t
 
                 let lhs_cpnval_e = EC.applyMany (EC.project "fold" $ EC.project "value" $ EC.variable "y") [lhs_lcplam_e, lhs_cpz_e]
                 let lhs_cpnlam_e = EC.lambda "y"  $
-                                      EC.binop OSeq
-                                        (EC.applyMany (EC.project "iterate" $ EC.project "value" $ EC.variable "y")
-                                          [EC.lambda "lcp" $
-                                            EC.applyMany (EC.project "erase" $ EC.variable lhs_nonmatch_lbl)
-                                              [EC.record $ (map (\i -> ("part_"++i, EC.project ("part_" ++ i) $ EC.variable "lcp")) relpfx)]])
-                                        (EC.applyMany (EC.project "insert" $ EC.variable result_id)
-                                           [EC.record
-                                             [("key", rkeys_e),
-                                              ("value", lhs_cpnval_e)]])
+                                      EC.applyMany (EC.project "insert" $ EC.variable result_id)
+                                         [EC.record [("key", rkeys_e), ("value", lhs_cpnval_e)]]
 
                 let lhs_cplam_e  = EC.lambda "x"  $ EC.applyMany (EC.project "iterate" $ EC.project "value" $ EC.variable "lv") [lhs_cpnlam_e]
                 let lhs_pplam_e  = EC.lambda "lv" $ EC.applyMany (EC.project "iterate" $ EC.project "value" $ EC.variable "rv") [lhs_cplam_e]
