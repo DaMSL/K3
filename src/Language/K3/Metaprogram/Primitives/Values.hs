@@ -569,9 +569,16 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
                 let lhs_cpz_e = mkColEmpty result_elem_val_t
 
                 let lhs_cpnval_e = EC.applyMany (EC.project "fold" $ EC.project "value" $ EC.variable "y") [lhs_lcplam_e, lhs_cpz_e]
+
+                let lhs_cpnmerge_e = EC.lambda "old" $ EC.lambda "new" $
+                                       EC.binop OSeq
+                                         (EC.applyMany (EC.project "extend" $ EC.project "value" $ EC.variable "old")
+                                            [EC.project "value" $ EC.variable "new"])
+                                         (EC.variable "old")
+
                 let lhs_cpnlam_e = EC.lambda "y"  $
-                                      EC.applyMany (EC.project "insert" $ EC.variable result_id)
-                                         [EC.record [("key", rkeys_e), ("value", lhs_cpnval_e)]]
+                                      EC.applyMany (EC.project "insert_with" $ EC.variable result_id)
+                                         [EC.record [("key", rkeys_e), ("value", lhs_cpnval_e)], lhs_cpnmerge_e]
 
                 let lhs_cplam_e  = EC.lambda "x"  $ EC.applyMany (EC.project "iterate" $ EC.project "value" $ EC.variable "lv") [lhs_cpnlam_e]
                 let lhs_pplam_e  = EC.lambda "lv" $ EC.applyMany (EC.project "iterate" $ EC.project "value" $ EC.variable "rv") [lhs_cplam_e]
