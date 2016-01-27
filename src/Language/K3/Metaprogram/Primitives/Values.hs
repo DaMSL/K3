@@ -405,9 +405,9 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
                 let sn = mkName $ relpfx ++ [reln]
 
                 (ht_lbl, lquery_v) <- case relpfx of
-                                        []  -> (reln ++ "_ht", Nothing)
-                                        [x] -> (x, Just $ EC.variable $ x ++ "_pidx")
-                                        _   -> (pn, Just $ EC.variable $ "out_" ++ pn)
+                                        []  -> Nothing
+                                        [x] -> Just (x, EC.variable $ x ++ "_pidx")
+                                        _   -> Just (pn, EC.variable $ "out_" ++ pn)
 
                 let rv_lbl = "part_" ++ reln
                 let rquery_v = EC.variable $ reln ++ "_pidx"
