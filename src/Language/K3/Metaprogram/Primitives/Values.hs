@@ -406,8 +406,8 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
 
                 (ht_lbl, lquery_v) <- case relpfx of
                                         []  -> Nothing
-                                        [x] -> Just (x, EC.variable $ x ++ "_pidx")
-                                        _   -> Just (pn, EC.variable $ "out_" ++ pn)
+                                        [x] -> Just (x ++ "_ht", EC.variable $ x ++ "_pidx")
+                                        _   -> Just (pn ++ "_ht", EC.variable $ "out_" ++ pn)
 
                 let rv_lbl = "part_" ++ reln
                 let rquery_v = EC.variable $ reln ++ "_pidx"
@@ -568,7 +568,10 @@ propagatePartition (SExpr e) = SExpr $ runIdentity $ do
                 let lhs_cpnval_e = EC.applyMany (EC.project "fold" $ EC.project "value" $ EC.variable "y") [lhs_lcplam_e, lhs_cpz_e]
                 let lhs_cpnlam_e = EC.lambda "y"  $
                                       EC.binop OSeq
-                                        (EC.applyMany (EC.project "erase"  $ EC.variable lhs_nonmatch_lbl) [EC.variable "y"])
+                                        (EC.applyMany (EC.project "iterate" $ EC.project "value" $ EC.variable "y")
+                                          [EC.lambda "lcp" $
+                                            EC.applyMany (EC.project "erase" $ EC.variable lhs_nonmatch_lbl)
+                                              [EC.record $ (map (\i -> ("part_"++i, EC.project ("part_" ++ i) $ EC.variable "lcp")) relpfx)]])
                                         (EC.applyMany (EC.project "insert" $ EC.variable result_id)
                                            [EC.record
                                              [("key", rkeys_e),
