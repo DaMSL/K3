@@ -1,0 +1,24 @@
+// BitSet: set of low integers represented by bits in the backend
+annotation Set given type a
+{
+  provides lifted clear : () -> ()
+    with effects \_ -> [R[self]; W[self]]
+
+  provides lifted insert_b : int -> ()
+    with effects \elem -> [R[self]; R[elem]; W[self]]
+
+  provides lifted erase_b : int -> ()
+    with effects \elem -> [R[self]; R[elem]; W[self]]
+
+  provides lifted member_b : int -> bool
+    with effects \elem -> [R[self]; R[elem]]
+
+  @:Transformer
+  provides lifted iterate_b : (int -> ()) -> ()
+    with effects \iterF -> [R[self]; ([R[content]; iterF content])*]
+
+  @:{Transformer, CArgs 2}
+  provides lifted fold_b : (a -> (int -> a)) -> a -> a
+    with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; ((foldF z) content)])*]
+
+}

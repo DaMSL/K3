@@ -1,6 +1,7 @@
 #include "Hash.hpp"
 #include "collections/Collection.hpp"
 #include "collections/Set.hpp"
+#include "collections/BitSet.hpp"
 #include "collections/Seq.hpp"
 #include "collections/Sorted.hpp"
 #include "collections/Map.hpp"
