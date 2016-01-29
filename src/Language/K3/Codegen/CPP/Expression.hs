@@ -400,6 +400,9 @@ inline e = do
       (ce, cv) <- inline c
       (ke, kv) <- inline k
 
+      kt <- getKType k >>= genCType
+      rt <- getKType c >>= \(tag &&& children -> (TCollection, [rt])) -> genCType rt
+
       br <- gets (boxRecords . flags)
       let kp = R.Project (if br then R.Dereference kv else kv) (R.Name "key")
 
@@ -417,12 +420,15 @@ inline e = do
       let nfe = [R.Assignment (R.Subscript uv kp) kv]
       (wfe, wfb) <- inlineApply (RName (R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")) (Just True)) w
                       [R.Move $ R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second"), kv]
+                      [rt, kt]
 
       return (ce ++ [ue] ++ ke ++ [existingDecl] ++ [R.IfThenElse existingPred nfe (wfe ++ wfb)]
             , R.Initialization R.Unit [])
 
     p@(UpsertWith c) :$: k :$: n :$: w | c `dataspaceIn` stlAssocDSs && doInlineP -> do
       (ce, cv) <- inline c
+
+      rt <- getKType c >>= \(tag &&& children -> (TCollection, [rt])) -> genCType rt
 
       kg <- genSym
       br <- gets (boxRecords . flags)
@@ -450,7 +456,7 @@ inline e = do
                           (R.Variable $ R.Name existing)
                           (R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "end")) [uv])
 
-      (nfe, nfb) <- inlineApply (RName (R.Subscript uv kv) (Just True)) n [R.Initialization R.Unit []]
+      (nfe, nfb) <- inlineApply (RName (R.Subscript uv kv) (Just True)) n [R.Initialization R.Unit []] [R.Unit]
 
       --let rArg = isJust $ w @~ (\case { EProperty (ePropertyName -> "ReturnsArgument") -> True; _ -> False })
       let rArg = False
@@ -460,6 +466,7 @@ inline e = do
 
       (wfe, wfb) <- inlineApply rContext w
                       [(if rArg then id else R.Move) $ R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")]
+                      [rt]
 
       return (ce ++ [ue] ++ ke ++ [existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb) (wfe ++ wfb)]
             , R.Initialization R.Unit [])
@@ -485,6 +492,7 @@ inline e = do
       let placementDecl = R.Forward $ R.ScalarDecl (R.Name placement) (R.Pointer R.Inferred) (Just insertCall)
 
       (nfe, nfs) <- inlineApply (RName (R.Dereference $ R.Variable $ R.Name placement) (Just True)) n [R.Initialization R.Unit []]
+                      [R.Unit]
 
       let missingBranch = [placementDecl] ++ nfe ++ nfe ++ nfs
 
@@ -497,6 +505,7 @@ inline e = do
 
       (wfe, wfs) <- inlineApply (RName (R.Dereference $ R.Variable $ R.Name existing) (Just True)) w
                                 [R.Move (R.Dereference $ R.Variable $ R.Name existing)]
+                                [recordType]
 
       let nonEmptyCase = R.IfThenElse existingCheck missingBranch (wfe ++ wfs)
       let nonEmptyBranch = [existingDecl, nonEmptyCase]
@@ -506,6 +515,7 @@ inline e = do
 
     p@(Lookup c) :$: k :$: n :$: w | c `dataspaceIn` stlAssocDSs && doInlineP -> do
       (ce, cv) <- inline c
+      rt <- getKType c >>= \(tag &&& children -> (TCollection, [rt])) -> genCType rt
       kg <- genSym
       ke <- reify (RDecl kg Nothing) k
       br <- gets (boxRecords . flags)
@@ -538,15 +548,17 @@ inline e = do
       resultType <- getKType e >>= genCType
       let resultDecl = R.Forward $ R.ScalarDecl (R.Name result) resultType Nothing
 
-      (nfe, nfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) n [R.Initialization R.Unit []]
+      (nfe, nfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) n [R.Initialization R.Unit []] [R.Unit]
       (wfe, wfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) w
-                      [R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")]
+                      [R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")] [rt]
+
 
       return (ce ++ [ue] ++ ke ++ [resultDecl, existingDecl] ++ [R.IfThenElse existingPred (nfe ++ nfb) (wfe ++ wfb)]
             , R.Variable $ R.Name result)
 
     p@(Peek c) :$: n :$: w | c `dataspaceIn` stlLinearDSs && doInlineP -> do
       (ce, cv) <- inline c
+      rt <- getKType c >>= \(tag &&& children -> (TCollection, [rt])) -> genCType rt
 
       ug <- genSym
       let ue = R.Forward $ R.ScalarDecl (R.Name ug) (R.Reference R.Inferred) (Just $  R.Call (R.Project cv (R.Name "getConstContainer")) [])
@@ -562,14 +574,15 @@ inline e = do
       result <- genSym
       resultType <- getKType e >>= genCType
       let resultDecl = R.Forward $ R.ScalarDecl (R.Name result) resultType Nothing
-      (nfe, nfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) n [R.Initialization R.Unit []]
-      (wfe, wfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) w [R.Dereference $ R.Variable $ R.Name first]
+      (nfe, nfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) n [R.Initialization R.Unit []] [R.Unit]
+      (wfe, wfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) w [R.Dereference $ R.Variable $ R.Name first] [rt]
 
       return (ce ++ [ue] ++ [resultDecl, firstDecl] ++ [R.IfThenElse firstPred (nfe ++ nfb) (wfe ++ wfb)]
             , R.Variable $ R.Name result)
 
     p@(SafeAt c) :$: i :$: n :$: w | c `dataspaceIn` stlLinearDSs && doInlineP -> do
       (ce, cv) <- inline c
+      rt <- getKType c >>= \(tag &&& children -> (TCollection, [rt])) -> genCType rt
       ig <- genSym
       ie <- reify (RDecl ig Nothing) i
       let iv = R.Variable $ R.Name ig
@@ -589,14 +602,15 @@ inline e = do
       resultType <- getKType e >>= genCType
       let resultDecl = R.Forward $ R.ScalarDecl (R.Name result) resultType Nothing
 
-      (nfe, nfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) n [R.Initialization R.Unit []]
-      (wfe, wfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) w [R.Dereference (R.Variable $ R.Name iterator)]
+      (nfe, nfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) n [R.Initialization R.Unit []] [R.Unit]
+      (wfe, wfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) w [R.Dereference (R.Variable $ R.Name iterator)] [rt]
 
       return (ce ++ [ue] ++ ie ++ [resultDecl] ++ [R.IfThenElse sizeCheck (advance ++ wfe ++ wfb) (nfe ++ nfb)]
             , R.Variable $ R.Name result)
 
     p@(UnsafeAt c) :$: i :$: w | c `dataspaceIn` stlLinearDSs && doInlineP -> do
       (ce, cv) <- inline c
+      rt <- getKType c >>= \(tag &&& children -> (TCollection, [rt])) -> genCType rt
       ig <- genSym
       ie <- reify (RDecl ig Nothing) i
       let iv = R.Variable $ R.Name ig
@@ -614,14 +628,14 @@ inline e = do
       resultType <- getKType e >>= genCType
       let resultDecl = R.Forward $ R.ScalarDecl (R.Name result) resultType Nothing
 
-      (wfe, wfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) w [R.Dereference (R.Variable $ R.Name iterator)]
+      (wfe, wfb) <- inlineApply (RName (R.Variable $ R.Name result) Nothing) w [R.Dereference (R.Variable $ R.Name iterator)] [rt]
 
       return (ce ++ [ue] ++ ie ++ [resultDecl] ++ [R.Block (advance ++ wfe ++ wfb)]
             , R.Variable $ R.Name result)
 
     f :$: x | isolateApplicationP && deepHasFusionSource f && not (e @:? "ApplicationIsolated") -> do
       g <- genSym
-      es <- guardDReify (RDecl g Nothing) (e @:+ "ApplicationIsolated")
+      es <- guardDReify serializeRoundTrip (RDecl g Nothing) (e @:+ "ApplicationIsolated")
       return (es, R.Variable $ R.Name g)
 
     _ :$: _ -> do
@@ -632,10 +646,7 @@ inline e = do
       (fe, fv) <- inline f
       let xs = map (last . children) as
       let inline' e' =
-            if deepHasFusionSource f && isolateApplicationP then do
-              g <- genSym
-              es <- reify (RDecl g Nothing) e'
-              return (es, R.Variable $ R.Name g)
+            if deepHasFusionSource f && isolateApplicationP then serializeRoundTripInline e'
             else inline e'
 
       (unzip -> (xes, xvs)) <- mapM inline' xs
@@ -943,35 +954,61 @@ reify r e = do
     -- | Catch-all case
     _ -> do
       (effects, value) <- inline e
-      reification <- case r of
-          RForget -> return []
-          RName k b -> return [R.Assignment k (if fromMaybe False b then gMoveByE e value else value)]
-          RDecl i b -> return [R.Forward $ R.ScalarDecl (R.Name i) (R.Inferred)
-                              (Just $ if fromMaybe False b then gMoveByE e value else value)]
-          RReturn b -> return $ [R.Return $ (if b then R.Move else id) value]
-          RSplice _ -> throwE $ CPPGenE "Unsupported reification by splice."
+      reification <- doReify r e value
       return $ effects ++ reification
+
+doReify :: RContext -> K3 Expression -> R.Expression -> CPPGenM [R.Statement]
+doReify r e v = case r of
+  RForget -> return []
+  RName k b -> return [R.Assignment k (if fromMaybe False b then gMoveByE e v else v)]
+  RDecl i b -> return [R.Forward $ R.ScalarDecl (R.Name i) (R.Inferred)
+                      (Just $ if fromMaybe False b then gMoveByE e v else v)]
+  RReturn b -> return $ [R.Return $ (if b then R.Move else id) v]
+  RSplice _ -> throwE $ CPPGenE "Unsupported reification by splice."
 
 doubleReify :: RContext -> K3 Expression -> CPPGenM [R.Statement]
 doubleReify r e = do
   g <- genSym
   es' <- reify (RDecl g Nothing) e
   let rg = R.Variable $ R.Name g
-  es <- case r of
-    RForget -> return []
-    RName k b -> return [R.Assignment k (if fromMaybe False b then gMoveByE e rg else rg)]
-    RDecl i b -> return [R.Forward $ R.ScalarDecl (R.Name i) (R.Inferred)
-                         (Just $ if fromMaybe False b then gMoveByE e rg else rg)]
-    RReturn b -> return $ [R.Return $ (if b then R.Move else id) rg]
-    RSplice _ -> throwE $ CPPGenE "Unsupported reification by splice."
+  es <- doReify r e rg
   return $ es' ++ es
 
-guardDReify :: RContext -> K3 Expression -> CPPGenM [R.Statement]
-guardDReify r e = gets (isolateApplicationCG . flags) >>= \a -> if a then doubleReify r e else reify r e
+serializeRoundTripCPP :: R.Type -> R.Expression -> CPPGenM ([R.Statement], R.Expression)
+serializeRoundTripCPP t v = do
+  g <- genSym
+  let gDecl = R.Forward $ R.ScalarDecl (R.Name g) R.Inferred
+                (Just $ R.Call (R.Variable $ R.Name "pack")
+                          [v, R.Variable $ R.Qualified (R.Name "CodecFormat") (R.Name "YASBinary")])
+  u <- genSym
+  let uDecl = R.Forward $ R.ScalarDecl (R.Name u) R.Inferred
+                (Just $ R.Call (R.Variable $ R.Specialized [t] $ R.Name "unpack") [R.Move $ R.Variable $ R.Name g])
+  return ([gDecl, uDecl], R.Dereference $ R.Variable $ R.Name u)
+
+serializeRoundTripInline :: K3 Expression -> CPPGenM ([R.Statement], R.Expression)
+serializeRoundTripInline e = do
+  (es, v) <- inline e
+  t <- getKType e >>= genCType
+  (es', v') <- serializeRoundTripCPP t v
+  return (es ++ es', v')
+
+serializeRoundTrip :: RContext -> K3 Expression -> CPPGenM [R.Statement]
+serializeRoundTrip r e = do
+  (es, v) <- serializeRoundTripInline e
+  es' <- doReify r e v
+  return $ es ++ es'
+
+
+-- serializeRoundTrip
+
+
+guardDReify :: (RContext -> K3 Expression -> CPPGenM [R.Statement]) -> RContext -> K3 Expression -> CPPGenM [R.Statement]
+guardDReify f r e = gets (isolateApplicationCG . flags) >>= \a -> if a then f r e else reify r e
+
 
 -- ** Template Helpers
-inlineApply :: RContext -> K3 Expression -> [R.Expression] -> CPPGenM ([R.Statement], [R.Statement])
-inlineApply r f xs = do
+inlineApply :: RContext -> K3 Expression -> [R.Expression] -> [R.Type] -> CPPGenM ([R.Statement], [R.Statement])
+inlineApply r f xs xts = do
   isolateApplicationP <- gets (isolateApplicationCG . flags)
   case f of
     -- Can only inline lambdas, we do not grab definitions from elsewhere.
@@ -984,7 +1021,7 @@ inlineApply r f xs = do
 
       -- Reify the body of the lambda under the desired context.
       rawBody <- if f @:? "FusionSource" && not (f @:? "BuiltinTransformer")
-                   then guardDReify r body
+                   then guardDReify serializeRoundTrip r body
                    else reify r body
 
       let innerFExpr = last fExprs
@@ -992,7 +1029,7 @@ inlineApply r f xs = do
 
       let trueCaptures = M.filterWithKey isTrueCapture (getInDecisions f)
 
-      let reifyArgument formalName reifiedArg = do
+      let reifyArgument formalName reifiedArg formalType = do
             if formalName == "_" then return [] else do
             let formalType = case getInMethodFor formalName innerFExpr of
                   Referenced -> R.Reference R.Inferred
@@ -1002,13 +1039,16 @@ inlineApply r f xs = do
                   Forwarded -> R.RValueReference R.Inferred
             if isolateApplicationP && f @:? "FusionSource" && not (f @:? "BuiltinTransformer")
               then do
-                g <- genSym
-                let firstAssign = R.Forward $ R.ScalarDecl (R.Name g) R.Inferred (Just reifiedArg)
-                let secondAssign = R.Forward $ R.ScalarDecl (R.Name formalName) formalType (Just $ R.Variable $ R.Name g)
-                return [firstAssign, secondAssign]
+                (es, v) <- serializeRoundTripCPP formalType reifiedArg
+                let fDecl = R.Forward $ R.ScalarDecl (R.Name formalName) (R.Reference R.Inferred) (Just v)
+                return $ es ++ [fDecl]
+                -- g <- genSym
+                -- let firstAssign = R.Forward $ R.ScalarDecl (R.Name g) R.Inferred (Just reifiedArg)
+                -- let secondAssign = R.Forward $ R.ScalarDecl (R.Name formalName) formalType (Just $ R.Variable $ R.Name g)
+                -- return [firstAssign, secondAssign]
               else return [R.Forward $ R.ScalarDecl (R.Name formalName) formalType (Just reifiedArg)]
 
-      argumentReifications <- concat <$> (sequence $ zipWith reifyArgument argNames xs)
+      argumentReifications <- concat <$> (sequence $ zipWith3 reifyArgument argNames xs xts)
 
       -- We only need to reify captures that need to be isolated (copied/moved), since reference
       -- captures will be in scope as desired. If a capture is to be isolated, generate a symbol for
@@ -1025,20 +1065,21 @@ inlineApply r f xs = do
     _ -> do
       (fe, fv) <- inline f
 
-      (argReifications, actualArgs) <-
+      (concat -> argReifications, actualArgs) <-
         if isolateApplicationP && f @:? "FusionSource" && not (f @:? "BuiltinTransformer")
-          then unzip <$> (forM xs $ \x -> do
-            g <- genSym
-            return (R.Forward $ R.ScalarDecl (R.Name g) R.Inferred (Just x), R.Variable $ R.Name g))
+          then unzip <$> (sequence $ zipWith serializeRoundTripCPP xts xs)
           else return ([], xs)
 
       let callStmt = R.Call fv actualArgs
 
+      ft <- getKType f
+      let (tag &&& children -> (TFunction, [_, rt])) = ft
+      crt <- genCType rt
+
       (resultLocationE, resultLocationV) <-
         if isolateApplicationP && f @:? "FusionSource" && not (f @:? "BuiltinTransformer")
-          then do
-            g <- genSym
-            return ([R.Forward $ R.ScalarDecl (R.Name g) R.Inferred (Just callStmt)], R.Variable $ R.Name g)
+          then serializeRoundTripCPP crt callStmt
+            -- return ([R.Forward $ R.ScalarDecl (R.Name g) R.Inferred (Just callStmt)], R.Variable $ R.Name g)
           else return ([], callStmt)
 
       resultReification <-
