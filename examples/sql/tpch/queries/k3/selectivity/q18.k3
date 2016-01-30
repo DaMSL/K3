@@ -277,12 +277,8 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   preFinishExpr        = [$ (q18_peer_result.iterate(\r ->
                               results.insert { name: r.key.nm, custkey: r.key.ck, orderkey: r.key.ok
                                              , orderdate: tpch_date_to_string r.key.od, totalprice: r.key.tp, sum: r.value} )
-                            ); (
-                            (ignore results) @GatherCollection(
-                                   lbl       = [# result]
-                                  , nodes    = [$ peers]
-                                  , next     = [$ (\a -> (finalize a; peers.iterate (\p -> (shutdown, p.addr) <- ()))) ])
-                            )
+                            );
+                            (peers.iterate (\p -> (shutdown, p.addr) <- ()))
                          ],
   preShutdownExpr      = [$ () ],
   finishAsShutdownExpr = [$ false]
