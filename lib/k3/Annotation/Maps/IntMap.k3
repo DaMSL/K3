@@ -11,6 +11,9 @@ annotation IntMap given type a,b,c,d
   provides lifted size : () -> int
     with effects \_ -> R[self]
 
+  provides lifted clear : () -> ()
+    with effects \_ -> [R[self]; W[self]]
+
   //////////////////////////////////////////////////////////
   // Map retrieval.
   // These methods ignore the value of the provided element.
