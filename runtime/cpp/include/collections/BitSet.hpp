@@ -14,21 +14,29 @@ class BitSet {
  public:
 
   unit_t clear(unit_t) {
-    std::clear();
+    container.clear();
     return unit_t();
   }
 
   unit_t erase_b(int v) {
-    container[v] = 0;
+    if (container.size() > v) { 
+      container[v] = 0;
+    }
     return unit_t();
   }
 
   unit_t insert_b(int v) {
+    if (container.size() <= v) {
+      container.resize(v + 1);
+    }
     container[v] = 1;
     return unit_t();
   }
 
-  bool member_b(int v) {
+  bool member_b(int v) const {
+    if (container.size() <= v) {
+      return 0;
+    }
     return container[v];
   }
 
@@ -45,7 +53,7 @@ class BitSet {
   }
 
   template<typename Fun, typename Acc>
-  Acc fold(Fun f, Acc acc) const {
+  Acc fold_b(Fun f, Acc acc) const {
     int count = 0;
     for (bool e : container) {
       if (e) {
@@ -66,7 +74,7 @@ class BitSet {
     ar & container;
   }
 
-  const std::vector<bool>& getConstContainer() { return container; }
+  const std::vector<bool>& getConstContainer() const { return container; }
   std::vector<bool>& getContainer() { return container; }
 
  private:

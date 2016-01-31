@@ -1,5 +1,5 @@
 // BitSet: set of low integers represented by bits in the backend
-annotation Set given type a
+annotation BitSet given type a
 {
   provides lifted clear : () -> ()
     with effects \_ -> [R[self]; W[self]]
