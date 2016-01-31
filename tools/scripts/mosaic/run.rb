@@ -141,7 +141,7 @@ end
 def run_create_k3_local(k3_cpp_name, k3_cpp_path, k3_root_path, k3_path, script_path)
   stage "[3] Creating K3 cpp file locally"
   compile = File.join(script_path, "..", "run", "compile_mosaic.sh")
-  res = run("time #{compile} -1 #{k3_path} +RTS -A1G -N -c -s -RTS") 
+  res = run("time #{compile} -1 #{k3_path} +RTS -A1G -N -c -s -RTS")
 
   src_path = File.join(k3_root_path, "__build")
   # copy to work directory
@@ -215,13 +215,13 @@ end
 # compile cpp->bin locally
 def run_compile_k3_local(bin_file, k3_path, k3_cpp_name, k3_cpp_path, k3_root_path, script_path)
   stage "[4] Compiling k3 cpp file"
-  brew = $options[:osx_brew] ? "_brew" : ""
+  compile = $options[:osx_brew] ? "compile_brew" : "compile_mosaic"
 
   # copy cpp to proper path
   dest_path = File.join(k3_root_path, "__build")
   FileUtils.copy_file(k3_cpp_path, File.join(dest_path, k3_cpp_name))
 
-  compile = File.join(script_path, "..", "run", "compile#{brew}.sh")
+  compile = File.join(script_path, "..", "run", "#{compile}.sh")
   run("#{compile} -2 #{k3_path}")
 
   bin_src_file = File.join(k3_root_path, "__build", "A")
@@ -988,7 +988,7 @@ def main()
   dbt_name = "dbt_" + nice_name
   dbt_name_hpp = dbt_name + ".hpp"
 
-  server_url = "qp2:5000"
+  server_url = "mddb2:5000"
 
   bin_file = nice_name
   bin_path = File.join($workdir, bin_file)
