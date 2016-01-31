@@ -137,7 +137,11 @@ def create_local_file(args):
     switch_index = 0
     peer_index = 0
     for (role, port) in peers:
-        peer = {'role': wrap_role(role), 'me':address(port), 'peers':create_peers(peers), 'eventlog': 'events%d.csv' % peer_index}
+        peer = {'role': wrap_role(role),
+                'role2': wrap_role(role),
+                'me':address(port),
+                'peers':create_peers(peers),
+                'eventlog': 'events%d.csv' % peer_index}
         peer_index += 1
 
         if pmap is not None:
@@ -216,15 +220,18 @@ def create_dist_file(args):
     pmap = routing_patterns.get_pmap(query)
     opt_route = routing_patterns.get_node_data(query)
 
-    master_role = {'role': wrap_role('master')}
+    master_role = {'role': wrap_role('master'),
+                   'role2': wrap_role('master')}
     master_role.update(pmap if pmap is not None else {})
     master_role.update(extra_args)
 
-    timer_role = {'role': wrap_role('timer')}
+    timer_role = {'role': wrap_role('timer'),
+                  'role2': wrap_role('timer')}
     timer_role.update(pmap if pmap is not None else {})
     timer_role.update(extra_args)
 
-    switch_role = {'role': wrap_role(switch_role_nm)}
+    switch_role = {'role': wrap_role(switch_role_nm),
+                   'role2': wrap_role(switch_role_nm)}
     if args.csv_path:
         switch_role['switch_path'] = args.csv_path
     if args.tpch_inorder_path:
@@ -249,7 +256,8 @@ def create_dist_file(args):
 
     switch_role.update(extra_args)
 
-    node_role = {'role': wrap_role('node')}
+    node_role = {'role': wrap_role('node'),
+                 'role2': wrap_role('node')}
     node_role.update(pmap if pmap is not None else {})
     node_role.update(opt_route if opt_route is not None else {})
     if args.message_profiling:
@@ -275,26 +283,31 @@ def create_dist_file(args):
     timer_env   = {'k3_globals': timer_role, 'mem': 'some'}
 
     # The amount of cores we have of qps. # TODO pack multiple switches into a single role
-    switch_machines = ['qp3', 'qp4', 'qp5', 'qp6'] * 3
     extra_machine = 'qp-hd1$'
+    switch_machines = ['qp3', 'qp4', 'qp5', 'qp6']
+    num_switch_machines = len(switch_machines)
+    num_cores = 16
+    max_switches = num_switch_machines * num_cores
 
     k3_roles = []
 
     # Pack multiple switches into each role
-    if num_switches >= len(switch_machines) and num_switches % len(switch_machines) != 0:
-        msg = "Invalid number of switches: %d. Needs to be a multiple of the number of machines: %d (%s)"
-        vals = (num_switches, len(switch_machines), str(switch_machines))
-        raise ValueError(msg % vals)
-    used_machines = num_switches if num_switches <= len(switch_machines) else len(switch_machines)
-    switches_per_machine = max([1, num_switches / len(switch_machines)])
+    if num_switches > max_switches:
+        raise ValueError("Invalid number of switches: {}. Maximum is {}".format(num_switches, max_switches))
+    used_machines = num_switches if num_switches < num_switch_machines else num_switch_machines
+    # The max switches per machine
+    switches_per_machine = max([1, num_switches / num_switch_machines])
+    # The point at which we have 1 less switch per machine (0 means there is no such point)
+    fewer_point = num_switches % num_switch_machines
 
     for i in range(used_machines):
-        switch_indexes = [(i * switches_per_machine) + j for j in range(switches_per_machine)]
+        per_machine = switches_per_machine if i < fewer_point else switches_per_machine - 1
+        switch_indexes = [(i * switches_per_machine) + j for j in range(per_machine)]
         switch_env2 = copy.deepcopy(switch_env)
         if args.tpch_data_path:
             switch_env2['k3_seq_files'] = \
                 mk_k3_seq_files(num_switches, switch_indexes, args.tpch_data_path, sorted(query_tables[query]))
-        k3_roles.append(('Switch' + str(i), switch_machines.pop(0), switches_per_machine, None, switch_env2))
+        k3_roles.append(('Switch' + str(i), switch_machines.pop(0), per_machine, None, switch_env2))
 
     k3_roles.append(('Master', extra_machine, 1, None, master_env))
     k3_roles.append(('Timer',  extra_machine, 1, None, timer_env))
