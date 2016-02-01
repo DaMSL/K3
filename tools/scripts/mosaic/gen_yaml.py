@@ -296,18 +296,22 @@ def create_dist_file(args):
         raise ValueError("Invalid number of switches: {}. Maximum is {}".format(num_switches, max_switches))
     used_machines = num_switches if num_switches < num_switch_machines else num_switch_machines
     # The max switches per machine
-    switches_per_machine = max([1, num_switches / num_switch_machines])
-    # The point at which we have 1 less switch per machine (0 means there is no such point)
+    switches_per_machine = num_switches / num_switch_machines
+    # The point at which we have 1 more switch per machine (0 means there is no such point)
     fewer_point = num_switches % num_switch_machines
+    if fewer_point != 0:
+        switches_per_machine = switches_per_machine + 1
 
+    last_index = 0
     for i in range(used_machines):
-        per_machine = switches_per_machine if i < fewer_point else switches_per_machine - 1
-        switch_indexes = [(i * switches_per_machine) + j for j in range(per_machine)]
+        assign = switches_per_machine if i < fewer_point or fewer_point == 0 else switches_per_machine - 1
+        switch_indexes = range(last_index, last_index + assign)
+        last_index = last_index + assign
         switch_env2 = copy.deepcopy(switch_env)
         if args.tpch_data_path:
             switch_env2['k3_seq_files'] = \
                 mk_k3_seq_files(num_switches, switch_indexes, args.tpch_data_path, sorted(query_tables[query]))
-        k3_roles.append(('Switch' + str(i), switch_machines.pop(0), per_machine, None, switch_env2))
+        k3_roles.append(('Switch' + str(i), switch_machines.pop(0), assign, None, switch_env2))
 
     k3_roles.append(('Master', extra_machine, 1, None, master_env))
     k3_roles.append(('Timer',  extra_machine, 1, None, timer_env))
