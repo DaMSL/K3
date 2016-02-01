@@ -284,7 +284,7 @@ def create_dist_file(args):
 
     # The amount of cores we have of qps. # TODO pack multiple switches into a single role
     extra_machine = 'qp-hd1$'
-    switch_machines = ['qp3', 'qp4', 'qp5', 'qp6']
+    switch_machines = ['qp4', 'qp5', 'qp6']
     num_switch_machines = len(switch_machines)
     num_cores = 16
     max_switches = num_switch_machines * num_cores
