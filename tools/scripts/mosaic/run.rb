@@ -11,11 +11,11 @@ require 'csv'
 require 'open3'
 #require 'pg'
 
-def run(cmd, checks:[], always_out:false)
-  puts cmd if $options[:debug]
+def run(cmd, checks:[], always_out:false, local:false)
+  puts cmd if $options[:debug] || local
   out, err, s = Open3.capture3(cmd)
-  puts out if $options[:debug] || always_out
-  puts err if $options[:debug]
+  puts out if $options[:debug] || always_out || local
+  puts err if $options[:debug] || local
   res = s.success?
   # other tests
   checks.each do |check|
@@ -43,7 +43,7 @@ def run_mosaic(k3_path, mosaic_path, source)
   args << "--no-gen-deletes " unless $options[:gen_deletes]
   args << "--no-gen-correctives " unless $options[:corrective]
   args << "--no-gen-single-vid " unless !$options[:isobatch]
-  run("#{File.join(mosaic_path, "tests", "auto_test.py")} --workdir #{$workdir} --no-interp #{args} -d -f #{source}")
+  run("#{File.join(mosaic_path, "tests", "auto_test.py")} --workdir #{$workdir} --no-interp #{args} -d -f #{source}", local:true)
 
   # change the k3 file to use the dynamic path
   s = File.read(k3_path)
@@ -61,7 +61,7 @@ def run_dbtoaster(exec_only, test_path, dbt_data_path, dbt_platform, dbt_lib_pat
   if not exec_only
     stage "[2] Creating dbtoaster hpp file"
     Dir.chdir(test_path)
-    run("#{File.join(dbt_platform, "dbtoaster")} --read-agenda -l cpp #{source_path} > #{dbt_name_hpp_path}")
+    run("#{File.join(dbt_platform, "dbtoaster")} --read-agenda -l cpp #{source_path} > #{dbt_name_hpp_path}", local:true)
     Dir.chdir(start_path)
 
     # change the data path
@@ -75,12 +75,12 @@ def run_dbtoaster(exec_only, test_path, dbt_data_path, dbt_platform, dbt_lib_pat
     boost_libs.map! { |lib| "-l" + lib + mt }
 
     stage "[2] Compiling dbtoaster"
-    run("g++ #{File.join(dbt_lib_path, "main.cpp")} -std=c++11 -include #{dbt_name_hpp_path} -o #{dbt_name_path} -O3 -I#{dbt_lib_path} -L#{dbt_lib_path} -ldbtoaster -lpthread #{boost_libs.join ' '}")
+    run("g++ #{File.join(dbt_lib_path, "main.cpp")} -std=c++11 -include #{dbt_name_hpp_path} -o #{dbt_name_path} -O3 -I#{dbt_lib_path} -L#{dbt_lib_path} -ldbtoaster -lpthread #{boost_libs.join ' '}", local:true)
   end
 
   Dir.chdir(start_path)
   stage "[2] Running DBToaster"
-  run("#{dbt_name_path} > #{dbt_name_path}.xml", [/File not found/])
+  run("#{dbt_name_path} > #{dbt_name_path}.xml", [/File not found/], local:true)
 end
 
 ## Create/Compile stage ###
@@ -141,7 +141,7 @@ end
 def run_create_k3_local(k3_cpp_name, k3_cpp_path, k3_root_path, k3_path, script_path)
   stage "[3] Creating K3 cpp file locally"
   compile = File.join(script_path, "..", "run", "compile_mosaic.sh")
-  res = run("time #{compile} -1 #{k3_path} +RTS -A1G -N -c -s -RTS")
+  res = run("time #{compile} -1 #{k3_path} +RTS -A1G -N -c -s -RTS", local:true)
 
   src_path = File.join(k3_root_path, "__build")
   # copy to work directory
@@ -222,7 +222,7 @@ def run_compile_k3_local(bin_file, k3_path, k3_cpp_name, k3_cpp_path, k3_root_pa
   FileUtils.copy_file(k3_cpp_path, File.join(dest_path, k3_cpp_name))
 
   compile = File.join(script_path, "..", "run", "#{compile}.sh")
-  run("#{compile} -2 #{k3_path}")
+  run("#{compile} -2 #{k3_path}", local:true)
 
   bin_src_file = File.join(k3_root_path, "__build", "A")
 
@@ -282,7 +282,7 @@ def gen_yaml(role_path, script_path)
   extra_args << "isobatch_mode=" + ($options[:isobatch]).to_s
   cmd << "--extra-args " << extra_args.join(',') << " " if extra_args.size > 0
 
-  yaml = run("#{File.join(script_path, "gen_yaml.py")} #{cmd}")
+  yaml = run("#{File.join(script_path, "gen_yaml.py")} #{cmd}", local:true)
   File.write(role_path, yaml)
 end
 
@@ -444,7 +444,7 @@ def run_deploy_k3_local(bin_path, nice_name, script_path)
   cmd_suffix = "#{bin_path} -p #{role_path} #{args}"
   frequency = if $options[:perf_frequency] then $options[:perf_frequency] else "10" end
   perf_cmd = "perf record -F #{frequency} -a --call-graph dwarf -- "
-  run($options[:profile] == :perf ? perf_cmd + cmd_suffix : cmd_suffix)
+  run($options[:profile] == :perf ? perf_cmd + cmd_suffix : cmd_suffix, local:true)
 end
 
 # convert a string to the narrowest value
