@@ -28,6 +28,7 @@
 // #include <boost/thread.hpp>
 #include <thread>
 #include <chrono>
+#include <vector>
 #include <yaml-cpp/yaml.h>
 
 using namespace mesos;
@@ -48,6 +49,11 @@ struct SeqFile {
   std::list<string> tables;;
 };
 
+struct Outpath {
+  string var;
+  string prefix;
+  string suffix;
+};
 
 // exec -- exec system command, pipe to stdout, return exit code
 int exec (const char * cmd)  {
@@ -219,6 +225,7 @@ public:
       k3_cmd += " --result_path $MESOS_SANDBOX --result_var " + hostParams["resultVar"].as<string>();
     }
 
+    vector<Outpath> outpaths;
     string datavar, datapath;
     string datapolicy = "default";
     int peerStart = 0;
@@ -260,6 +267,13 @@ public:
               dataFiles.push_back(f);
             }
         }
+	else if (key == "outpaths") {
+	  Node n = param->second;
+	  string var = n["var"].as<string>();
+	  string prefix = n["prefix"].as<string>();
+          string suffix = n["suffix"].as<string>();
+	  outpaths.push_back(Outpath{var, prefix, suffix});
+	}
         else if (key == "seq_files") {
           std::cout << "The Seq Files:\n" << YAML::Dump(param->second) << std::endl;
 	  seqFileEnabled = true;
@@ -299,6 +313,10 @@ public:
         }
         else {
         }
+    }
+
+    for (auto dataFile : dataFiles) {
+
     }
 
     // DATA ALLOCATION: Distribute input files among peers
@@ -502,6 +520,11 @@ public:
     for (std::size_t i=0; i<peers.size(); i++)  {
         oss << "---" << std::endl;
         YAML::Node thispeer = peerParams;
+	// Mosaic outpath stuff
+	thispeer["peer_idx"] = i;
+	for (const auto& op : outpaths) {
+	  thispeer[op.var] = op.prefix + std::to_string(i) + op.suffix;
+	}
         // Mosaic seqfile stuff
         thispeer["seqfiles"] = seqFileYamlByPeer[i];
         thispeer["inorder"] = inorderVarByPeer[i];

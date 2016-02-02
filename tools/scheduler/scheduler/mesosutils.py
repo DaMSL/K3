@@ -20,16 +20,12 @@ K3_COMPILER_IMAGE = "damsl/k3-compiler"
 K3_DOCKER_NAME = "damsl/k3-app"
 #K3_COMPILER_IMAGE = "damsl/k3-run:compile"
 
-
-
 def addLabel(labelMap, key, value):
   # Labels:  New In Mesos v 0.22
   # config = mesos_pb2.Labels()
   lab = labelMap.labels.add()
   lab.key = key
   lab.value = value
-
-
 
 def getResource(resources, tag):
   for resource in resources:
@@ -146,6 +142,7 @@ def taskInfo(k3job, tnum, webaddr, slaveId):
       "master"           : [k3job.all_peers[0].ip, k3job.all_peers[0].port ],
       "archive_endpoint" : "%s/jobs/" % webaddr,
       "data"             : [role.inputs for p in range(len(k3task.peers))],
+      "outpaths"         : role.outpaths,
       "seq_files"        : role.seq_files,
       "logging"          : k3job.logging,
       "jsonlog"          : k3job.jsonlog,

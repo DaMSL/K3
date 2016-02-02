@@ -45,6 +45,7 @@ class Role:
     self.envars     = kwargs.get("envars", [])
     self.inputs     = kwargs.get("inputs", [])
     self.seq_files  = kwargs.get("seq_files", [])
+    self.outpaths   = kwargs.get("outpaths", [])
 
   def to_string(self):
     print ("  ROLE ")
@@ -138,6 +139,7 @@ class Job:
       envars = doc.get('envars', [])
       inputs = doc.get('k3_data', [])
       seq_files = doc.get('k3_seq_files', [])
+      outpaths = doc.get('k3_outpaths', [])
 
       # Parameters:  Just add additional parameters here to receive them
       #  from YAML -- the dispather will need to handle them
@@ -159,7 +161,7 @@ class Job:
       # self.inputs.extend(inputs)
 
       r = Role(peers=peers, variables=globalVars, peerVars=peerVars, hostmask=mask,
-               volumes=volumes, params=params, envars=envars, inputs=inputs, seq_files=seq_files)
+               volumes=volumes, params=params, envars=envars, inputs=inputs, seq_files=seq_files, outpaths=outpaths)
       self.roles[name] = r
 
 
