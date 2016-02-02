@@ -134,6 +134,12 @@ class IntMap {
     return m->size == 0 ? false : (mapi_find(m, r.key) != nullptr);
   }
 
+  unit_t clear(const unit_t&) {
+    mapi* m = get_mapi();
+    mapi_clear(m);
+    return unit_t();
+  }
+
   template <class F, class G>
   auto lookup(R const& r, F f, G g) const {
     mapi* m = get_mapi();
