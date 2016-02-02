@@ -216,6 +216,7 @@ cDecl t i = genCType t >>= \ct -> return [R.Forward $ R.ScalarDecl (R.Name i) ct
 
 inline :: K3 Expression -> CPPGenM ([R.Statement], R.Expression)
 inline e = do
+  boxRecordsP <- gets (boxRecords . flags)
   isolateApplicationP <- gets (isolateApplicationCG . flags)
   isolateQueryP <- gets (isolateQueryCG . flags)
   let doInlineP = not (isolateApplicationP || isolateQueryP)
@@ -410,30 +411,44 @@ inline e = do
       --                              ]
 
     p@(InsertWith c) :$: k :$: w | c `dataspaceIn` stlAssocDSs && doInlineP -> do
+      br <- gets (boxRecords . flags)
       (ce, cv) <- inline c
-      (ke, kv) <- inline k
+      kn <- genSym
+      ke <- reify (RDecl kn Nothing) k
+      --(ke, kv) <- case k of
+      --  (tag &&& children -> (ERecord fs, cs)) | not br -> do
+      --    (unzip -> (fes, catMaybes -> [fv])) <- for (zip fs cs) $ \(f, j) ->
+      --      if f == "key"
+      --        then do
+      --          (fe, fv) <- inline j
+      --          return (fe, Just fv)
+      --        else do
+      --          fe <- reify RForget j
+      --          return (fe, Nothing)
+      --    return (concat fes, fv)
+      --  _ -> inline k >>= \(ke', kv') -> return (ke', R.Project (if br then R.Dereference kv' else kv') (R.Name "key"))
       -- kg <- genSym
       -- ke <- reify (RDecl kg Nothing) k
 
-      br <- gets (boxRecords . flags)
-      let kp = R.Project (if br then R.Dereference kv else kv) (R.Name "key")
+      kp <- genSym
+      let kpdecl = R.Forward $ R.ScalarDecl (R.Name kp) (R.Reference R.Inferred) (Just $ R.Project (R.Variable $ R.Name kn) (R.Name "key"))
 
       ug <- genSym
       let ue = R.Forward $ R.ScalarDecl (R.Name ug) (R.Reference R.Inferred) (Just $  R.Call (R.Project cv (R.Name "getContainer")) [])
       let uv = R.Variable $ R.Name ug
 
       existing <- genSym
-      let existingFind = R.Call (R.Project uv (R.Name "find")) [kp]
+      let existingFind = R.Call (R.Project uv (R.Name "find")) [R.Variable $ R.Name kp]
       let existingDecl = R.Forward $ R.ScalarDecl (R.Name existing) R.Inferred (Just $ existingFind)
       let existingPred = R.Binary "=="
                           (R.Variable $ R.Name existing)
                           (R.Call (R.Variable $ R.Qualified (R.Name "std") (R.Name "end")) [uv])
 
-      let nfe = [R.Assignment (R.Subscript uv kp) kv]
+      let nfe = [R.Assignment (R.Subscript uv (R.Variable $ R.Name kp)) (R.Move $ R.Variable $ R.Name kn)]
       (wfe, wfb) <- inlineApply False (RName (R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second")) (Just True)) w
-                      [R.Move $ R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second"), kv]
+                      [R.Move $ R.Project (R.Dereference (R.Variable $ R.Name existing)) (R.Name "second"), R.Variable $ R.Name kn]
 
-      return (ce ++ [ue] ++ ke ++ [existingDecl] ++ [R.IfThenElse existingPred nfe (wfe ++ wfb)]
+      return (ce ++ [ue] ++ ke ++ [kpdecl] ++ [existingDecl] ++ [R.IfThenElse existingPred nfe (wfe ++ wfb)]
             , R.Initialization R.Unit [])
 
 
