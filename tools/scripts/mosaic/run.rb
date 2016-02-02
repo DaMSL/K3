@@ -776,12 +776,13 @@ end
 
 
 def main()
-  $options = {}
-  $options[:run_mode] = :dist
-  $options[:logging] = :none
-  $options[:profile] = :none
-  $options[:isobatch] = true
-  $options[:corrective] = false
+  $options = {
+    :run_mode   => :dist,
+    :logging    => :none,
+    :profile    => :none,
+    :isobatch   => true,
+    :corrective => false
+  }
 
   uid = nil
 
