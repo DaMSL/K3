@@ -284,7 +284,7 @@ def create_dist_file(args):
 
     # The amount of cores we have of qps. # TODO pack multiple switches into a single role
     extra_machine = 'qp-hd1$'
-    switch_machines = ['qp4', 'qp5', 'qp6']
+    switch_machines = ['qp4', 'qp5', 'qp6', 'qp-hd2', 'qp-hd4']
     num_switch_machines = len(switch_machines)
     num_cores = 16
     max_switches = num_switch_machines * num_cores
@@ -346,7 +346,7 @@ def main():
                         dest="num_switches", default=1)
     parser.add_argument("-n", "--nodes", type=int, help="number of nodes",
                         dest="num_nodes", default=4)
-    parser.add_argument("--nmask", type=str, help="mask for nodes", default="^.*hd(([2-9])|(1[0-4]))$")
+    parser.add_argument("--nmask", type=str, help="mask for nodes", default="^.*hd(([5-7,9])|(1[0,2-4]))$")
     parser.add_argument("--perhost", type=int, help="peers per host", default=None)
 
     parser.add_argument("--csv_path", type=str, help="path of csv data source", default=None)
