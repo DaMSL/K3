@@ -308,7 +308,7 @@ control MosaicMultiExchange [ lbl : label
       declare $[R.i]_parts : collection {key : int, value: collection $[R.val_type] @Collection} @Map
 
       trigger $[R.i]_exchange : () = \_ -> (
-        ((ignore $[R.query])
+        (((ignore $[R.query])
           @PartitionShuffleWithMissing(
             lbl           = [# $[R.i]_exchange]
           , dest_trg      = [$ $[R.i]_process_exchange]
@@ -317,6 +317,7 @@ control MosaicMultiExchange [ lbl : label
           , send_ty       = [: $[|specializeMapTypeByKV 'R.elem_type|] ]
           ));
           $[R.clear]
+	) @OnCounter(id=[# $[R.i]_exchange_start], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
       )
 
       trigger $[R.i]_process_exchange : $[|specializeMapTypeByKV 'R.elem_type|] = \vals -> (
@@ -557,8 +558,8 @@ control MosaicExecutePartitions [ lbl : label
       // Perform deduplication as necessary for final join result.
       $[| mosaicFinalAccumulatePartition 'V.identifier 'T.typ |];
 
-      // Signal the next stage to execute at the master.
-      ($.[dest], master) <- ()
+      // Signal the next stage to execute here
+      ($.[dest], me) <- ()
 }
 
 //////////////////////////////////////
@@ -663,6 +664,6 @@ control MosaicExecuteJoin[ lbl : label
            , relations   = relations
            , joinOrder   = joinOrder
            , next        = [$ $.[E] ])
-     ) @OnCounter(id=lbl, eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+     ) @OnCounter(id=[# $[lbl]_exec_join], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
           // Barrier on the completion of the previous phase (or system ready)
 }
