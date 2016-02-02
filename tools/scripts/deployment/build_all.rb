@@ -172,7 +172,7 @@ def submit(name)
       end
       puts "Submitting #{name}/#{slugify(experiment, query)}"
       response = RC.post(
-        "http://qp2:5000/apps",
+        "http://mddb2:5000/apps",
         {:file => File.new("#{name}/#{slugify(experiment, query)}", 'rb')},
         :accept => :json
       )
@@ -201,7 +201,7 @@ def run(name)
         for i in 1..($options[:trials]) do
           puts "\tSubmitting #{role} for #{experiment}/#{query} trial #{i}"
           response = RC.post(
-            "http://qp2:5000/jobs/#{slugify(experiment, query)}/#{apps[slugify(experiment, query)]}",
+            "http://mddb2:5000/jobs/#{slugify(experiment, query)}/#{apps[slugify(experiment, query)]}",
             {:file => File.new("#{role_prefix}/roles/#{yml}")},
             :accept => :json
           )
@@ -220,7 +220,7 @@ def statusAll(jobs)
   results = {}
   for (job_id, info) in jobs do
     response = RC.get(
-      "http://qp2:5000/job/#{job_id}",
+      "http://mddb2:5000/job/#{job_id}",
       :accept => :json
     )
     json = JSON.parse response
@@ -278,7 +278,7 @@ def harvest(statuses, out_folder)
         # GET tar from each node
         tars = info['sandbox'].select { |x| x =~ /.*.tar/}
         for tar in tars
-          url = "http://qp2:5000/fs/jobs/#{info["name"]}/#{job_id}/#{tar}"
+          url = "http://mddb2:5000/fs/jobs/#{info["name"]}/#{job_id}/#{tar}"
           name = File.basename(tar, ".tar")
           `mkdir -p #{run_folder}/#{job_id}/#{name}`
           response = RC.get(url)
