@@ -7,7 +7,6 @@ require 'rest-client'
 
 RC = RestClient
 
-XP = Pathname.new(Dir.pwd).realpath
 K3 = "/k3/K3"
 
 QUERIES = {
@@ -133,8 +132,7 @@ def teardown_build_profile(profile)
   end
 end
 
-def build(name)
-  target = "#{XP}/#{name}"
+def build(target)
   if $options.has_key?(:build_profile_set) && $options.has_key?(:build_profile)
     profile = JSON.parse(File.read($options[:build_profile_set]))[$options[:build_profile]]
   else
@@ -150,14 +148,14 @@ def build(name)
       end
       Dir.chdir(K3) do
         puts "Cleaning build directory..."
-        `tools/scripts/run/clean.sh`
+        system "tools/scripts/run/clean.sh"
         puts "Compiling K3 -> C++ with options: #{ENV["K3_BUILDOPTS"]}"
-        `tools/scripts/run/compile.sh #{ENV["K3_BUILDOPTS"]} #{path}`
+        system "tools/scripts/run/compile.sh #{ENV["K3_BUILDOPTS"]} #{path} 2>&1 | tee #{target}/#{slugify(experiment, query)_build.log}"
         puts "Copying artifacts..."
-        `mkdir -p #{target}`
-        `mv __build/#{File.basename(path, ".k3")}.cpp #{target}/#{slugify(experiment, query)}.cpp`
-        `mv __build/A #{target}/#{slugify(experiment, query)}`
-        `cp #{path} #{target}/#{slugify(experiment, query)}.k3`
+        system "mkdir -p #{target}"
+        system "mv __build/#{File.basename(path, ".k3")}.cpp #{target}/#{slugify(experiment, query)}.cpp"
+        system "mv __build/A #{target}/#{slugify(experiment, query)}"
+        system "cp #{path} #{target}/#{slugify(experiment, query)}.k3"
       end
     end
   end
