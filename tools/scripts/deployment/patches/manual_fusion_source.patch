@@ -1,5 +1,5 @@
 diff --git i/lib/k3/Core/Optimization.k3 w/lib/k3/Core/Optimization.k3
-index 19f1b1f..6b03345 100644
+index 19f1b1f..ff23368 100644
 --- i/lib/k3/Core/Optimization.k3
 +++ w/lib/k3/Core/Optimization.k3
 @@ -8,8 +8,8 @@ control ManualFusion {
@@ -19,8 +19,8 @@ index 19f1b1f..6b03345 100644
                             (\acc -> ((acc.value.upsert_with {key:k, value: $.[z1]}
 -                                        (\_   -> {key: k, value: (($.[accF1] $.[z1]) v)})
 -                                        (\old -> {key: k, value: (($.[accF1] old.value) v)}));
-+                                        (\_   -> {key: k, value: (($.[accF1] $.[z1]) v) @: {FusionSource, NoBetaReduce}})
-+                                        (\old -> {key: k, value: (($.[accF1] old.value) v) @: {FusionSource, NoBetaReduce}}));
++                                        (\_   -> {key: k, value: ((($.[accF1]) @:FusionSource $.[z1]) v) @: {NoBetaReduce}})
++                                        (\old -> {key: k, value: ((($.[accF1]) @:FusionSource  old.value) v) @: {NoBetaReduce}}));
                                       acc)
                             ));
                           acc2)
@@ -30,7 +30,7 @@ index 19f1b1f..6b03345 100644
                     (\acc2 -> \v ->
 -                     if $.[filterF] v then
 -                     ( let k  = $.[gbF1] v in
-+                     if ($.[filterF] v) @:{FusionSource, NoBetaReduce} then
++                     if (($.[filterF]) @:FusionSource v) @:NoBetaReduce then
 +                     ( let k  = ($.[gbF1] v) @:{FusionSource, NoBetaReduce} in
                         let k2 = $.[gbF2] {key: k, value: $.[z1]} in
                         ((acc2.upsert_with {key: k2, value: $.[fz1]}
@@ -41,8 +41,8 @@ index 19f1b1f..6b03345 100644
                             (\acc -> ((acc.value.upsert_with {key:k, value: $.[z1]}
 -                                        (\_   -> {key: k, value: (($.[accF1] $.[z1]) v)})
 -                                        (\old -> {key: k, value: (($.[accF1] old.value) v)}));
-+                                        (\_   -> {key: k, value: (($.[accF1] $.[z1]) v) @: {FusionSource, NoBetaReduce}})
-+                                        (\old -> {key: k, value: (($.[accF1] old.value) v) @: {FusionSource, NoBetaReduce}}));
++                                        (\_   -> {key: k, value: ((($.[accF1]) @:FusionSource $.[z1]) v) @: {NoBetaReduce}})
++                                        (\old -> {key: k, value: ((($.[accF1]) @:FusionSource  old.value) v) @: {NoBetaReduce}}));
                                       acc)
                             ));
                           acc2)
@@ -52,7 +52,7 @@ index 19f1b1f..6b03345 100644
                     (\acc2 -> \v ->
 -                     if $.[filterF] v then
 -                     ( let k  = $.[gbF1] v in
-+                     if ($.[filterF] v) @:{FusionSource, NoBetaReduce} then
++                     if (($.[filterF]) @:FusionSource v) @:NoBetaReduce then
 +                     ( let k  = ($.[gbF1] v) @:{FusionSource, NoBetaReduce} in
                         let k2 = $.[gbF2] {key: k, value: $.[z1]} in
                         ((acc2.upsert_with {key: k2, value: $.[fz1]}
@@ -63,8 +63,8 @@ index 19f1b1f..6b03345 100644
                             (\acc -> ((acc.value.upsert_with {key:k, value: $.[z1]}
 -                                        (\_   -> {key: k, value: (($.[accF1] $.[z1]) v)})
 -                                        (\old -> {key: k, value: (($.[accF1] old.value) v)}));
-+                                        (\_   -> {key: k, value: (($.[accF1] $.[z1]) v) @: {FusionSource, NoBetaReduce}})
-+                                        (\old -> {key: k, value: (($.[accF1] old.value) v) @: {FusionSource, NoBetaReduce}}));
++                                        (\_   -> {key: k, value: ((($.[accF1]) @:FusionSource $.[z1]) v) @: {NoBetaReduce}})
++                                        (\old -> {key: k, value: ((($.[accF1]) @:FusionSource  old.value) v) @: {NoBetaReduce}}));
                                       acc)
                             ));
                           acc2)
