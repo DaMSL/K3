@@ -141,6 +141,9 @@ def build(target)
 
   setup_build_profile(profile)
 
+  puts "Removing Build Directory"
+  system "rm -rf __build"
+
   for (experiment, description) in QUERIES do
     for query, path in description[:queries] do
       if !select?(experiment, query)
