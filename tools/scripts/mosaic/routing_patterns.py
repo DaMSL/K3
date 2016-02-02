@@ -2,6 +2,18 @@
 
 import argparse, itertools, math, string, sys, yaml
 
+# Notes:
+# There are 3 classes of variables in a statement: bound, common free, and unique free. Common free
+# variables are used in both the rhs and lhs and are therefore 'synchronized'. Unique free variables
+# can only occur on the rhs. With each class, we can consider the possibility that we vary the number
+# of buckets. Varying bound variables would mean that we need many more inputs to the tables, specifying
+# not just a bound bucket, but a bound bucket per instance of its appearance. We'd like to minimize this.
+# Varying unique free variables is easy, since it has minimal impact, so long as the same position isn't
+# in a different class in another statement, which it probably is. Varying common free variables, which
+# are both on the lhs and rhs, is doable. It involves calculating the number of messages that will occur
+# when a lower-bucket-size position is sent to a higher-bucket-size position, or vice versa. This is just
+# cyclic groups, and is fairly easy to solve.
+
 ## Template
 # 'x' : {'maps' : {i: ()} }
 
@@ -71,7 +83,7 @@ map_buckets_by_query = {
 
 
 ## Template
-# 'x' : {'stmts'    : {i: {'map_vars': []}},
+# 'x' : {'stmts'    : {i: {'map_vars': [lmap, rmaps]}},
 #        'bindings' : {},
 #        'binding_patterns': {}},
 
@@ -344,11 +356,11 @@ def get_bound_lhs(stmt_id, bound_vars):
 
 # Returns all variables present in a statement's rhs except for those in ignores.
 def get_freebound_rhs(stmt_id, ignores):
-  rhs_npv = {}
+  rmap_pv_not_free_lhs = {}
   for (rhs_map_name, rhs_vars) in stmts['stmts'][stmt_id]['map_vars'][1:]:
-    rhs_npv[rhs_map_name] = [(i,v) for (i,v) in enumerate(rhs_vars) if v not in ignores]
+    rmap_pv_not_free_lhs[rhs_map_name] = [(i,v) for (i,v) in enumerate(rhs_vars) if v not in ignores]
 
-  return rhs_npv
+  return rmap_pv_not_free_lhs
 
 def rebuild_lhs_bucket(map_name, bb, bidx, lfb, lfpv):
   lidx = 0
@@ -411,11 +423,15 @@ def k3tuple(t, collection):
 
     return k3t
 
+# generate an input data structure for the requested stmt
+# pv = (position, variable)
+# bs = bucket_sizes
 def generate_pattern(varname, stmt_id):
   global pattern_map
 
   bindings = stmts['bindings'][stmts['binding_patterns'][stmt_id]]
 
+  # get lhs name and free vars
   (lhs_map_name, lhs_free_pv) = get_free_lhs(stmt_id, bindings)
   (lhs_map_id, lhs_bucket_sizes) = buckets['maps'][lhs_map_name]
 
@@ -426,41 +442,46 @@ def generate_pattern(varname, stmt_id):
   lhs_free_enums = [range(sz) for sz in lhs_free_bs]
 
   rhs_map_ids = get_rhs_maps(stmt_id)
-  rhs_npv = get_freebound_rhs(stmt_id, {v for (_,v) in lhs_free_pv})
+  # get map -> rhs vars not free in lmap (free + bound)
+  rmap_pv_not_free_lhs = get_freebound_rhs(stmt_id, {v for (_,v) in lhs_free_pv})
 
-  # A list of (mapname, position) pairs for rhs free variables.
-  rhs_uniqf_pos = list({(rhs_map_name, p) \
-    for (rhs_map_name, rhs_pv) in rhs_npv.items() \
+  # extract a list of (mapname, position) pairs for rhs free variables that don't
+  #   exist in the lhs
+  r_uniq_free_map_pos = list({(rhs_map_name, p) \
+    for (rhs_map_name, rhs_pv) in rmap_pv_not_free_lhs.items() \
       # filter out bound variables
       for (p,v) in rhs_pv if v not in bindings})
 
-  rhs_bucket_sizes = []
-  rhs_enum_idx = {}
+  rhs_uniq_free_bucket_sizes = []
+  rhs_uniq_free_enum_idx = {}
 
   # Compute bucket sizes while accounting for repeated bound variables
   cnt = 0
-  for (n,p) in rhs_uniqf_pos:
-    rhs_enum_idx[(n,p)] = cnt
-    rhs_bucket_sizes.append(buckets['maps'][n][1][p])
+  for (map,pos) in r_uniq_free_map_pos:
+    rhs_uniq_free_enum_idx[(map,pos)] = cnt
+    # append bucket size for this (map,pos)
+    rhs_uniq_free_bucket_sizes.append(buckets['maps'][map][1][pos])
     cnt += 1
 
-  rhs_enums = [range(sz) for sz in rhs_bucket_sizes]
+  rhs_uniq_free_enums = [range(sz) for sz in rhs_uniq_free_bucket_sizes]
 
   # A dict of varname => (mapname, position) pairs for all bound
   # variables occurrences in either lhs or rhs maps.
-  uniqb_vars = {}
+  uniq_bound_var_map_pos = {}
 
+  # add the lhs bound vars
   for (p,v) in lhs_bound_pv:
-    if v not in uniqb_vars:
-      uniqb_vars[v] = []
-    uniqb_vars[v].append((lhs_map_name, p))
+    if v not in uniq_bound_var_map_pos:
+      uniq_bound_var_map_pos[v] = []
+    uniq_bound_var_map_pos[v].append((lhs_map_name, p))
 
-  for (rhs_map_name, rhs_pv) in rhs_npv.items():
+  # add the rhs bound vars
+  for (rhs_map_name, rhs_pv) in rmap_pv_not_free_lhs.items():
     for (p,v) in rhs_pv:
       if v in bindings:
-        if v not in uniqb_vars:
-          uniqb_vars[v] = []
-        uniqb_vars[v].append((rhs_map_name, p))
+        if v not in uniq_bound_var_map_pos:
+          uniq_bound_var_map_pos[v] = []
+        uniq_bound_var_map_pos[v].append((rhs_map_name, p))
 
   bound_bucket_sizes = []
   bound_enum_idx = {}
@@ -468,34 +489,34 @@ def generate_pattern(varname, stmt_id):
 
   for v in bindings:
     bs = 0
-    if v in uniqb_vars:
-      for (n,p) in uniqb_vars[v]:
+    if v in uniq_bound_var_map_pos:
+      for (map,pos) in uniq_bound_var_map_pos[v]:
         if bs == 0:
-          bs = buckets['maps'][n][1][p]
+          bs = buckets['maps'][map][1][pos]
         else:
-          if bs != buckets['maps'][n][1][p]:
-            raise ValueError("Bucket size mismatch on {}[{}]".format(n,v))
-        bound_enum_idx[(n,p)] = bound_cnt
+          if bs != buckets['maps'][map][1][pos]:
+            raise ValueError("Bucket size mismatch on {}[{}]".format(map,v))
+        bound_enum_idx[(map,pos)] = bound_cnt
       bound_bucket_sizes.append(bs)
       bound_cnt += 1
 
   bound_enums = [range(sz) for sz in bound_bucket_sizes]
 
   if debug:
-      print("Bound:\n" + '\n'.join(["uniqb_vars:   {}".format(uniqb_vars),
-                                    "enum_idx:     {}".format(bound_enum_idx),
-                                    "bucket_sizes: {}".format(bound_bucket_sizes)]))
+      print("Bound:\n" + '\n'.join(["uniq_bound_var_map_pos:   {}".format(uniq_bound_var_map_pos),
+                                    "bound_enum_idx:     {}".format(bound_enum_idx),
+                                    "bound_bucket_sizes: {}".format(bound_bucket_sizes)]))
 
       print("LHS:\n" + "enums: {}".format(lhs_free_enums))
 
-      print("RHS:\n" + '\n'.join(["npv:          {}".format(rhs_npv),
-                                  "uniqf_pos:    {}".format(rhs_uniqf_pos),
-                                  "enum_idx:     {}".format(rhs_enum_idx),
-                                  "bucket_sizes: {}".format(rhs_bucket_sizes)]))
+      print("RHS:\n" + '\n'.join(["npv:          {}".format(rmap_pv_not_free_lhs),
+                                  "uniqf_pos:    {}".format(r_uniq_free_map_pos),
+                                  "enum_idx:     {}".format(rhs_uniq_free_enum_idx),
+                                  "bucket_sizes: {}".format(rhs_uniq_free_bucket_sizes)]))
 
-  # iterate over every bound bucket combination
+  # iterate over cartesian product of bound bucket values
   for bound_bucket in itertools.product(*bound_enums):
-    # iterate over every combination of lhs free bucket indices
+    # iterate over cartesian product of lhs free vars
     for lhs_bucket in itertools.product(*lhs_free_enums):
       lhs_map_bucket = rebuild_lhs_bucket(
         lhs_map_name, bound_bucket, bound_enum_idx, lhs_bucket, lhs_free_pv)
@@ -505,13 +526,13 @@ def generate_pattern(varname, stmt_id):
           print("LB : {}".format(lhs_bucket))
 
       # add the rhs contributions to our tuple
-      for rhs_bucket in itertools.product(*rhs_enums):
+      for rhs_bucket in itertools.product(*rhs_uniq_free_enums):
         if debug:
             print("RB : {}".format(rhs_bucket))
         tuple = list(ltuple)
         for map_name in rhs_map_ids:
           map_bucket = rebuild_rhs_bucket(
-            map_name, bound_bucket, bound_enum_idx, lhs_bucket, rhs_bucket, rhs_enum_idx)
+            map_name, bound_bucket, bound_enum_idx, lhs_bucket, rhs_bucket, rhs_uniq_free_enum_idx)
           tuple.append(linearize(buckets['maps'][map_name][1], map_bucket))
           if debug:
               print("MB {}: {}".format(map_name, map_bucket))
@@ -548,7 +569,7 @@ def get_node_data(query, varname='route_opt_init_s', stmt_ids=None):
   if available:
     if stmt_ids is None:
       stmt_ids = stmts['stmts'].keys()
-    for (i,s) in enumerate(stmt_ids):
+    for s in stmt_ids:
       nd.update(generate_pattern(varname, s))
     return nd
   return None
