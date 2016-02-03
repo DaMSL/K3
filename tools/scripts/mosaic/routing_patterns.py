@@ -6,8 +6,9 @@ import argparse, itertools, math, string, sys, yaml
 # There are 3 classes of variables in a statement: bound, common free, and unique free. Common free
 # variables are used in both the rhs and lhs and are therefore 'synchronized'. Unique free variables
 # can only occur on the rhs. With each class, we can consider the possibility that we vary the number
-# of buckets. Varying bound variables would mean that we need many more inputs to the tables, specifying
-# not just a bound bucket, but a bound bucket per instance of its appearance. We'd like to minimize this.
+# of buckets. Varying bound variables requires applying the highest bucket value, and calculating the result
+# of that bucket (lower buckets would map to a lower value). It probably requires placing the maximum value
+# in the table as well, so the program knows to use it.
 # Varying unique free variables is easy, since it has minimal impact, so long as the same position isn't
 # in a different class in another statement, which it probably is. Varying common free variables, which
 # are both on the lhs and rhs, is doable. It involves calculating the number of messages that will occur
