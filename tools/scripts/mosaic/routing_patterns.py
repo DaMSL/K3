@@ -350,6 +350,13 @@ def get_free_lhs(stmt_id, bound_vars):
   (lhs_map_name, lhs_vars) = stmts['stmts'][stmt_id]['map_vars'][0]
   return (lhs_map_name, [(i,v) for (i,v) in enumerate(lhs_vars) if v not in bound_vars])
 
+def get_free_rhs(stmt_id, bound_vars):
+  free_rhs = {}
+  rhs_vars = stmts['stmts'][stmt_id]['map_vars'][1:]
+  for (rhs_map_nm, rhs_vars) in rhs_vars:
+    free_rhs[rhs_map_nm] = [(i,v) for (i,v) in enumerate(rhs_vars) if v not in bound_vars]
+  return free_rhs
+
 # Returns names and positions of bound variables in an lhs map.
 def get_bound_lhs(stmt_id, bound_vars):
   lhs_vars = stmts['stmts'][stmt_id]['map_vars'][0][1]
@@ -375,6 +382,13 @@ def get_r_l_free_mapping(stmt_id, bound_vars):
       [(i, lhs_map[v]) for (i, v) in enumerate(rhs_vars) \
           if lhs_map.has_key(v) and v not in bound_vars]
   return rmap_l_idxs
+
+def get_map_free_buckets(stmt_id, map_nm, r_l_indexes):
+  for (rhs_map_name, rhs_vars) in stmts['stmts'][stmt_id]['map_vars'][1:]:
+
+
+
+
 
 # Rebuild the lhs bucket from its bound and free components
 def rebuild_lhs_bucket(map_name, bound_bucket, bound_enum_idx, lhs_bucket, lhs_free_pv):
@@ -492,6 +506,10 @@ def get_lval_for_rval(r_val, l_size, r_size):
     # get all the arrows from right to left
     return [r_val + (i * r_size) for i in range(l_size / r_size)]
 
+LEFT = 1
+RIGHT = 2
+RIGHT_ONLY = 3
+
 # generate an input data structure for the requested stmt
 # pv = (position, variable)
 # bs = bucket_sizes
@@ -506,15 +524,34 @@ def generate_pattern(varname, stmt_id):
 
   lhs_bound_pv = get_bound_lhs(stmt_id, bindings)
 
-  lhs_free_bs = [lhs_bucket_sizes[i] for (i,_) in lhs_free_pv]
+  lhs_free_bs = [(i,lhs_bucket_sizes[i] for (i,_) in lhs_free_pv]
   # enumerate the possible indices for the buckets in each free variable
   lhs_free_enums = [range(sz) for sz in lhs_free_bs]
 
-  rhs_map_ids = get_rhs_maps(stmt_id)
-  # get map -> rhs vars not free in lmap (free + bound)
+  rhs_map_nms = get_rhs_maps(stmt_id)
+  # get rmap -> rhs vars not free in lmap (free + bound)
   rmap_pv_not_free_lhs = get_freebound_rhs(stmt_id, {v for (_,v) in lhs_free_pv}, true)
   # get rmap -> rhs_idx -> lhs_idx map
   r_l_idxs = get_r_l_free_mapping(stmt_id, bindings)
+  rhs_free_pv = get_free_rhs(stmt_id, bindings)
+
+  # get rmap -> (from_rhs (RIGHT/LEFT/RIGHT_ONLY), bucket_size, other_bucket_size (if needed))
+  map_free_buckets = {}
+  for rmap_nm in rhs_map_nms:
+    sizes = []
+    rhs_bucket_sizes = buckets['maps'][rmap_nm][1]
+    r_l_idx = r_l_idxs[rmap_nm]
+    for (r,v) in rhs_free_pv:
+      r_size = rhs_bucket_sizes[r]
+      # common free key
+      if r_l_idx.has_key(r):
+        l = r_l_idx[r]
+        l_size = lhs_bucket_sizes[l]
+        sizes.append(RIGHT, r_size, l_size) if r_size > l_size else sizes.append(LEFT, l_size, r_size)
+      # unique free key on right
+      else:
+        sizes.append(RIGHT_ONLY, r_size)
+    map_free_buckets[rmap_nm] = sizes
 
   # extract a list of (mapname, position) pairs for rhs free variables that don't
   #   exist in the lhs
