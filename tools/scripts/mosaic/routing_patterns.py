@@ -363,41 +363,31 @@ def get_freebound_rhs(stmt_id, ignores):
 
   return rmap_pv_not_free_lhs
 
-# Rebuild the lhs bucket from its bound and free components
-def rebuild_lhs_bucket(map_name, bound_bucket, bound_enum_idx, lhs_bucket, lhs_free_pv):
+def rebuild_lhs_bucket(map_name, bb, bidx, lfb, lfpv):
   lidx = 0
-  # set of lhs free indices
-  idx_set = {p for (p,_) in lhs_free_pv}
+  idx_set = {p for (p,_) in lfpv}
   bucket = []
-  # loop over all dimensions of lmap
   for i in range(len(buckets['maps'][map_name][1])):
-    size = buckets['maps'][map_name][1][i]
     if i in idx_set:
-      bucket.append(lhs_bucket[lidx])
+      bucket.append(lfb[lidx])
       lidx += 1
     else:
-      # convert the bound element to the possibly lower dimension size
-      bound_sz = bound_bucket[bound_enum_idx[(map_name, i)]] % size
-      bucket.append(bound_sz)
+      bucket.append(bb[bidx[(map_name, i)]])
   return bucket
 
-def rebuild_rhs_bucket(map_name, bound_bucket, bound_enum_idx, lhs_bucket, rhs_bucket, rhs_uniq_free_enum_idx):
+def rebuild_rhs_bucket(map_name, bb, bidx, lb, rb, ridx):
   lidx = 0
   bucket = []
-  # loop over all dimensions of rmap
   for i in range(len(buckets['maps'][map_name][1])):
-    size = buckets['maps'][map_name][1][i]
-    if (map_name, i) in bound_enum_idx:
-      bound_sz = bound_bucket[bound_enum_idx[(map_name, i)]] % size
-      bucket.append(bound_sz)
-    elif (map_name, i) in rhs_uniq_free_enum_idx:
-      bucket.append(rhs_bucket[rhs_uniq_free_enum_idx[(map_name, i)]])
+    if (map_name, i) in bidx:
+      bucket.append(bb[bidx[(map_name, i)]])
+    elif (map_name, i) in ridx:
+      bucket.append(rb[ridx[(map_name, i)]])
     else:
-      bucket.append(lhs_bucket[lidx])
+      bucket.append(lb[lidx])
       lidx += 1
   return bucket
 
-# given bucket sizes and values, calculate the final bucket value
 def linearize(sizes, positions):
   idx = 0
   shift = 1
@@ -502,8 +492,11 @@ def generate_pattern(varname, stmt_id):
     bs = 0
     if v in uniq_bound_var_map_pos:
       for (map,pos) in uniq_bound_var_map_pos[v]:
-        # for bound bucket sizes, we take the maximum value
-        bs = max(bs, buckets['maps'][map][1][pos])
+        if bs == 0:
+          bs = buckets['maps'][map][1][pos]
+        else:
+          if bs != buckets['maps'][map][1][pos]:
+            raise ValueError("Bucket size mismatch on {}[{}]".format(map,v))
         bound_enum_idx[(map,pos)] = bound_cnt
       bound_bucket_sizes.append(bs)
       bound_cnt += 1
@@ -523,11 +516,8 @@ def generate_pattern(varname, stmt_id):
                                   "bucket_sizes: {}".format(rhs_uniq_free_bucket_sizes)]))
 
   # iterate over cartesian product of bound bucket values
-  # bound bucket is a specific pattern
-  # we create a map of [bound_buckets] -> [lmap_bucket, rmap_buckets...]
   for bound_bucket in itertools.product(*bound_enums):
     # iterate over cartesian product of lhs free vars
-    # lhs_bucket is a specific pattern
     for lhs_bucket in itertools.product(*lhs_free_enums):
       lhs_map_bucket = rebuild_lhs_bucket(
         lhs_map_name, bound_bucket, bound_enum_idx, lhs_bucket, lhs_free_pv)
@@ -555,22 +545,14 @@ def generate_pattern(varname, stmt_id):
             print("{} {}".format(bound_bucket, tuple))
 
   # Generate pattern yaml.
-  route_data = []
+  k3ds = []
   for (k,v) in sorted(pattern_map.items()):
-    route_data.append({'key' : k3tuple(k, collection=False),
-                       'value' : [k3tuple(x, collection=True) for x in v]})
+    k3ds.append({'key' : k3tuple(k, collection=False),
+                 'value' : [k3tuple(x, collection=True) for x in v]})
 
-  route_name = varname + str(stmt_id)
-
-  # Generate bound bucket mod values
-  bound_data = k3tuple(bound_bucket_sizes, collection=False)
-  bound_name = varname + "_bound_" + str(stmt_id)
-
-  pattern_map = {} # reset
-  return {
-      route_name: route_data,
-      bound_name: bound_data
-      }
+  k3n = varname + str(stmt_id)
+  pattern_map = {}
+  return {k3n: k3ds}
 
 def get_pmap(query):
   available = init_pattern(query, False)
