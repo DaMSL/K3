@@ -41,7 +41,7 @@ ENV PATH /software/bde-tools/bin:$PATH
 RUN apt-get update && apt-get install -y \
                        bzip2 unzip autoconf Libtool \
                        gcc g++ clang-3.5 openjdk-8-jdk make cmake git curl wget subversion pkgconf \
-                       aptitude sudo vim tmux time && \
+                       aptitude sudo vim tmux time gdb && \
     apt-get update && \
     apt-get install -y software-properties-common python-software-properties python-setuptools \
                        opam \
@@ -242,16 +242,16 @@ ENV K3_BRANCH development
 RUN git checkout development && \
     cabal sandbox init && \
     cabal install -j --only-dependencies --disable-documentation && \
-    cabal configure --ghc-options="-O2" && \
+    cabal configure --ghc-options="-rtsopts -threaded -O2" && \
     apt-get update && \
     apt-get install -y libtinfo-dev && \
-    cabal build -j --ghc-options="-O2"
+    cabal build -j --ghc-options="-rts-opts -threaded -O2"
 
 # Clone K3-Mosaic from Git and build
 RUN mkdir -p /k3/K3-Mosaic && \
     git clone https://github.com/DaMSL/K3-Mosaic.git /k3/K3-Mosaic && \
     cd /k3/K3-Mosaic && \
-    ./build_opt.sh && ./build_utils.sh && cd /
+    ./build_opt.sh && ./build_utils.sh && cd /k3/K3
 
 # Clean up
 RUN apt-get autoremove -y && \
