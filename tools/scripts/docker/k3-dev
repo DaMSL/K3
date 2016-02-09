@@ -38,8 +38,8 @@ ENV PGUSER postgres
 ENV PATH /software/bde-tools/bin:$PATH
 
 # Install basic packages to build the image
-RUN apt-get update && apt-get install -y \
-                       bzip2 unzip autoconf Libtool \
+RUN apt-get update && apt-get dist-upgrade -y && apt-get upgrade -y && apt-get install -y \
+                       bzip2 unzip autoconf libtool \
                        gcc g++ clang-3.5 openjdk-8-jdk make cmake git curl wget subversion pkgconf \
                        aptitude sudo vim tmux time gdb && \
     apt-get update && \
@@ -47,7 +47,7 @@ RUN apt-get update && apt-get install -y \
                        opam \
                        ruby2.2 ruby2.2-dev python python-dev python-pip \
                        postgresql-client-9.4 libpq-dev \
-                       libzmq3-dev libre2-dev numactl libunwind-dev
+                       libzmq3-dev libre2-dev numactl libunwind-dev \
                        libfreetype6-dev libpng12-dev && \
     update-alternatives \
       --install /usr/bin/ruby ruby /usr/bin/ruby2.2 50 \
@@ -90,10 +90,11 @@ RUN mkdir -p /software && cd /software                                         &
     git clone https://github.com/bloomberg/bde-tools.git                       && \
     git clone https://github.com/bloomberg/bde.git                             && \
     cd bde                                                                     && \
-    waf configure --targets=bsl,bdl --build-type=release --library-type=shared && \
-    waf build --targets=bsl,bdl --build-type=release --library-type=shared     && \
-    waf install --targets=bsl,bdl                                              && \
-    rm -Rf bde-tools bde
+    git checkout releases/2.24.x && \
+    ../bde-tools/bin/waf configure --targets=bsl,bdl --build-type=release --library-type=shared && \
+    ../bde-tools/bin/waf build --targets=bsl,bdl --build-type=release --library-type=shared     && \
+    ../bde-tools/bin/waf install --targets=bsl,bdl                                              && \
+    cd .. && rm -Rf bde-tools bde
 
 # Install CSV++
 RUN cd /software                                          && \
