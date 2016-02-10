@@ -80,6 +80,7 @@ executable k3
         shake,
         split,
         strict-base-types,
+        syb == 0.4.*,
         SafeSemaphore,
         template-haskell,
         text,
