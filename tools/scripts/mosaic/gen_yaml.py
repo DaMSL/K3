@@ -283,8 +283,8 @@ def create_dist_file(args):
     timer_env   = {'k3_globals': timer_role, 'mem': 'some'}
 
     # The amount of cores we have of qps. # TODO pack multiple switches into a single role
-    extra_machine = 'qp-hd1$'
-    switch_machines = ['qp4', 'qp5', 'qp6', 'qp-hd2', 'qp-hd4']
+    extra_machines = ['qp-hd1$', 'qp-hd2']
+    switch_machines = ['qp4', 'qp5', 'qp6', 'qp-hd4', 'qp-hd5']
     num_switch_machines = len(switch_machines)
     num_cores = 16
     max_switches = num_switch_machines * num_cores
@@ -313,8 +313,8 @@ def create_dist_file(args):
                 mk_k3_seq_files(num_switches, switch_indexes, args.tpch_data_path, sorted(query_tables[query]))
         k3_roles.append(('Switch' + str(i), switch_machines.pop(0), assign, None, switch_env2))
 
-    k3_roles.append(('Master', extra_machine, 1, None, master_env))
-    k3_roles.append(('Timer',  extra_machine, 1, None, timer_env))
+    k3_roles.append(('Master', extra_machines[0], 1, None, master_env))
+    k3_roles.append(('Timer',  extra_machines[1], 1, None, timer_env))
 
     k3_roles.append(('Nodes', args.nmask, num_nodes, args.perhost, node_env))
 
@@ -346,7 +346,7 @@ def main():
                         dest="num_switches", default=1)
     parser.add_argument("-n", "--nodes", type=int, help="number of nodes",
                         dest="num_nodes", default=4)
-    parser.add_argument("--nmask", type=str, help="mask for nodes", default="^.*hd(([5-7,9])|(1[0,2-4]))$")
+    parser.add_argument("--nmask", type=str, help="mask for nodes", default="^.*hd(([6-7,9])|(1[0,2-5]))$")
     parser.add_argument("--perhost", type=int, help="peers per host", default=None)
 
     parser.add_argument("--csv_path", type=str, help="path of csv data source", default=None)
