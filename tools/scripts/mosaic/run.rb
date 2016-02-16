@@ -286,6 +286,45 @@ def gen_yaml(role_path, script_path)
   File.write(role_path, yaml)
 end
 
+# Extract time, which is in the master's stdout. Currently checking all stdout.
+def extract_times(sandbox_path, verbose=false)
+    time = ""
+    trig_times = {}
+    Dir.glob(File.join(sandbox_path, "**", "stdout_*")) do |out_file|
+      #short_nm = /.*stdout_(.*)$/.match(out_file)[1]
+      role = "others"
+      File.new(out_file).each do |li|
+        case li
+          when /.*sw_rcv_token_trig.*/
+            role = "switches"
+          when /.*nd_from_sw.*/
+            role = "nodes"
+          when /^Total time in all triggers: (.*)/
+            trig_tm = (($1.to_f) * 1000).to_i
+            trig_times.has_key?(role) ? trig_times[role] << trig_tm : trig_times[role] = [trig_tm]
+          when /^Total time \(ms\): (.*)$/
+            time = $1
+        end
+      end
+    end
+    if verbose
+      puts "Total time: #{time}"
+      trig_times.each do |role, times|
+        times = times.sort
+        median = 0
+        num = times.length
+        sum = times.inject(:+)
+        mean = sum.to_f / num
+        median = num % 2 == 1 ? times[num/2] : (times[num/2 - 1] + times[num/2]) / 2.0
+        min = times[0]
+        max = times[-1]
+        std_dev = Math.sqrt((times.inject(0){|acc,x| acc + (x - mean)*(x - mean)}) / num.to_f)
+        puts "#{role}: mean:#{mean.to_i}, median:#{median.to_i}, min:#{min}, max:#{max}, num:#{num}, std_dev:#{std_dev.to_i}"
+      end
+    end
+    [time, trig_times]
+end
+
 def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
   check_param(jobid, "--jobid")
 
@@ -319,14 +358,6 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
     run("tar xvf #{f_path} -C #{node_sandbox_path}")
     `mv #{f_path} #{f_final_path}`
 
-    # Extract time, which is in the master's stdout. Currently checking all stdout.
-    time = ""
-    Dir.glob(File.join(node_sandbox_path, "stdout_*")) do |out_file|
-      time = `cat -v #{out_file} | grep '.*Total time.*ms.*'`
-    end
-    puts time if time != ""
-    File.open(File.join(sandbox_path, "time.txt"), 'w') { |file| file.write(time) } if time != ""
-
     # Track node logs.
     json_path = File.join(node_sandbox_path, "json")
     if Dir.exists?(json_path)
@@ -344,6 +375,12 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
       end
     end
   end
+
+  # Extract time, which is in the master's stdout. Currently checking all stdout.
+  (time, _) = extract_times(sandbox_path, true)
+  # save time
+  File.open(File.join(sandbox_path, "time.txt"), 'w') { |file| file.write(time) } if time != ""
+
 
   # Run script to convert json format
   stage "[#{stage_num}] Extracting consolidated logs"
@@ -861,6 +898,7 @@ def main()
     opts.on("--latency-job-dir [PATH]", "Manual selection of job directory") { |s| $options[:latency_dir] = s }
     opts.on("--plot-messages", "Create message heat maps") { $options[:plot_messages] = true }
     opts.on("--no-isobatch", "Disable isobatch mode") { $options[:isobatch] = false }
+    opts.on("--extract-times [PATH]", "Extract times from sandbox") { |s| $options[:extract_times] = s }
 
     # Stages.
     # Ktrace is not run by default.
@@ -885,6 +923,12 @@ def main()
 
   # get directory of script
   script_path = File.expand_path(File.dirname(__FILE__))
+
+  # extract times if requested
+  if $options[:extract_times]
+    extract_times($options[:extract_times], true)
+    exit(0)
+  end
 
   # a lot can be inferred once we have the workdir
   $workdir     = $options[:workdir] ? $options[:workdir] : "temp"
