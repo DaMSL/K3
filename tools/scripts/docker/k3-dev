@@ -6,8 +6,7 @@
 #
 #  Requirements:  Copy mesos libs (libmesos-<version>.so, libmesos.la) to local work dir
 
-# Debian: Sid
-FROM debian:sid
+FROM ubuntu:15.10
 
 ENV BOOST_VER 1.57.0
 ENV BOOST_DIR boost_1_57_0
@@ -18,6 +17,7 @@ ENV PERFTOOLS_VER 2.4
 
 ENV MESOS_VER 0.22.1
 ENV MESOS_INT_VER 0.22.1.1
+ENV BLOOMBERG_VER 2.24.x
 
 ENV CABAL_VER 1.22
 ENV GHC_VER 7.10.1
@@ -37,8 +37,10 @@ ENV PGUSER postgres
 
 ENV PATH /software/bde-tools/bin:$PATH
 
+ENV DEBIAN_FRONTEND noninteractive
+
 # Install basic packages to build the image
-RUN apt-get update && apt-get dist-upgrade -y && apt-get upgrade -y && apt-get install -y \
+RUN apt-get update && apt-get upgrade -y && apt-get install -y \
                        bzip2 unzip autoconf libtool \
                        gcc g++ clang-3.5 openjdk-8-jdk make cmake git curl wget subversion pkgconf \
                        aptitude sudo vim tmux time gdb && \
@@ -90,7 +92,7 @@ RUN mkdir -p /software && cd /software                                         &
     git clone https://github.com/bloomberg/bde-tools.git                       && \
     git clone https://github.com/bloomberg/bde.git                             && \
     cd bde                                                                     && \
-    git checkout releases/2.24.x && \
+    git checkout releases/$BLOOMBERG_VER && \
     ../bde-tools/bin/waf configure --targets=bsl,bdl --build-type=release --library-type=shared && \
     ../bde-tools/bin/waf build --targets=bsl,bdl --build-type=release --library-type=shared     && \
     ../bde-tools/bin/waf install --targets=bsl,bdl                                              && \
@@ -135,6 +137,17 @@ RUN wget https://github.com/google/protobuf/releases/download/v$PROTO_VER/protob
   cd .. && \
   rm -Rf /protobuf-$PROTO_VER
 
+# Intall perf for kernel 3.13
+# Also uses libunwind
+RUN apt-get install -y flex bison libelf-dev libaudit-dev libdw-dev binutils-dev && \
+  wget https://github.com/torvalds/linux/archive/v3.13.tar.gz && \
+  tar -xvzf v3.13.tar.gz && rm v3.13.tar.gz && \
+  cd linux-3.13/tools/perf && make && make install && \
+  cp perf /usr/bin && \
+  cp libperf.a /usr/lib && \
+  cd / && rm -Rf /linux-3.13
+
+
 # Install jemalloc
 RUN wget https://github.com/jemalloc/jemalloc/releases/download/$JEMALLOC_VER/jemalloc-$JEMALLOC_VER.tar.bz2 && \
   tar -xvf jemalloc-$JEMALLOC_VER.tar.bz2 && \
@@ -160,22 +173,6 @@ RUN wget https://github.com/gperftools/gperftools/releases/download/gperftools-$
   cd .. && \
   rm -Rf /gperftools-$PERFTOOLS_VER
 
-# Intall perf for kernel 3.13, and perfj
-# Also uses libunwind
-RUN apt-get install -y flex bison libelf-dev libaudit-dev libdw-dev binutils-dev && \
-  wget https://github.com/torvalds/linux/archive/v3.13.tar.gz && \
-  tar -xvzf v3.13.tar.gz && rm v3.13.tar.gz && \
-  cd linux-3.13/tools/perf && make && make install && \
-  cp perf /usr/bin && \
-  cp libperf.a /usr/lib && \
-  cd / && rm -Rf /linux-3.13 && \
-  mkdir -p /software && \
-  cd /software && \
-  git clone https://github.com/coderplay/perfj.git && \
-  cd perfj && \
-  ./gradlew releaseTarGz && \
-  cp build/libs/perfj-1.0.jar .
-
 # Install yaml-cpp
 RUN wget https://github.com/jbeder/yaml-cpp/archive/release-$YAML_CPP_VER.tar.gz && \
   tar -xvzf release-$YAML_CPP_VER.tar.gz && \
@@ -200,7 +197,7 @@ WORKDIR /
 ENV LANG C.UTF-8
 ENV PATH /opt/ghc/$GHC_VER/bin:/opt/cabal/$CABAL_VER/bin:/opt/alex/$ALEX_VER/bin:/opt/happy/$HAPPY_VER/bin:/root/.cabal/bin/:$PATH
 
-RUN echo 'deb http://ppa.launchpad.net/hvr/ghc/ubuntu trusty main' > /etc/apt/sources.list.d/ghc.list && \
+RUN echo 'deb http://ppa.launchpad.net/hvr/ghc/ubuntu wily main' > /etc/apt/sources.list.d/ghc.list && \
     apt-key adv --keyserver keyserver.ubuntu.com --recv-keys F6F88286 && \
     apt-get update && \
     apt-get install -y --no-install-recommends zlib1g-dev cabal-install-$CABAL_VER ghc-$GHC_VER happy-$HAPPY_VER alex-$ALEX_VER && \
@@ -231,28 +228,24 @@ RUN mkdir -p /root/.vim/autoload && mkdir -p /root/.vim/bundle \
     echo 'execute pathogen#infect() | syntax on | filetype plugin indent on' > /root/.vimrc; \
     cd /
 
-# Clone Repo
+# Clone K3-Mosaic from Git and build
+RUN eval `opam config env` && \
+    mkdir -p /k3/K3-Mosaic && \
+    cd /k3/K3-Mosaic && \
+    git clone https://github.com/DaMSL/K3-Mosaic.git . && \
+    ./build_opt.sh && ./build_utils.sh
+
+# Clone K3 and build
 RUN mkdir -p /k3/K3 && \
-    git clone https://github.com/DaMSL/K3.git /k3/K3
-
-# Build K3
-WORKDIR /k3/K3
-
-ENV K3_BRANCH development
-
-RUN git checkout development && \
+    cd /k3/K3 && \
+    git clone https://github.com/DaMSL/K3.git . && \
+    git checkout fast-compile && \
     cabal sandbox init && \
     cabal install -j --only-dependencies --disable-documentation && \
     cabal configure --ghc-options="-rtsopts -threaded -O2" && \
     apt-get update && \
     apt-get install -y libtinfo-dev && \
-    cabal build -j --ghc-options="-rts-opts -threaded -O2"
-
-# Clone K3-Mosaic from Git and build
-RUN mkdir -p /k3/K3-Mosaic && \
-    git clone https://github.com/DaMSL/K3-Mosaic.git /k3/K3-Mosaic && \
-    cd /k3/K3-Mosaic && \
-    ./build_opt.sh && ./build_utils.sh && cd /k3/K3
+    cabal build -j --ghc-options="-rtsopts -threaded -O2"
 
 # Clean up
 RUN apt-get autoremove -y && \
