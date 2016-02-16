@@ -307,22 +307,23 @@ def extract_times(sandbox_path, verbose=false)
         end
       end
     end
-    if verbose
-      puts "Total time: #{time}"
-      trig_times.each do |role, times|
-        times = times.sort
-        median = 0
-        num = times.length
-        sum = times.inject(:+)
-        mean = sum.to_f / num
-        median = num % 2 == 1 ? times[num/2] : (times[num/2 - 1] + times[num/2]) / 2.0
-        min = times[0]
-        max = times[-1]
-        std_dev = Math.sqrt((times.inject(0){|acc,x| acc + (x - mean)*(x - mean)}) / num.to_f)
-        puts "#{role}: mean:#{mean.to_i}, median:#{median.to_i}, min:#{min}, max:#{max}, num:#{num}, std_dev:#{std_dev.to_i}"
-      end
+    s = ""
+    s += "Total time: #{time}\n"
+    trig_times.each do |role, times|
+      if role == "others" then next end
+      times = times.sort
+      median = 0
+      num = times.length
+      sum = times.inject(:+)
+      mean = sum.to_f / num
+      median = num % 2 == 1 ? times[num/2] : (times[num/2 - 1] + times[num/2]) / 2.0
+      min = times[0]
+      max = times[-1]
+      std_dev = Math.sqrt((times.inject(0){|acc,x| acc + (x - mean)*(x - mean)}) / num.to_f)
+      s += "#{role}: mean:#{mean.to_i}, median:#{median.to_i}, min:#{min}, max:#{max}, num:#{num}, std_dev:#{std_dev.to_i}\n"
     end
-    [time, trig_times]
+    if verbose then puts s end
+    [time, trig_times, s]
 end
 
 def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
@@ -377,10 +378,9 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
   end
 
   # Extract time, which is in the master's stdout. Currently checking all stdout.
-  (time, _) = extract_times(sandbox_path, true)
-  # save time
-  File.open(File.join(sandbox_path, "time.txt"), 'w') { |file| file.write(time) } if time != ""
-
+  (_, _, s) = extract_times(sandbox_path, true)
+  # save times
+  File.open(File.join(sandbox_path, "time.txt"), 'w') { |file| file.write(s) } if s != ""
 
   # Run script to convert json format
   stage "[#{stage_num}] Extracting consolidated logs"
