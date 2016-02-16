@@ -57,7 +57,7 @@ RUN mkdir -p /software && cd /software                                         &
     git clone https://github.com/bloomberg/bde-tools.git                       && \
     git clone https://github.com/bloomberg/bde.git                             && \
     cd bde                                                                     && \
-    git checkout releases/BLOOMBERG_VER && \
+    git checkout releases/$BLOOMBERG_VER && \
     waf configure --targets=bsl,bdl --build-type=release --library-type=shared && \
     waf build --targets=bsl,bdl --build-type=release --library-type=shared     && \
     waf install --targets=bsl,bdl                                              && \
