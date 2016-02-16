@@ -282,7 +282,7 @@ def gen_yaml(role_path, script_path)
   extra_args << "isobatch_mode=" + ($options[:isobatch]).to_s
   cmd << "--extra-args " << extra_args.join(',') << " " if extra_args.size > 0
 
-  yaml = run("#{File.join(script_path, "gen_yaml.py")} #{cmd}", local:true)
+  yaml = run("#{File.join(script_path, "gen_yaml.py")} #{cmd}")
   File.write(role_path, yaml)
 end
 
