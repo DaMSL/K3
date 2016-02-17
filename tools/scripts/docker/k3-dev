@@ -6,51 +6,30 @@
 #
 #  Requirements:  Copy mesos libs (libmesos-<version>.so, libmesos.la) to local work dir
 
-FROM ubuntu:15.10
+FROM damsl/k3-base
 
-ENV BOOST_VER 1.57.0
-ENV BOOST_DIR boost_1_57_0
-
-ENV PROTO_VER 2.5.0
-ENV JEMALLOC_VER 4.0.0
-ENV PERFTOOLS_VER 2.4
-
-ENV MESOS_VER 0.22.1
-ENV MESOS_INT_VER 0.22.1.1
-ENV BLOOMBERG_VER 2.24.x
-
-ENV CABAL_VER 1.22
-ENV GHC_VER 7.10.1
-ENV HAPPY_VER 1.19.5
-ENV ALEX_VER 3.1.4
-
-ENV YAML_CPP_VER 0.5.1
-
-ENV OPAMYES 1
-
-ENV JAVA_HOME /usr/lib/jvm/java-8-openjdk-amd64/
-ENV LD_LIBRARY_PATH /usr/local/lib:/usr/lib
-
-ENV PGHOST qp2
-ENV PGHOSTADDR 192.168.0.11
-ENV PGUSER postgres
-
-ENV PATH /software/bde-tools/bin:$PATH
-
-ENV DEBIAN_FRONTEND noninteractive
+ENV PERFTOOLS_VER=2.4 \
+    CABAL_VER=1.22 \
+    GHC_VER=7.10.1 \
+    HAPPY_VER=1.19.5 \
+    ALEX_VER=3.1.4 \
+    OPAMYES=1 \
+    PGHOST=qp2 \
+    PGHOSTADDR=192.168.0.11 \
+    PGUSER=postgres \
+    K3_BRANCH=fast-compile
 
 # Install basic packages to build the image
-RUN apt-get update && apt-get upgrade -y && apt-get install -y \
-                       bzip2 unzip autoconf libtool \
-                       gcc g++ clang-3.5 openjdk-8-jdk make cmake git curl wget subversion pkgconf \
-                       aptitude sudo vim tmux time gdb && \
-    apt-get update && \
-    apt-get install -y software-properties-common python-software-properties python-setuptools \
-                       opam \
-                       ruby2.2 ruby2.2-dev python python-dev python-pip \
-                       postgresql-client-9.4 libpq-dev \
-                       libzmq3-dev libre2-dev numactl libunwind-dev \
-                       libfreetype6-dev libpng12-dev && \
+RUN apt-get install -y \
+    pkgconf \
+    aptitude vim tmux time gdb \
+    software-properties-common \
+    python-software-properties python-setuptools \
+    opam \
+    ruby2.2 ruby2.2-dev python-dev python-pip \
+    postgresql-client-9.4 libpq-dev \
+    libzmq3-dev libre2-dev numactl libunwind-dev \
+    libfreetype6-dev libpng12-dev && \
     update-alternatives \
       --install /usr/bin/ruby ruby /usr/bin/ruby2.2 50 \
       --slave /usr/bin/irb irb /usr/bin/irb2.2 \
@@ -76,68 +55,7 @@ RUN apt-get update && apt-get upgrade -y && apt-get install -y \
     /bin/echo -e "qp2:*:*:postgres:mosaic_ktrace_db\n" >> /root/.pgpass && \
     chmod 0600 /root/.pgpass
 
-# Install Boost
-RUN wget http://sourceforge.net/projects/boost/files/boost/$BOOST_VER/$BOOST_DIR.tar.bz2/download && \
-  tar --bzip2 -xvf ./download                                                                     && \
-  rm download                                                                                     && \
-  cd $BOOST_DIR                                                                                   && \
-  ./bootstrap.sh --with-libraries=serialization,system,thread,log,program_options,filesystem --prefix=/usr/local libdir=/usr/local/lib && \
-  ./b2 stage threading=multi link=shared   && \
-  ./b2 install threading=multi link=shared && \
-  cd ..                                    && \
-  rm -Rf $BOOST_DIR
-
-# Install Bloomberg BSL and BDL
-RUN mkdir -p /software && cd /software                                         && \
-    git clone https://github.com/bloomberg/bde-tools.git                       && \
-    git clone https://github.com/bloomberg/bde.git                             && \
-    cd bde                                                                     && \
-    git checkout releases/$BLOOMBERG_VER && \
-    ../bde-tools/bin/waf configure --targets=bsl,bdl --build-type=release --library-type=shared && \
-    ../bde-tools/bin/waf build --targets=bsl,bdl --build-type=release --library-type=shared     && \
-    ../bde-tools/bin/waf install --targets=bsl,bdl                                              && \
-    cd .. && rm -Rf bde-tools bde
-
-# Install CSV++
-RUN cd /software                                          && \
-    git clone https://git01.codeplex.com/forks/wjjt/csvpp && \
-    cd csvpp                                              && \
-    cmake .                                               && \
-    make                                                  && \
-    mv libcsvpp.so /usr/lib/                              && \
-    cd ..                                                 && \
-    rm -Rf csvpp
-
-# Install libdynamic
-RUN git clone https://github.com/DaMSL/libdynamic && \
-    cd libdynamic                                 && \
-    ./autogen.sh                                  && \
-    ./configure --prefix=/usr                     && \
-    make                                          && \
-    make install                                  && \
-    cd ..                                         && \
-    rm -Rf libdynamic
-
-# Copy in Mesos libs & include files
-ADD assets/libmesos-$MESOS_VER.so /usr/lib/
-ADD assets/libmesos.la /usr/lib/
-ADD assets/include/mesos /usr/include/mesos/
-
-# Install Protobuf
-RUN wget https://github.com/google/protobuf/releases/download/v$PROTO_VER/protobuf-$PROTO_VER.tar.bz2 && \
-  tar -xvf protobuf-$PROTO_VER.tar.bz2 && \
-  rm protobuf-$PROTO_VER.tar.bz2 && \
-  cd protobuf-$PROTO_VER && \
-  ./autogen.sh && \
-  ./configure --prefix=/usr && \
-  make && \
-  make check && \
-  make install && \
-  protoc --proto_path=/usr/include/mesos --cpp_out=/usr/include/mesos/ /usr/include/mesos/mesos.proto && \
-  cd .. && \
-  rm -Rf /protobuf-$PROTO_VER
-
-# Intall perf for kernel 3.13
+# Install perf for kernel 3.13
 # Also uses libunwind
 RUN apt-get install -y flex bison libelf-dev libaudit-dev libdw-dev binutils-dev && \
   wget https://github.com/torvalds/linux/archive/v3.13.tar.gz && \
@@ -146,7 +64,6 @@ RUN apt-get install -y flex bison libelf-dev libaudit-dev libdw-dev binutils-dev
   cp perf /usr/bin && \
   cp libperf.a /usr/lib && \
   cd / && rm -Rf /linux-3.13
-
 
 # Install jemalloc
 RUN wget https://github.com/jemalloc/jemalloc/releases/download/$JEMALLOC_VER/jemalloc-$JEMALLOC_VER.tar.bz2 && \
@@ -173,29 +90,18 @@ RUN wget https://github.com/gperftools/gperftools/releases/download/gperftools-$
   cd .. && \
   rm -Rf /gperftools-$PERFTOOLS_VER
 
-# Install yaml-cpp
-RUN wget https://github.com/jbeder/yaml-cpp/archive/release-$YAML_CPP_VER.tar.gz && \
-  tar -xvzf release-$YAML_CPP_VER.tar.gz && \
-  rm release-$YAML_CPP_VER.tar.gz && \
-  cd yaml-cpp-release-$YAML_CPP_VER && \
-  mkdir build && cd build && \
-  cmake .. && make && make install && \
-  cd / && rm -Rf /yaml-cpp-release-$YAML_CPP_VER
-
 # Install Mesos Eggs
-RUN ln -s /usr/lib/libmesos-$MESOS_VER.so /usr/lib/libmesos.so && \
-    wget http://downloads.mesosphere.io/master/ubuntu/14.04/mesos-$MESOS_VER-py2.7-linux-x86_64.egg && \
+RUN wget http://downloads.mesosphere.io/master/ubuntu/14.04/mesos-$MESOS_VER-py2.7-linux-x86_64.egg && \
     wget https://pypi.python.org/packages/2.7/m/mesos.interface/mesos.interface-$MESOS_INT_VER-py2.7.egg && \
     easy_install mesos.interface-$MESOS_INT_VER-py2.7.egg && \
     easy_install --no-deps mesos-$MESOS_VER-py2.7-linux-x86_64.egg && \
     rm mesos.interface-$MESOS_INT_VER-py2.7.egg && \
     rm mesos-$MESOS_VER-py2.7-linux-x86_64.egg
 
-
 # Install GHC and cabal
 WORKDIR /
-ENV LANG C.UTF-8
-ENV PATH /opt/ghc/$GHC_VER/bin:/opt/cabal/$CABAL_VER/bin:/opt/alex/$ALEX_VER/bin:/opt/happy/$HAPPY_VER/bin:/root/.cabal/bin/:$PATH
+ENV LANG=C.UTF-8 \
+    PATH=/opt/ghc/$GHC_VER/bin:/opt/cabal/$CABAL_VER/bin:/opt/alex/$ALEX_VER/bin:/opt/happy/$HAPPY_VER/bin:/root/.cabal/bin/:$PATH
 
 RUN echo 'deb http://ppa.launchpad.net/hvr/ghc/ubuntu wily main' > /etc/apt/sources.list.d/ghc.list && \
     apt-key adv --keyserver keyserver.ubuntu.com --recv-keys F6F88286 && \
@@ -239,7 +145,7 @@ RUN eval `opam config env` && \
 RUN mkdir -p /k3/K3 && \
     cd /k3/K3 && \
     git clone https://github.com/DaMSL/K3.git . && \
-    git checkout fast-compile && \
+    git checkout $K3_BRANCH && \
     cabal sandbox init && \
     cabal install -j --only-dependencies --disable-documentation && \
     cabal configure --ghc-options="-rtsopts -threaded -O2" && \
@@ -250,7 +156,4 @@ RUN mkdir -p /k3/K3 && \
 # Clean up
 RUN apt-get autoremove -y && \
     apt-get autoclean -y
-
-# Add env variables for bloomberg
-ENV CPLUS_INCLUDE_PATH=/usr/local/include/bsl:/usr/local/include/bdl
 
