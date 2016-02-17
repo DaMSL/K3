@@ -107,14 +107,14 @@ def curl(server, url, args:{}, file:"", post:false, json:false, getfile:nil)
   end
 end
 
-def curl_status_loop(server_url, url, success_status)
+def curl_status_loop(url, success_status)
   # get status
-  res = curl(server_url, url, json:true)
+  res = curl($server_url, url, json:true)
   last_status = ""
   status = ""
   while status != success_status && status != "KILLED" && status != "FAILED"
     sleep(4)
-    res = curl(server_url, url, json:true)
+    res = curl($server_url, url, json:true)
     last_status = status
     status = res['status']
     if status == last_status
@@ -138,100 +138,100 @@ def check_status(status, success, process_nm)
 end
 
 # create the k3 cpp file locally
-def run_create_k3_local(k3_cpp_name, k3_cpp_path, k3_root_path, k3_path, script_path)
+def run_create_k3_local(k3_cpp_name, k3_cpp_path, k3_path)
   stage "[3] Creating K3 cpp file locally"
-  compile = File.join(script_path, "..", "run", "compile_mosaic.sh")
+  compile = File.join($script_path, "..", "run", "compile_mosaic.sh")
   res = run("time #{compile} -1 #{k3_path} +RTS -A1G -N -c -s -RTS", local:true)
 
-  src_path = File.join(k3_root_path, "__build")
+  src_path = File.join($k3_root_path, "__build")
   # copy to work directory
   FileUtils.copy_file(File.join(src_path, k3_cpp_name), k3_cpp_path)
   # write out the result
   File.write(File.join($workdir, "k3.log"), res)
 end
 
-def wait_and_fetch_remote_compile(server_url, bin_file, k3_cpp_name, nice_name, uid)
+def wait_and_fetch_remote_compile(bin_file, k3_cpp_name, uid)
   check_param(uid, "--uid")
 
   puts "UID = #{uid}"
 
   # get status
-  status, _ = curl_status_loop(server_url, "/compile/#{uid}", "COMPLETE")
+  status, _ = curl_status_loop("/compile/#{uid}", "COMPLETE")
 
   # get the output file (before exiting on error)
-  fs_path = "/fs/build/#{nice_name}-#{uid}/"
+  fs_path = "/fs/build/#{$nice_name}-#{uid}/"
 
-  curl(server_url, fs_path, getfile:"output")
+  curl($server_url, fs_path, getfile:"output")
 
   check_status(status, "COMPLETE", "Remote compilation")
 
   # get the cpp file
-  curl(server_url, fs_path, getfile:k3_cpp_name)
+  curl($server_url, fs_path, getfile:k3_cpp_name)
 
   if !bin_file.nil?
     # get the bin file
-    curl(server_url, fs_path, getfile:bin_file)
+    curl($server_url, fs_path, getfile:bin_file)
     `chmod +x #{File.join($workdir, bin_file)}`
   end
 end
 
 # do both creation and compilation remotely (returns uid)
-def run_create_compile_k3_remote(server_url, bin_file, block_on_compile, k3_cpp_name, k3_path, nice_name)
+def run_create_compile_k3_remote(bin_file, block_on_compile, k3_cpp_name, k3_path)
   stage "[3-4] Remote creating && compiling K3 file to binary"
   args = { "compilestage" => "both",
            "workload" => $options[:skew].to_s}
   args["compileargs"] = $options[:compileargs] if $options[:compileargs]
 
-  res = curl(server_url, "/compile", file: k3_path, post: true, json: true, args:args)
+  res = curl($server_url, "/compile", file: k3_path, post: true, json: true, args:args)
   uid = res["uid"]
   $options[:uid] = uid
   persist_options()
 
   if block_on_compile
-    wait_and_fetch_remote_compile(server_url, bin_file, k3_cpp_name, nice_name, uid)
+    wait_and_fetch_remote_compile(bin_file, k3_cpp_name, uid)
   end
 
   return uid
 end
 
 # create the k3 cpp file remotely and copy the cpp locally
-def run_create_k3_remote(server_url, block_on_compile, k3_cpp_name, k3_path, nice_name)
+def run_create_k3_remote(block_on_compile, k3_cpp_name, k3_path)
   stage "[3] Remote creating K3 cpp file."
   args = { "compilestage" => "cpp",
            "workload" => $options[:skew].to_s}
   args["compileargs"] = $options[:compileargs] if $options[:compileargs]
 
-  res = curl(server_url, "/compile", file: k3_path, post: true, json: true, args:args)
+  res = curl($server_url, "/compile", file: k3_path, post: true, json: true, args:args)
   uid = res["uid"]
   $options[:uid] = uid
   persist_options()
 
   if block_on_compile
     # get the cpp file
-    wait_and_fetch_remote_compile(server_url, nil, k3_cpp_name, nice_name, uid)
+    wait_and_fetch_remote_compile(nil, k3_cpp_name, uid)
   end
 end
 
 # compile cpp->bin locally
-def run_compile_k3_local(bin_file, k3_path, k3_cpp_name, k3_cpp_path, k3_root_path, script_path)
+def run_compile_k3_local(bin_file, k3_path, k3_cpp_name, k3_cpp_path)
   stage "[4] Compiling k3 cpp file"
   compile = $options[:osx_brew] ? "compile_brew" : "compile_mosaic"
 
   # copy cpp to proper path
-  dest_path = File.join(k3_root_path, "__build")
+  dest_path = File.join($k3_root_path, "__build")
   FileUtils.copy_file(k3_cpp_path, File.join(dest_path, k3_cpp_name))
 
-  compile = File.join(script_path, "..", "run", "#{compile}.sh")
+  compile = File.join($script_path, "..", "run", "#{compile}.sh")
   run("#{compile} -2 #{k3_path}", local:true)
 
-  bin_src_file = File.join(k3_root_path, "__build", "A")
+  bin_src_file = File.join($k3_root_path, "__build", "A")
 
   FileUtils.copy_file(bin_src_file, File.join($workdir, bin_file))
 end
 
 ### Deployment stage ###
 
-def gen_yaml(role_path, script_path)
+def gen_yaml(role_path)
   # Generate yaml file"
   num_nodes = 1
   if $options[:num_nodes] then num_nodes = $options[:num_nodes] end
@@ -282,7 +282,7 @@ def gen_yaml(role_path, script_path)
   extra_args << "isobatch_mode=" + ($options[:isobatch]).to_s
   cmd << "--extra-args " << extra_args.join(',') << " " if extra_args.size > 0
 
-  yaml = run("#{File.join(script_path, "gen_yaml.py")} #{cmd}")
+  yaml = run("#{File.join($script_path, "gen_yaml.py")} #{cmd}")
   File.write(role_path, yaml)
 end
 
@@ -291,7 +291,7 @@ def extract_times(sandbox_path, verbose=false)
     time = ""
     trig_times = {}
     Dir.glob(File.join(sandbox_path, "**", "stdout_*")) do |out_file|
-      #short_nm = /.*stdout_(.*)$/.match(out_file)[1]
+      short_nm = /.*stdout_(.*)$/.match(out_file)[1]
       role = "others"
       File.new(out_file).each do |li|
         case li
@@ -301,7 +301,8 @@ def extract_times(sandbox_path, verbose=false)
             role = "nodes"
           when /^Total time in all triggers: (.*)/
             trig_tm = (($1.to_f) * 1000).to_i
-            trig_times.has_key?(role) ? trig_times[role] << trig_tm : trig_times[role] = [trig_tm]
+            trig_times.has_key?(role) ? trig_times[role] << [short_nm, trig_tm] : \
+                                        trig_times[role] = [[short_nm, trig_tm]]
           when /^Total time \(ms\): (.*)$/
             time = $1
         end
@@ -309,28 +310,50 @@ def extract_times(sandbox_path, verbose=false)
     end
     s = ""
     s += "Total time: #{time}\n"
-    trig_times.each do |role, times|
-      if role == "others" then next end
-      times = times.sort
-      median = 0
+    ["nodes", "switches"].each do |role|
+      trig_times[role].sort!{|x,y| x[1] <=> y[1]}
+      times = trig_times[role]
       num = times.length
-      sum = times.inject(:+)
+      sum = times.inject(0){|acc,x| acc + x[1]}
       mean = sum.to_f / num
-      median = num % 2 == 1 ? times[num/2] : (times[num/2 - 1] + times[num/2]) / 2.0
-      min = times[0]
-      max = times[-1]
-      std_dev = Math.sqrt((times.inject(0){|acc,x| acc + (x - mean)*(x - mean)}) / num.to_f)
+      median = num % 2 == 1 ? times[num/2][1] : (times[num/2 - 1][1] + times[num/2][1]) / 2.0
+      min = times[0][1]
+      max = times[-1][1]
+      std_dev = Math.sqrt((times.inject(0){|acc,x| acc + (x[1] - mean)**2}) / num.to_f)
       s += "#{role}: mean:#{mean.to_i}, median:#{median.to_i}, min:#{min}, max:#{max}, num:#{num}, std_dev:#{std_dev.to_i}\n"
     end
     if verbose then puts s end
     [time, trig_times, s]
 end
 
-def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
+# create perf flame graphs for min/max/median nodes/switches
+def perf_flame_graph(sandbox_path, trig_times)
+    perf_tool = File.join($k3_root_path, "tools", "scripts", "perf", "perf_analysis.sh")
+    ["nodes", "switches"].each do |role|
+      times = trig_times[role]
+      num = times.length
+      # min node, max node, median node
+      nodes = [times[0][0], times[-1][0], times[num/2][0]]
+      # for each of these nodes, convert the perf file to a flame graph
+      nodes.each do |node|
+        glob = File.join(sandbox_path, "*#{node}", "perf.data")
+        Dir.glob(glob) do |perf_file|
+          # create flame graph
+          flame_path = File.join($workdir, "#{node}_flame")
+          exe_path = File.join($workdir, $nice_name)
+          cmd = "#{perf_tool} 0 #{exe_path} /usr/bin/perf #{flame_path} #{perf_file}"
+          puts cmd
+          `#{cmd}`
+        end
+      end
+    end
+end
+
+def wait_and_fetch_results(stage_num, jobid)
   check_param(jobid, "--jobid")
 
   stage "[#{stage_num}] Waiting for Mesos job to finish..."
-  status, res = curl_status_loop(server_url, "/job/#{jobid}", "FINISHED")
+  status, res = curl_status_loop("/job/#{jobid}", "FINISHED")
 
   check_status(status, "FINISHED", "Mesos job")
 
@@ -355,7 +378,7 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
     `mkdir -p #{node_sandbox_path}` unless Dir.exists?(node_sandbox_path)
 
     # Retrieve, extract and move node sandbox.
-    curl(server_url, "/fs/jobs/#{nice_name}/#{jobid}/", getfile:f)
+    curl($server_url, "/fs/jobs/#{$nice_name}/#{jobid}/", getfile:f)
     run("tar xvf #{f_path} -C #{node_sandbox_path}")
     `mv #{f_path} #{f_final_path}`
 
@@ -378,14 +401,19 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
   end
 
   # Extract time, which is in the master's stdout. Currently checking all stdout.
-  (_, _, s) = extract_times(sandbox_path, true)
+  (_, trig_times, s) = extract_times(sandbox_path, true)
   # save times
   File.open(File.join(sandbox_path, "time.txt"), 'w') { |file| file.write(s) } if s != ""
+
+  # If requested, create perf graphs
+  if $options[:perf_profile]
+    perf_flame_graph(sandbox_path, trig_times)
+  end
 
   # Run script to convert json format
   stage "[#{stage_num}] Extracting consolidated logs"
   unless files_to_clean.empty?
-    run("#{File.join(script_path, "clean_json.py")} --prefix_path #{sandbox_path} #{files_to_clean.join(" ")}")
+    run("#{File.join($script_path, "clean_json.py")} --prefix_path #{sandbox_path} #{files_to_clean.join(" ")}")
   end
 
   stage "[#{stage_num}] Extracting peer roles"
@@ -418,13 +446,13 @@ def wait_and_fetch_results(stage_num, jobid, server_url, nice_name, script_path)
 
 end
 
-def run_deploy_k3_remote(uid, server_url, bin_path, nice_name, script_path, perf_profile, perf_frequency)
-  role_path = if $options[:raw_yaml_file] then $options[:raw_yaml_file] else File.join($workdir, nice_name + ".yaml") end
+def run_deploy_k3_remote(uid, bin_path, perf_profile, perf_frequency)
+  role_path = if $options[:raw_yaml_file] then $options[:raw_yaml_file] else File.join($workdir, $nice_name + ".yaml") end
 
   # we can either have a uid from a previous stage, or send a binary and get a uid now
   if uid.nil? || $options[:compile_local]
     stage "[5] Sending binary to mesos"
-    res = curl(server_url, '/apps', file:bin_path, post:true, json:true)
+    res = curl($server_url, '/apps', file:bin_path, post:true, json:true)
     uid = res['uid']
     $options[:uid] = uid
     persist_options()
@@ -435,7 +463,7 @@ def run_deploy_k3_remote(uid, server_url, bin_path, nice_name, script_path, perf
 
   # Generate mesos yaml file"
   stage "[5] Generating YAML deployment configuration"
-  gen_yaml(role_path, script_path) unless $options[:raw_yaml_file]
+  gen_yaml(role_path) unless $options[:raw_yaml_file]
 
   stage "[5] Creating new mesos job"
   curl_args = {}
@@ -454,20 +482,20 @@ def run_deploy_k3_remote(uid, server_url, bin_path, nice_name, script_path, perf
   if $options[:core_dump]
     curl_args['core_dump'] = 'yes'
   end
-  res = curl(server_url, "/jobs/#{nice_name}#{uid_s}", json:true, post:true, file:role_path, args:curl_args)
+  res = curl($server_url, "/jobs/#{$nice_name}#{uid_s}", json:true, post:true, file:role_path, args:curl_args)
   jobid = res['jobId']
   $options[:jobid] = jobid
   persist_options()
   puts "JOBID = #{jobid}"
 
   # Wait for job to finish and get results
-  wait_and_fetch_results(5, jobid, server_url, nice_name, script_path)
+  wait_and_fetch_results(5, jobid)
 end
 
 # local deployment
-def run_deploy_k3_local(bin_path, nice_name, script_path)
-  role_path = if $options[:raw_yaml_file] then $options[:raw_yaml_file] else File.join($workdir, nice_name + "_local.yaml") end
-  gen_yaml(role_path, script_path) unless $options[:raw_yaml_file]
+def run_deploy_k3_local(bin_path)
+  role_path = if $options[:raw_yaml_file] then $options[:raw_yaml_file] else File.join($workdir, $nice_name + "_local.yaml") end
+  gen_yaml(role_path) unless $options[:raw_yaml_file]
 
   json_dist_path = File.join($workdir, 'json')
 
@@ -481,7 +509,7 @@ def run_deploy_k3_local(bin_path, nice_name, script_path)
   cmd_suffix = "#{bin_path} -p #{role_path} #{args}"
   frequency = if $options[:perf_frequency] then $options[:perf_frequency] else "10" end
   perf_cmd = "perf record -F #{frequency} -a --call-graph dwarf -- "
-  run($options[:profile] == :perf ? perf_cmd + cmd_suffix : cmd_suffix, local:true)
+  run($options[:perf_profile] ? perf_cmd + cmd_suffix : cmd_suffix, local:true)
 end
 
 # convert a string to the narrowest value
@@ -684,11 +712,11 @@ def run_compare(dbt_results, k3_results)
 end
 
 # Loads k3 trace data (messages, globals) from a job into postgres.
-def run_ktrace(script_path, jobid)
+def run_ktrace(jobid)
 
   initialize_db = lambda {|dbconn, required_tables|
     init = false
-    db_init_script = File.join(script_path, 'ktrace_schema.sql')
+    db_init_script = File.join($script_path, 'ktrace_schema.sql')
     required_tables.each do |t|
       res = dbconn.exec("SELECT to_regclass('public.#{t}');")
       if res.values[0][0].nil?
@@ -741,7 +769,7 @@ def run_ktrace(script_path, jobid)
 
 end
 
-def post_process_latencies(jobid, sw_regex, script_path)
+def post_process_latencies(jobid, sw_regex)
   job_path = File.join($workdir, "job_#{jobid}")
   if $options[:latency_dir]
     job_path = $options[:latency_dir]
@@ -769,16 +797,16 @@ def post_process_latencies(jobid, sw_regex, script_path)
   cmd << "--nodes " << node_files.join(" ") << " "
   print cmd
 
-  run("#{File.join(script_path, "event_latencies.py")} #{cmd}", always_out:true)
+  run("#{File.join($script_path, "event_latencies.py")} #{cmd}", always_out:true)
 
 end
 
 # create heat maps for messages
-def plot_messages(jobid, nice_name, script_path)
+def plot_messages(jobid)
   job_path = File.join($workdir, "job_#{jobid}")
-  plots_path = File.join(script_path, "plots")
+  plots_path = File.join($script_path, "plots")
   yaml_path = $options[:run_mode] == :local ? "local_msgs.yaml" : File.join(job_path, "#{jobid}_msgs.yaml")
-  local_path = File.join($workdir, "#{nice_name}_local.yaml")
+  local_path = File.join($workdir, "#{$nice_name}_local.yaml")
   path = $options[:run_mode] == :local ? "-f #{local_path}" : "-j #{job_path}"
   heat_path = $options[:run_mode] == :local ? "heat" : File.join(job_path, "heat")
 
@@ -816,7 +844,7 @@ def main()
   $options = {
     :run_mode   => :dist,
     :logging    => :none,
-    :profile    => :none,
+    :perf_profile => false,
     :isobatch   => true,
     :corrective => false
   }
@@ -860,7 +888,7 @@ def main()
     opts.on("--final-json", "Turn on final JSON logging for ktrace") { $options[:logging] = :final }
     opts.on("--json-regex [REGEX]", "Regex pattern for JSON logging") { |s| $options[:json_regex] = s}
     opts.on("--no-json", "Turn off JSON logging for ktrace") { $options[:logging] = :none }
-    opts.on("--perf-profile", "Turn on perf profiling") { $options[:profile] = :perf }
+    opts.on("--perf-profile", "Turn on perf profiling") { $options[:perf_profile] = true}
     opts.on("--perf-frequency [NUM]", String, "Set perf profiling frequency") { |s| $options[:perf_frequency] = s }
     opts.on("--core-dump", "Turn on core dump for distributed run") { $options[:core_dump] = true }
     opts.on("--dots", "Get the awesome dots") { $options[:dots] = true }
@@ -922,13 +950,7 @@ def main()
   parser.parse!
 
   # get directory of script
-  script_path = File.expand_path(File.dirname(__FILE__))
-
-  # extract times if requested
-  if $options[:extract_times]
-    extract_times($options[:extract_times], true)
-    exit(0)
-  end
+  $script_path = File.expand_path(File.dirname(__FILE__))
 
   # a lot can be inferred once we have the workdir
   $workdir     = $options[:workdir] ? $options[:workdir] : "temp"
@@ -993,8 +1015,8 @@ def main()
   basename     = File.basename(source, ext)
   lastpath     = File.split(File.split(source)[0])[1]
   source_path  = File.expand_path(source)
-  k3_root_path = File.join(script_path, "..", "..", "..")
-  common_root_path  = File.join(k3_root_path, "..")
+  $k3_root_path = File.expand_path(File.join($script_path, "..", "..", ".."))
+  common_root_path  = File.expand_path(File.join($k3_root_path, ".."))
   mosaic_path  = File.join(common_root_path, "K3-Mosaic")
   mosaic_path  = $options[:mosaic_path] ? $options[:mosaic_path] : mosaic_path
 
@@ -1015,7 +1037,7 @@ def main()
   dbt_path     = File.join(test_path, dbt_plat) # dbtoaster path
   dbt_lib_path = File.join(dbt_path, "lib", "dbt_c++")
 
-  nice_name, query =
+  $nice_name, query =
     if match = basename.match(/query(.*)/)
       [lastpath + match.captures[0], match.captures[0]]
     else
@@ -1024,18 +1046,18 @@ def main()
 
   $options[:query] = query unless $options[:query]
 
-  k3_name = nice_name + ".k3"
+  k3_name = $nice_name + ".k3"
   k3_path = File.join($workdir, k3_name)
 
-  k3_cpp_name = nice_name + ".cpp"
+  k3_cpp_name = $nice_name + ".cpp"
   k3_cpp_path = File.join($workdir, k3_cpp_name)
 
-  dbt_name = "dbt_" + nice_name
+  dbt_name = "dbt_" + $nice_name
   dbt_name_hpp = dbt_name + ".hpp"
 
-  server_url = "mddb2:5000"
+  $server_url = "mddb2:5000"
 
-  bin_file = nice_name
+  bin_file = $nice_name
   bin_path = File.join($workdir, bin_file)
   dbt_results = []
 
@@ -1053,57 +1075,57 @@ def main()
 
   # options to fetch cpp/binary (ie. all) given a uid
   if $options[:fetch_cpp]
-    wait_and_fetch_remote_compile(server_url, nil, k3_cpp_name, nice_name, uid)
+    wait_and_fetch_remote_compile(nil, k3_cpp_name, uid)
   elsif $options[:fetch_bin]
-    wait_and_fetch_remote_compile(server_url, bin_file, k3_cpp_name, nice_name, uid)
+    wait_and_fetch_remote_compile(bin_file, k3_cpp_name, uid)
   end
 
   # check for doing everything remotely
   if !$options[:compile_local] && !$options[:create_local] && ($options[:create_k3] || $options[:compile_k3])
       # only block if we need to ie. if we have deployment of some source
       block_on_compile = $options[:deploy_k3] || $options[:run_mode] == :local || $options[:dots]
-      uid = run_create_compile_k3_remote(server_url, bin_file, block_on_compile, k3_cpp_name, k3_path, nice_name)
+      uid = run_create_compile_k3_remote(bin_file, block_on_compile, k3_cpp_name, k3_path)
   else
     if $options[:create_k3]
       if $options[:create_local]
-        run_create_k3_local(k3_cpp_name, k3_cpp_path, k3_root_path, k3_path, script_path)
+        run_create_k3_local(k3_cpp_name, k3_cpp_path, k3_path)
       else
         block_on_compile = $options[:compile_k3] || $options[:deploy_k3] || $options[:dots]
-        run_create_k3_remote(server_url, block_on_compile, k3_cpp_name, k3_path, nice_name)
+        run_create_k3_remote(block_on_compile, k3_cpp_name, k3_path)
       end
     end
     # if we're not doing everything remotely, we can only compile locally
     if $options[:compile_k3]
-        run_compile_k3_local(bin_file, k3_path, k3_cpp_name, k3_cpp_path, k3_root_path, script_path)
+        run_compile_k3_local(bin_file, k3_path, k3_cpp_name, k3_cpp_path)
     end
   end
 
   if $options[:deploy_k3]
     if $options[:dry_run]
-      role_path = if $options[:raw_yaml_file] then $options[:raw_yaml_file] else File.join($workdir, nice_name + "_local.yaml") end
-      gen_yaml(role_path, script_path) unless $options[:raw_yaml_file]
+      role_path = if $options[:raw_yaml_file] then $options[:raw_yaml_file] else File.join($workdir, $nice_name + "_local.yaml") end
+      gen_yaml(role_path) unless $options[:raw_yaml_file]
     elsif $options[:run_mode] == :local
-      run_deploy_k3_local(bin_path, nice_name, script_path)
+      run_deploy_k3_local(bin_path)
     else
-      prof = $options[:profile] == :perf
+      prof = $options[:perf_profile]
       freq = if $options.has_key?(:perf_frequency) then $options[:perf_frequency] else '' end
-      run_deploy_k3_remote(uid, server_url, bin_path, nice_name, script_path, prof, freq)
+      run_deploy_k3_remote(uid, bin_path, prof, freq)
     end
   end
 
   # options to fetch to job results
   if $options[:fetch_results]
-    wait_and_fetch_results(5, jobid, server_url, nice_name, script_path)
+    wait_and_fetch_results(5, jobid)
   end
 
   # post-process latency files
   if $options[:process_latencies]
-    post_process_latencies(jobid, $options[:process_latencies], script_path)
+    post_process_latencies(jobid, $options[:process_latencies])
   end
 
   #plot messages
   if $options[:plot_messages]
-    plot_messages(jobid, nice_name, script_path)
+    plot_messages(jobid)
   end
 
   if $options[:compare]
@@ -1113,8 +1135,18 @@ def main()
   end
 
   if $options[:ktrace]
-    run_ktrace(script_path, jobid)
+    run_ktrace(jobid)
   end
+
+  # extract times if requested
+  if $options[:extract_times]
+    sandbox = $options[:extract_times]
+    (_, trig_times, _) = extract_times($options[:extract_times], true)
+    if $options[:perf_profile]
+      perf_flame_graph(sandbox, trig_times)
+    end
+  end
+
 end
 
 main
