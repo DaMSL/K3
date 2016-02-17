@@ -10,7 +10,7 @@ $options = {
   :dry_run        => false,
   :workdir        => ".",
   :result_file    => "results.csv",
-  :num_machines   => 8, #qp-hd[1-9]$
+  :mach_limit     => [:num_machines, 8], # or :per_host
   :queries        => ["1","3","4","6","11a","12","17"],
   :scale_factors  => ["0.1","1", "10"],
   :switch_counts  => [1, 2, 4, 8, 16, 32, 64],
@@ -19,8 +19,13 @@ $options = {
   :trials         => 3,
   :rebatch        => nil,
   :sleep_time     => nil,
-  :backfill_files => []
+  :backfill_files => [],
+  :use_hms        => false # by default
 }
+
+$script_path = File.expand_path(File.dirname(__FILE__))
+$k3_path     = File.expand_path(File.join($script_path, "..", "..", ".."))
+$common_path = File.expand_path(File.join($k3_path, ".."))
 
 # Lifted from StackOverflow. Duplicate-Aware Array subtraction.
 class Array
@@ -34,48 +39,54 @@ class Array
 end
 
 # Run a single configuration
-def run_trial(sf, query, switches, nodes, perhost)
+def run_trial(sf, query, switches, nodes, perhost, nmask)
   # Keep a seperate output file for the trial
   trial_id = "sf-#{sf}-query-#{query}-#{switches}-switch-#{nodes}-nodes-#{perhost}-perhost"
   output_path = File.join($options[:workdir], "#{trial_id}.out")
   puts "************ #{trial_id} ***************"
 
   # Construct a call to run.rb
-  corrective_opt = $options[:correctives] ? "" : "--no-correctives"
+  query_workdir = File.join($options[:workdir], "tpch#{query}")
+  corrective_opt = $options[:correctives] ? "--corrective" : ""
   batch_opt = $options[:rebatch] ? "--batch-size #{$options[:rebatch]}" : ""
   sleep_opt = $options[:sleep_time] ? "--msg-delay #{$options[:sleep_time]}" : ""
-  cmd = "./tools/scripts/mosaic/run.rb -5"\
-	" -w /local/mosaic/tpch#{query}/"\
-	" -p /local/data/tpch#{sf}g-fpb/"\
-	" -s #{switches}"\
-	" -n #{nodes}"\
-	" --perhost #{perhost}"\
-	" --query #{query}"\
-	" --dots"\
-	" --nmask \".*hd[1-9]$\""\
-	" --compile-local"\
-	" #{corrective_opt}"\
-	" #{batch_opt}"\
-	" #{sleep_opt}"\
-	" --map-overlap 0"\
-	" ../K3-Mosaic/tests/queries/tpch/query#{query}.sql"\
-	" 2>&1 | tee #{output_path}"
+  cmd = "#{File.join($script_path, "run.rb")} -5"\
+  " -w #{query_workdir}/"\
+  " -p /local/data/tpch#{sf}g-fpb/"\
+  " -s #{switches}"\
+  " -n #{nodes}"\
+  " --perhost #{perhost}"\
+  " --query #{query}"\
+  " --nmask #{nmask}"\
+  " --compile-local"\
+  " #{corrective_opt}"\
+  " #{batch_opt}"\
+  " #{sleep_opt}"\
+  " #{File.join($common_path, "K3-Mosaic/tests/queries/tpch/query#{query}.sql")}"\
+  " 2>&1 | tee #{output_path}"
 
   # Run and extract time upon success. Time of -1 for failure
-  time = -1
-  msg = ""
+  time = s_mean = s_std_dev = n_mean = n_std_dev = -1
+  msg = "FAILED!"
   if system(cmd)
-    time = `cat #{output_path} | grep time.*ms.*`.strip.split(" ")[-1].to_i
-    msg = "Time: #{time} (ms)"
-    if time == 0
-      time = -1
-      msg = "FAILED!"
+    # the job will be the highest in the workdir
+    job_num = 0
+    Dir.glob(File.join(query_workdir, "job_*")) do |dir|
+      job = /.*job_(.*)$/.match(dir)[1].to_i
+      job_num = job > job_num ? job : job_num
     end
-  else
-    msg = "FAILED!"
+    job_dir = File.join(query_workdir, "job_#{job_num}")
+    time_file = File.join(job_dir, "time.txt")
+    if File.exist?(time_file)
+      s = File.read(time_file)
+      regex = /time: (.*)\n.*mean:([,]*),.*std_dev:(.*)\n.*mean:([,]*),.*std_dev:(.*)$/m
+      m = regex.match(s)
+      time = m[0]; n_mean = m[1]; n_std_dev = m[2]; s_mean = m[3]; s_std_dev = m[4]
+      msg = "Time: #{time} (ms)"
+    end
   end
   puts "------------ #{msg}  ---------------"
-  log_csv(sf, query, switches, nodes, time)
+  log_csv(sf, query, switches, nodes, perhost, n_mean, n_std_dev, s_mean, s_std_dev, time)
 end
 
 # Backup the results of a previous run, if necessary
@@ -106,6 +117,7 @@ def parse_args()
     opts.on("-s", "--switch-counts x,y,z", Array, "List of switch configs to run") {|s| $options[:switch_counts] = s.map {|x| x.to_i}}
     opts.on("-t", "--trials [INT]", "Number of trials per configuration") {|s| $options[:trials] = s.to_i}
     opts.on("-b", "--backfill x,y,z",Array, "Backfill mode. Fill gaps in result files.") {|s| $options[:backfill_files] = s}
+    opts.on("-h", "--use-hms", "Allow usage of HM machines") {$options[:use_hms] = true}
   end
   parser.parse!
 end
@@ -126,10 +138,10 @@ def mk_workdir()
 end
 
 # Append an entry to the result csv file
-def log_csv(sf, query, switches, nodes, time)
+def log_csv(sf, query, switches, nodes, perhost, n_mean, n_stdev, s_mean, s_stdev, time)
   csv_path = File.join($options[:workdir], $options[:result_file])
   CSV.open(csv_path, "a") do |csv|
-    csv << [sf, query, switches, nodes, time]
+    csv << [sf, query, switches, nodes, perhost, n_mean, n_stdev, s_mean, s_stdev, time]
   end
 end
 
@@ -150,16 +162,16 @@ def main()
   # Initialization
   parse_args()
 
-  # Materialize an array of desired trial configurations 
-  qs = $options[:queries]
-  sfs = $options[:scale_factors]
-  scs = $options[:switch_counts]
-  ncs = $options[:node_counts]
-  ts = $options[:trials]
+  # Materialize an array of desired trial configurations
+  queries = $options[:queries]
+  scale_factors = $options[:scale_factors]
+  sw_counts = $options[:switch_counts]
+  nd_counts = $options[:node_counts]
+  trials = $options[:trials]
   desired = []
-  
-  for (query, sf, switch_count, node_count) in qs.product(sfs, scs, ncs)
-    for _ in (1..ts)
+
+  for (query, sf, switch_count, node_count) in queries.product(scale_factors, sw_counts, nd_counts)
+    for _ in (1..trials)
       desired << $headers[0...-1].zip([sf, query, switch_count, node_count].map {|x| x.to_s}).to_h
     end
   end
@@ -167,7 +179,7 @@ def main()
   # Use backfill files to determine remaining trials
   completed = find_successes()
   remaining = desired.subtract_once(completed)
-  
+
   if $options[:backfill_files] != []
     puts "--- Backfill --"
     puts "\tDesired: #{desired.length}"
@@ -191,8 +203,24 @@ def main()
   log_csv(*$headers)
 
   for config in remaining
-    datanodes_per_host = config["#nodes"].to_i / $options[:num_machines]
-    run_trial(*config.values, datanodes_per_host)
+    per_host = if $options[:mach_limit][0] == :per_host
+                            $options[:mach_limit][1]
+                         else
+                          config["#nodes"].to_i / $options[:mach_limit][1]
+                         end
+    nodes = config["#nodes"]
+    num_mach = nodes / per_host
+    nmask = "^(qp-hd([6,7,9]|1[0,2-5]))" # default hd mask
+    if num_mach > 8
+      if $options[:use_hms]
+        nmask += "|(qp-hm.*)" # allow hms as well
+      else
+        puts "#{num_mach} machines requested, but no HMs available. Skipping test..."
+        next
+      end
+    end
+    nmask += ")$"
+    run_trial(*config.values, per_host, nmask)
   end
 end
 
