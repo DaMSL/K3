@@ -316,7 +316,14 @@ def create_dist_file(args):
     k3_roles.append(('Master', extra_machines[0], 1, None, master_env))
     k3_roles.append(('Timer',  extra_machines[1], 1, None, timer_env))
 
-    k3_roles.append(('Nodes', args.nmask, num_nodes, args.perhost, node_env))
+    # default node mask uses only hds
+    nmask = "^(qp-hd(([6-7,9])|(1[0,2-5]))"
+    if args.use_hm:
+        nmask += "|qp-hm)$"
+    else:
+        nmask += ")$"
+        
+    k3_roles.append(('Nodes', nmask, num_nodes, args.perhost, node_env))
 
     launch_roles = []
     for (name, addr, peers, perhost, peer_envs) in k3_roles:
@@ -346,7 +353,7 @@ def main():
                         dest="num_switches", default=1)
     parser.add_argument("-n", "--nodes", type=int, help="number of nodes",
                         dest="num_nodes", default=4)
-    parser.add_argument("--nmask", type=str, help="mask for nodes", default="^.*hd(([6-7,9])|(1[0,2-5]))$")
+    parser.add_argument("--use-hm", dest="use_hm", action='store_true', help="use HM nodes", default=False)
     parser.add_argument("--perhost", type=int, help="peers per host", default=None)
 
     parser.add_argument("--csv_path", type=str, help="path of csv data source", default=None)

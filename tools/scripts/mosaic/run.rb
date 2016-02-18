@@ -239,7 +239,7 @@ def gen_yaml(role_path)
   cmd = ""
   cmd << "--switches " << $options[:num_switches].to_s << " " if $options[:num_switches]
   cmd << "--nodes " << $options[:num_nodes].to_s << " " if $options[:num_nodes]
-  cmd << "--nmask " << $options[:nmask] << " " if $options[:nmask]
+  cmd << "--use-hm " if $options[:use_hm]
   cmd << "--perhost " << $options[:perhost].to_s << " " if $options[:perhost]
   cmd << "--tpch_query " << $options[:query] << " " if $options[:query]
   if $options[:tpch_data_path]
@@ -865,12 +865,10 @@ def main()
     opts.on("--debug", "Debug mode") { $options[:debug] = true }
     opts.on("--json_debug", "Debug queries that won't die") { $options[:json_debug] = true }
     opts.on("--perhost [NUM]", Integer, "How many peers to run per host") {|i| $options[:perhost] = i}
-    opts.on("--nmask [MASK]", String, "Mask for node deployment") {|s| $options[:nmask] = s}
-    opts.on("--smask [MASK]", String, "Mask for switch deployment") {|s| $options[:smask] = s}
+    opts.on("--use-hm", "Use HM nodes") {$options[:use_hm] = true}
     opts.on("--uid [UID]", String, "UID of file") {|s| $options[:uid] = s}
     opts.on("--jobid [JOBID]", String, "JOBID of job") {|s| $options[:jobid] = s}
     opts.on("--mosaic-path [PATH]", String, "Path for mosaic") {|s| $options[:mosaic_path] = s}
-    opts.on("--highmem", "High memory deployment (HM only)") { $options[:nmask] = 'qp-hm.'}
     opts.on("--brew", "Use homebrew (OSX)") { $options[:osx_brew] = true }
     opts.on("--run-local", "Run locally without mesos") { $options[:run_mode] = :local }
     opts.on("--create-local", "Create the cpp file locally") { $options[:create_local] = true }
