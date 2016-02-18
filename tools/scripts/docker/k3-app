@@ -21,8 +21,7 @@ RUN apt-get install -y flex bison libelf-dev libaudit-dev libdw-dev binutils-dev
   cd linux-3.13/tools/perf && make && make install && \
   cp perf /usr/bin && \
   cp libperf.a /usr/lib && \
-  cd / && rm -Rf /linux-3.13 && \
-  apt-get remove -y flex bison libelf-dev libaudit-dev libdw-dev
+  cd / && rm -Rf /linux-3.13
 
 # Install jemalloc
 RUN wget https://github.com/jemalloc/jemalloc/releases/download/$JEMALLOC_VER/jemalloc-$JEMALLOC_VER.tar.bz2 && \
