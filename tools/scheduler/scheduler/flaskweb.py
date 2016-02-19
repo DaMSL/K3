@@ -1515,7 +1515,7 @@ if __name__ == '__main__':
     threadCompiler.start()
 
     logger.info("[FLASKWEB] Starting FlaskWeb Server...")
-    socketio.run(webapp, host='0.0.0.0', port=port, use_reloader=False)
+    socketio.run(webapp, host='192.168.0.22', port=port, use_reloader=False)
     webserverTerminate.clear()
     initSocketIO = False
 
