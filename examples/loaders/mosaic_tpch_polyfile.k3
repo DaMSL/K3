@@ -79,8 +79,8 @@ control DeleteWindow[window_elem_fn: expr]
 // Schema types for PSV loading.
 typedef customer_r = { rb:int, rc:string, rd:string, re:int, rf:string, rg:real, rh:string, ri:string }
 typedef lineitem_r = { rb:int, rc:int, rd:int, re:int, rf:real, rg:real, rh:real, ri:real, rj:string,
-                       rk:string, rl:int, rm:int, rn:int, ro:string, rp:string, rq:string }
-typedef orders_r   = { rb:int, rc:int, rd:string, re:real, rf:int, rg:string, rh:string, ri:int, rj:string }
+                       rk:string, rl:int @::TPCHDate, rm:int @::TPCHDate, rn:int @::TPCHDate, ro:string, rp:string, rq:string }
+typedef orders_r   = { rb:int, rc:int, rd:string, re:real, rf:int @::TPCHDate, rg:string, rh:string, ri:int, rj:string }
 typedef part_r     = { rb:int, rc:string, rd:string, re:string, rf:string, rg:int, rh:string, ri:real, rj:string }
 typedef partsupp_r = { rb:int, rc:int, rd:int, re:real, rf:string }
 typedef supplier_r = { rb:int, rc:string, rd:string, re:int, rf:string, rg:real, rh:string }
