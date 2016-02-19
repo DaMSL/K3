@@ -5,7 +5,7 @@ import enum
 
 
 heartbeat_delay = 60  # secs. move to common
-gc_delay = 15
+gc_delay = 300
 offer_wait = 5
 
 

@@ -75,13 +75,13 @@ def executorInfo(k3job, tnum, webaddr): #, jobid, binary_url, volumes=[], enviro
   command = mesos_pb2.CommandInfo()
 
   if DEBUG_EXECUTOR:
-    command.value = '$MESOS_SANDBOX/k3executor'
+    command.value = 'python $MESOS_SANDBOX/k3executor.py'
     exec_binary = command.uris.add()
-    exec_binary.value = "%s/fs/k3executor" % webaddr
+    exec_binary.value = "%s/fs/k3executor.py" % webaddr
     exec_binary.executable = True
     exec_binary.extract = False
   else:
-    command.value = 'k3/k3executor'
+    command.value = 'python k3/k3executor.py'
 
   k3_binary = command.uris.add()
   k3_binary.value = k3job.binary_url

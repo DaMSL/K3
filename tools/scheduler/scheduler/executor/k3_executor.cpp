@@ -48,6 +48,11 @@ struct SeqFile {
   std::list<string> tables;;
 };
 
+struct Outpath {
+  string var;
+  string prefix;
+  string suffix;
+};
 
 // exec -- exec system command, pipe to stdout, return exit code
 int exec (const char * cmd)  {
@@ -219,6 +224,7 @@ public:
       k3_cmd += " --result_path $MESOS_SANDBOX --result_var " + hostParams["resultVar"].as<string>();
     }
 
+    vector<Outpath> outpaths;
     string datavar, datapath;
     string datapolicy = "default";
     int peerStart = 0;
@@ -259,6 +265,13 @@ public:
               f.policy = d["policy"].as<string>();
               dataFiles.push_back(f);
             }
+        }
+        else if (key == "outpaths") {
+          Node n = param->second;
+          string var = n["var"].as<string>();
+          string prefix = n["prefix"].as<string>();
+          string suffix = n["suffix"].as<string>();
+          outpaths.push_back(Outpath{var, prefix, suffix});
         }
         else if (key == "seq_files") {
           std::cout << "The Seq Files:\n" << YAML::Dump(param->second) << std::endl;
@@ -505,6 +518,13 @@ public:
         // Mosaic seqfile stuff
         thispeer["seqfiles"] = seqFileYamlByPeer[i];
         thispeer["inorder"] = inorderVarByPeer[i];
+
+        // Mosaic warmup stuff
+        thispeer["peer_idx"] = i;
+        for (const auto& op : outpaths) {
+          thispeer[op.var] = op.prefix + std::to_string(i) + op.suffix;
+        }
+
         // Mosaic specific logging hack
         peerParams["eventlog"] = "eventlog_" + std::to_string(i) + ".csv";
         peerParams["msgcountlog"] = "msgcountlog_" + std::to_string(i) + ".csv";

@@ -28,7 +28,7 @@ echo "export K3_FLASK=/k3/K3/tools/scheduler/scheduler" >> /env
 echo "alias ll='ls -al --color'" >> /env
 
 #  RUN COMMAND HERE (edit as needed)
-echo "alias run='cd /k3/K3/tools/scheduler/scheduler && python flaskweb.py -m zk://qp2:2181,qp4:2181,qp6:2181/mesos -d /web --ip 192.168.0.11 -p 5000 -c'" >> /env
+echo "alias run='cd /k3/K3/tools/scheduler/scheduler && python flaskweb.py -m zk://qp2:2181,qp4:2181,qp6:2181/mesos -d /web --ip 192.168.0.22 -p 5000 -c'" >> /env
 
 #  SYNC COMMAND HERE (use/edit as/if needed)
 echo "alias sync='cp -ruT /ring/k3/tools/scheduler/scheduler/ /k3/K3/tools/scheduler/scheduler/'" >> /env
