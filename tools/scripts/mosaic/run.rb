@@ -882,10 +882,10 @@ def main()
     opts.on("--moderate2",  "Query is of moderate skew (and size), class 2") { $options[:skew] = :moderate2}
     opts.on("--extreme",  "Query is of extreme skew (and size)") { $options[:skew] = :extreme}
     opts.on("--dry-run",  "Dry run for Mosaic deployment (generates K3 YAML topology)") { $options[:dry_run] = true}
-    opts.on("--full-json", "Turn on JSON logging for ktrace") { $options[:logging] = :full }
-    opts.on("--final-json", "Turn on final JSON logging for ktrace") { $options[:logging] = :final }
+    opts.on("--json-full", "Turn on JSON logging for ktrace") { $options[:logging] = :full }
+    opts.on("--json-final", "Turn on final JSON logging for ktrace") { $options[:logging] = :final }
     opts.on("--json-regex [REGEX]", "Regex pattern for JSON logging") { |s| $options[:json_regex] = s}
-    opts.on("--no-json", "Turn off JSON logging for ktrace") { $options[:logging] = :none }
+    opts.on("--json-none", "Turn off JSON logging for ktrace") { $options[:logging] = :none }
     opts.on("--perf-profile", "Turn on perf profiling") { $options[:perf_profile] = true}
     opts.on("--perf-frequency [NUM]", String, "Set perf profiling frequency") { |s| $options[:perf_frequency] = s }
     opts.on("--core-dump", "Turn on core dump for distributed run") { $options[:core_dump] = true }

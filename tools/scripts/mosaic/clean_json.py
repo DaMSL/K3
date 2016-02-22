@@ -141,7 +141,7 @@ def inplace_process(prefix):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("json_files", type=str, nargs='*', help="Specify path")
-    parser.add_argument("--prefix_path", type=str, help="Specify prefix to output", default="")
+    parser.add_argument("--prefix-path", type=str, help="Specify prefix to output", default="")
     parser.add_argument("--inplace", type=str, help="Modify files in-place", default="")
     args = parser.parse_args()
     if args.inplace != "":
