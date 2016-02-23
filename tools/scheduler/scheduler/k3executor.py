@@ -53,14 +53,16 @@ ALL_TABLES = ["sentinel","customer","lineitem","orders","part","partsupp","suppl
 
 
 def executecmd(cmd):
-  task = proc.Popen(cmd, shell=True,
-          stdin=None, stdout=proc.PIPE, stderr=proc.STDOUT)
+  task = subprocess.Popen(cmd, shell=True,
+          stdin=None, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
   stdout, stderr = task.communicate()
   return stdout.decode()
 
 
 def isTrue(boolstr):
   return boolstr.upper() == 'TRUE'
+
+
 
 class CompilerExecutor(mesos.interface.Executor):
   def __init__(self):
@@ -365,7 +367,24 @@ class CompilerExecutor(mesos.interface.Executor):
             # driver.sendStatusUpdate(self.status)
             break
 
-      # TODO:  Package Sandbox
+      # Package Sandbox
+      tarfile = app_name + "_" + str(self.job_id) + "_" + self.host + ".tar"
+      tar_cmd = 'cd $MESOS_SANDBOX && tar -cf ' + tarfile + " --exclude='k3executor.py' *"
+      archive_endpoint = webaddr + app_name + "/" + str(self.job_id) + "/archive"
+      post_curl = 'cd $MESOS_SANDBOX && curl -i -H "Accept: application/json" -X POST '
+      curl_cmd  = post_curl + '-F "file=@' + tarfile + '" ' + archive_endpoint
+      curl_output = post_curl + '-F "file=@stdout_' + self.host + '" '  + archive_endpoint
+
+      logging.debug("POST-PROCESSING:")
+
+      output = executecmd(tar_cmd)
+      logging.debug('TAR CMD: %s\n%s', tar_cmd, output)
+
+      output = executecmd(curl_cmd)
+      logging.debug('CURL CMD: %s\n%s', curl_cmd, output)
+
+      output = executecmd(curl_output)
+      logging.debug('CURL OUTPUT: %s\n%s', curl_output, output)
 
       exitCode = proc.returncode
       self.success = (exitCode == 0)
