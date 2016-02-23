@@ -38,9 +38,14 @@ import logging
 logging.basicConfig(level=logging.DEBUG)
 
 DataFile = namedtuple('datafile', 'path varName policy')
+Outpath  = namedtuple('outpath', 'var prefix suffix')
+SeqFile  = namedtuple('seqfile', 'num_switches data_dir switch_indexes tables')
+
 
 
 BUFFER_SIZE = 256
+
+ALL_TABLES = ["sentinel","customer","lineitem","orders","part","partsupp","supplier"]
 
 
 # DEBUG = False
@@ -83,20 +88,17 @@ class CompilerExecutor(mesos.interface.Executor):
 
       logging.debug("Called: run_task()")
       logging.debug("run_task()  via print")
-
       self.status.task_id.value = task.task_id.value
       self.job_id = task.task_id.value.decode()
 
       # Notify the compiler launcher it's running
       self.sendTaskStatus(driver, mesos_pb2.TASK_RUNNING, "%s is RUNNING" % str(self.job_id))
 
-
       #  Start Task Operations
       logging.debug("K3 Task Preparing to launch")
 
       #  Grab the packed data (in YAML format)
       hostParams = yaml.load(task.data)
-
       logging.debug("DATA RECEIVED FROM DISPATCHER:")
       for k, v in hostParams.items():
         logging.debug('     %s: %s', str(k), str(v))
@@ -104,25 +106,11 @@ class CompilerExecutor(mesos.interface.Executor):
       app_name = hostParams["binary"]
       webaddr  = hostParams["archive_endpoint"]
 
-
-
       # Build the K3 Command which will run inside this container
-      k3_cmd = "cd $MESOS_SANDBOX && ./" + hostParams["binary"]
-      if "logging" in hostParams:
-          k3_cmd += " -l INFO "
-
-      if "jsonlog"  in hostParams:
-          executecmd("mkdir $MESOS_SANDBOX/json");
-          k3_cmd += " -j json "
-
-      if "jsonfinal" in hostParams:
-          k3_cmd += " --json_final_only "
-
-      if "resultVar" in hostParams:
-          k3_cmd += " --result_path $MESOS_SANDBOX --result_var " + hostParams["resultVar"]
-
+      k3_cmd = ''
 
       # Create host-specific set of parameters (e.g. peers, local data files, etc...\
+      #  NOTE: The following keys must appear in provided data from dispatcher
       try:
         # peerParams = hostParams["peers"]
         globalpeers = hostParams["peers"]
@@ -138,17 +126,66 @@ class CompilerExecutor(mesos.interface.Executor):
         logging.warning('Key, %s, not found in hostParameters' % key)
 
 
+      #  NOTE: Remaining Keys are optional
+      if "perf_profile" in hostParams:
+        frequency = hostParams["perf_frequency"] if "perf_frequency" in hostParams else '10'
+        k3_cmd += "perf record -F " + frequency + " -a --call-graph dwarf -- ";
+
+      k3_cmd += "./" + hostParams["binary"]
+      if "logging" in hostParams:
+          k3_cmd += " -l INFO "
+
+      if "jsonlog"  in hostParams:
+          executecmd("mkdir $MESOS_SANDBOX/json");
+          k3_cmd += " -j json "
+
+      if "jsonfinal" in hostParams:
+          k3_cmd += " --json_final_only "
+
+      if "resultVar" in hostParams:
+          k3_cmd += " --result_path $MESOS_SANDBOX --result_var " + hostParams["resultVar"]
+
+      if 'outpaths' in hostParams:
+          var = hostParams['outpaths']['var']
+          pre = hostParams['outpaths']['prefix']
+          suf = hostParams['outpaths']['suffix']
+          mosaicOutpath = OutPath(var, pre, suf)
+      else:
+          mosaicOutpath = None
+
+      if 'seq_files' in hostParams:
+          ns  = hostParams['seq_files']["num_switches"]
+          dd  = hostParams['seq_files']["data_dir"]
+          si  = hostParams['seq_files']["switch_indexes"]
+          tb  = hostParams['seq_files']["tables"]
+          if len(si) != len(localpeers):
+            logging.error("Invalid deployment: number of switch indexes does not match number of local peers")
+            logging.error("Switch indexes size: %d", len(si))
+            logging.error("Peers size:          %d", len(globalpeers))
+            self.sendTaskStatus(driver, mesos_pb2.TASK_FAILED, "Invalid Mosaic Deployment (switch indexes != peers)")
+            return
+          mosaicSeqfile = SeqFile(ns, dd, si, tb)
+          logging.debug('SEQ File Data: ')
+          logging.debug('   Num switches:   %s', str(mosaicSeqfile.num_switches))
+          logging.debug('   Data Dir    :   %s', str(mosaicSeqfile.data_dir))
+          logging.debug('   Switch Indexex:   %s', str(mosaicSeqfile.switch_indexes))
+          logging.debug('   Tables        :   %s', str(mosaicSeqfile.tables))
+      else:
+          mosaicSeqfile = None
+
+      ulimit = "core_dump" in hostParams
+  
     # DATA ALLOCATION: Distribute input files among peers 
       #    (1 file list per local peer)
       inputFiles = [{} for i in range(len(localpeers))]
 
       logging.debug(" Preparing %d  filelists", len(inputFiles))
 
+      myTotalFiles = 0
       for dataFile in dataFilelist:
         logging.debug('  Processing datafile dir:   %s', dataFile.path)
 
         try:
-          myTotalFiles = 0
           srcfiles = sorted([os.path.join(dataFile.path, f) for f in os.listdir(dataFile.path)])
           logging.debug('   %d source files', len(srcfiles))
 
@@ -188,6 +225,49 @@ class CompilerExecutor(mesos.interface.Executor):
         logging.debug('  Peer #%d ', i)
         for k, v in p.items():
           logging.debug('     %d:  %s --> %s', i, str(k), str(v))
+
+    # Mosaic Seq Files
+      if mosaicSeqfile is not None:
+        inorderVarByPeer = []
+        switchToPeer = {}
+        seqFileYamlByPeer = {i: [] for i in mosaicSeqfile.switch_indexes}
+        peerFilesList = {idx : {t: [] for t in ALL_TABLES} for idx in mosaicSeqfile.switch_indexes}
+
+        for idx, si in enumerate(mosaicSeqfile.switch_indexes):
+          filename = os.path.join(mosaicSeqfile.data_dir, "mux", str(mosaicSeqfile.num_switches), 'mux_' + str(si) + "_" + str(mosaicSeqfile.num_switches))
+          for tb in mosaicSeqfile.tables:
+            filename += "_" + tb;
+          filename += ".csv";
+          logging.info(' SeqFile:  %s', filename)
+          inorderVarByPeer.append(filename)
+          switchToPeer[si] = idx;
+
+
+        for table in ALL_TABLES:
+
+          path = os.path.join(mosaicSeqfile.data_dir, table)
+          if not os.path.exists(path):
+            self.sendTaskStatus(driver, mesos_pb2.TASK_FAILED, "Data Dir does not exist")
+            return          
+
+          for i, filepath in enumerate(sorted(os.listdir(path))):
+            for sw_index in mosaicSeqfile.switch_indexes:
+              if table == "sentinel" or (i % mosaicSeqfile.num_switches) == sw_index: 
+                peerFilesList[sw_index][table].append({'path': os.path.join(path, filepath)})
+                logging.debug('Switch:  %d  =>  %s', sw_index, filepath)
+
+        for idx in mosaicSeqfile.switch_indexes:
+          for table in ALL_TABLES:
+            seqFileYamlByPeer[idx].append({'seq': peerFilesList[idx][table]})
+
+        logging.debug("Seq file yaml per peer: ")
+        for k, v in  seqFileYamlByPeer.items():
+          logging.debug("   SeqFile %d: %s", k, str(v))
+
+        logging.debug("switchToPeer: ")
+        for k, v in  switchToPeer.items():
+          logging.debug("   Switch %d: %s", k, str(v))
+
 
     # Build Parameters for All peers (on this host)
       localMaster = localpeers[0]
@@ -230,6 +310,20 @@ class CompilerExecutor(mesos.interface.Executor):
         for var, flist in inputFiles[i].items():
           peerglobals[var] = [{'path': f} for f in flist]
 
+
+        # Mosaic outpath stuff
+        if mosaicOutpath is not None:
+          peerglobals["peer_idx"] = i;
+          peerglobals[mosaicOutpath.var] = mosaicOutpath.prefix + str(i) + mosaicOutpath.suffix;
+
+        # Mosaic seqfile stuff
+        if mosaicSeqfile is not None:
+          peerglobals["seqfiles"] = seqFileYamlByPeer[mosaicSeqfile.switch_indexes[i]]
+          peerglobals["inorder"] = inorderVarByPeer[i]
+
+          for logfile in ['eventlog', 'msgcountlog', 'routelog']:
+            peerglobals[logfile] = "%s_%d.csv" % (logfile, i)
+
         for k,v in peerglobals.items():
           logging.debug('    %s: %s', str(k), str(v))
 
@@ -243,16 +337,22 @@ class CompilerExecutor(mesos.interface.Executor):
       # Finish up processing
       k3_cmd += " > stdout_" + self.host + " 2>&1"
 
+      # Wrap the k3_cmd with a call to ulimit (if flagged)
+      if (ulimit):
+          k3_cmd = "bash -c 'ulimit -c unlimited && %s'" % k3_cmd
+
+      k3_cmd = "cd $MESOS_SANDBOX && " + k3_cmd;
       logging.info(" K3 CMD:\n   %s", k3_cmd)
 
-
+      if hostParams["me"][0] == hostParams["master"]:
+        logging.info("I am master")
+      logging.info("Launching K3.")
 
     # Start the service (in current thread with stderr/stdout redirected from Mesos)
       proc = subprocess.Popen(k3_cmd, shell=True,
                               stdin=None,
                               stdout=subprocess.PIPE,
                               stderr=subprocess.STDOUT)
-
 
       # Poll process for new output until finished; buffer output
       # NOTE: Buffered output reduces message traffic via mesos
@@ -264,13 +364,6 @@ class CompilerExecutor(mesos.interface.Executor):
             # self.status.data = self.buffer
             # driver.sendStatusUpdate(self.status)
             break
-
-        # # If buffer-size is reached: send update message
-        # if len(self.buffer) > BUFFER_SIZE:
-        #   self.status.data = self.buffer
-        #   driver.sendStatusUpdate(self.status)
-        #   self.buffer = ""
-
 
       # TODO:  Package Sandbox
 
