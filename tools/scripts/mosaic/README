@@ -1,0 +1,28 @@
+Mosaic script files
+
+--- Main ---
+run.rb: main mosaic compilation/deployment script
+gen_yaml.py: used by run.rb to create the yamls for each deployment
+routing_patterns.py: used by gen_yaml.py to create the specialized direct routing data for mosaic
+
+run_many.rb: deploy whole experiments using run.rb
+clean_json.py: convert K3's json output to be more readable (--inplace is best)
+create_fpb.rb: convert dbgen's .tbl files to fpb files for mosaic
+
+--- Experiments ---
+event_latencies.py: handle event latency graphs
+msgcounts.rb: process message counts
+
+--- Old ---
+ktrace_schema.sql: a bunch of sql functions for postgres for analyzing the protocol using
+                 ktrace data. Haven't used it in a while since the interpreter is better
+                 for debugging issues.
+demux_agenda.rb: Generate a multiplexed agenda file. Useful for running dbtoaster,
+                 since dbtoaster can't understand mosaic's binary format.
+mk_agenda.rb:    Similar role as above
+mk_deletion_agenda.k3: Somehow does the same thing
+
+
+
+
+
