@@ -274,8 +274,7 @@ def main()
     opts.on("--mux-only", "Mux file only") { $options[:mux_only] = true }
     opts.on("-1", '--one', 'Single set of SF files') { $options[:action] = :one }
     opts.on("-a", '--all', 'Many SF files') { $options[:action] = :all }
-    # for handline test ktrace data
-    opts.on("-r", "--recurse", "Input path: recursively search for files") { $options[:recurse] = true }
+    opts.on("--no-recurse", "Input path: recursively search for files") { $options[:recurse] = false }
     opts.on("-x", "--regex STR", "Regex test files") { |s| $options[:regex] = s }
     opts.on("-t", "--test", "Test data loading") { $options[:test] = true }
   end
