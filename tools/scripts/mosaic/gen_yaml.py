@@ -319,10 +319,10 @@ def create_dist_file(args):
     # default node mask uses only hds
     nmask = "^(qp-hd(([6-7,9])|(1[0,2-5]))"
     if args.use_hm:
-        nmask += "|qp-hm)$"
+        nmask += "|qp-hm.*)$"
     else:
         nmask += ")$"
-        
+
     k3_roles.append(('Nodes', nmask, num_nodes, args.perhost, node_env))
 
     launch_roles = []
