@@ -199,6 +199,7 @@ end
 
 # create files for a single scale factor
 def create_sf_files(in_path, out_path)
+  puts "--- Creating set of fpb files from #{in_path} in #{out_path}"
   FileUtils.mkdir_p(out_path) unless File.exists? out_path
   batch_path = File.join(out_path, 'batch.yaml')
 
@@ -227,6 +228,7 @@ end
 
 # create for all scale factors
 def create_all_sf_files(in_path, out_path)
+  puts "--- Creating all SF files from #{in_path} in #{out_path}"
   Dir.glob(File.join(in_path, "*")).sort.each do |f|
     next unless File.directory? f
     basename = File.basename(f)

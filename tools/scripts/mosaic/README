@@ -7,7 +7,9 @@ routing_patterns.py: used by gen_yaml.py to create the specialized direct routin
 
 run_many.rb: deploy whole experiments using run.rb
 clean_json.py: convert K3's json output to be more readable (--inplace is best)
+
 create_fpb.rb: convert dbgen's .tbl files to fpb files for mosaic
+distribute_files.sh: calls rsync to distribute all the fpb files
 
 --- Experiments ---
 event_latencies.py: handle event latency graphs
