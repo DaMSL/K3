@@ -846,7 +846,8 @@ def main()
     :logging    => :none,
     :perf_profile => false,
     :isobatch   => true,
-    :corrective => false
+    :corrective => false,
+    :compileargs => ""
   }
 
   uid = nil
@@ -915,11 +916,11 @@ def main()
     # Compile args synonyms
     opts.on("--compileargs [STRING]", "Pass arguments to compiler (distributed only)") { |s| $options[:compileargs] = s }
 
-    opts.on("--dmat",       "Use distributed materialization")                 { $options[:compileargs] = "#{$options[:compileargs]} --sparallel2stage sparallel2=True" }
-    opts.on("--dmat-debug", "Use distributed materialization (in debug mode)") { $options[:compileargs] = "#{$options[:compileargs]} --sparallel2stage sparallel2-debug=True" }
-    opts.on("--wmoderate",  "Skew argument")                                   { $options[:compileargs] = "#{$options[:compileargs]} --workerfactor hm=3 --workerblocks hd=4:qp3=4:qp4=4:qp5=4:qp6=4" }
-    opts.on("--wmoderate2", "Skew argument")                                   { $options[:compileargs] = "#{$options[:compileargs]} --workerfactor hm=3 --workerblocks hd=2:qp3=2:qp4=2:qp5=2:qp6=2" }
-    opts.on("--wextreme",   "Skew argument")                                   { $options[:compileargs] = "#{$options[:compileargs]} --workerfactor hm=4 --workerblocks hd=1:qp3=1:qp4=1:qp5=1:qp6=1" }
+    opts.on("--dmat",       "Use distributed materialization")                 { $options[:compileargs] += " --sparallel2stage sparallel2=True" }
+    opts.on("--dmat-debug", "Use distributed materialization (in debug mode)") { $options[:compileargs] += " --sparallel2stage sparallel2-debug=True" }
+    opts.on("--wmoderate",  "Skew argument")                                   { $options[:compileargs] += " --workerfactor hm=3 --workerblocks hd=4:qp3=4:qp4=4:qp5=4:qp6=4" }
+    opts.on("--wmoderate2", "Skew argument")                                   { $options[:compileargs] += " --workerfactor hm=3 --workerblocks hd=2:qp3=2:qp4=2:qp5=2:qp6=2" }
+    opts.on("--wextreme",   "Skew argument")                                   { $options[:compileargs] += " --workerfactor hm=4 --workerblocks hd=1:qp3=1:qp4=1:qp5=1:qp6=1" }
     opts.on("--process-latencies [SWITCH_REGEX]", "Post-processing on latency files") { |s| $options[:process_latencies] = s }
     opts.on("--latency-job-dir [PATH]", "Manual selection of job directory") { |s| $options[:latency_dir] = s }
     opts.on("--plot-messages", "Create message heat maps") { $options[:plot_messages] = true }
