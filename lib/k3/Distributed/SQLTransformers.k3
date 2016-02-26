@@ -10,15 +10,17 @@ include "Core/Optimization.k3"
 control SQL {
   () => ()
      +> {
+      declare peer_idx : mut int = 0  // Index of this peer in the peers collection.
+
       declare index_by_hash : forall a. a -> int = (\s -> (
-        let n = workers.size() in
+        let n = peers.size() in
         let h = (hash s) in
         ((h % n) + n) % n
       ))
      }
 }
 
-// Read values from the file at the specified path, sending each value to one of the 'workers' by round-robin.
+// Read values from the file at the specified path, sending each value to one of the 'peers' by round-robin.
 // After the file is exhausted, send punctuation to the specified trigger.
 control StreamRawFromFile [ lbl: label, path: expr, receive_trig: expr, punc_trig: expr ] {
   () => ( ($[lbl]_read_start, me) <- () )@IfMachineMaster
@@ -35,12 +37,12 @@ control StreamRawFromFile [ lbl: label, path: expr, receive_trig: expr, punc_tri
     trigger $[lbl]_read_loop: int = \i -> (
       if hasRead me $[lbl]_file_id
       then (
-        ($[receive_trig], (local_workers.at i).addr) <- doRead me $[lbl]_file_id;
-        ($[lbl]_read_loop, me) <- if i+1 < local_workers.size() then i+1 else 0
+        ($[receive_trig], (local_peers.at i).addr) <- doRead me $[lbl]_file_id;
+        ($[lbl]_read_loop, me) <- if i+1 < local_peers.size() then i+1 else 0
       )
       else (
         print ((atos me) ++ ": Done reading " ++ $[path]);
-        local_workers.iterate (\p -> ($[punc_trig], p.addr) <- () )
+        local_peers.iterate (\p -> ($[punc_trig], p.addr) <- () )
       )
     )
   }
@@ -50,21 +52,21 @@ control StreamRawFromFile [ lbl: label, path: expr, receive_trig: expr, punc_tri
 control PartitionByKey2 {
   ?e : collection ?t @Map
   => (((($.[e].group_by @:HGroupBy)
-                ((\v -> (workers.at (index_by_hash v.key)).addr) @:Projection)
+                ((\v -> (peers.at (index_by_hash v.key)).addr) @:Projection)
                 ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
                 empty $::[t] @Map) @:Fuse) @ManualFusion)
   +> { }
 
   ?e : collection ?t @IntMap
   => (((($.[e].group_by @:HGroupBy)
-                ((\v -> (workers.at (index_by_hash v.key)).addr) @:Projection)
+                ((\v -> (peers.at (index_by_hash v.key)).addr) @:Projection)
                 ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
                 empty $::[t] @IntMap) @:Fuse) @ManualFusion)
   +> { }
 
   ?e : collection ?t @StrMap
   => (((($.[e].group_by @:HGroupBy)
-                ((\v -> (workers.at (index_by_hash v.key)).addr) @:Projection)
+                ((\v -> (peers.at (index_by_hash v.key)).addr) @:Projection)
                 ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
                 empty $::[t] @StrMap) @:Fuse) @ManualFusion)
   +> { }
@@ -122,7 +124,7 @@ control DistributedGroupBy2 [ lbl : label, merge : expr ]
 
        // Receive punctuation indicating that the input stream is exhausted
        trigger $[lbl]_stream_punc: () = \_ -> (
-         workers.iterate (\p -> ($[lbl]_redist_punc, p.addr) <- () )
+         peers.iterate (\p -> ($[lbl]_redist_punc, p.addr) <- () )
        )
      }
 
@@ -140,9 +142,9 @@ control DistributedGroupBy2 [ lbl : label, merge : expr ]
     trigger $[lbl]_redistribute : () = \_ -> (
       (ignore (($.[Expr].group_by $.[groupF] $.[aggF] $.[accE])
                        .fold (\a -> \e -> (a.insert e; a)) (empty $::[KVT] @Map)
-              )@ShuffleByKey(dest_trig=[$ $[lbl]_merge])
+              ) @ShuffleByKey(dest_trig=[$ $[lbl]_merge])
       );
-      workers.iterate (\p -> ($[lbl]_redist_punc, p.addr) <- ())
+      peers.iterate (\p -> ($[lbl]_redist_punc, p.addr) <- ())
     )
 
     // Merge partial aggregates into global state
@@ -154,12 +156,12 @@ control DistributedGroupBy2 [ lbl : label, merge : expr ]
       )
     )
 
-    // Receive punctuation indicating that a worker is done sending partial aggregates
+    // Receive punctuation indicating that a peer is done sending partial aggregates
     trigger $[lbl]_redist_punc: () = \_ -> (
       ( $#[var] = $[lbl]_partials.fold (\acc -> \e -> ((acc.insert e); acc)) empty $::[KVT] @Collection);
-      ( print ($[|exprLabel 'lbl|] ++ " " ++ atos me ++ " worker group-by done") );
+      ( print ($[|exprLabel 'lbl|] ++ " " ++ atos me ++ " peer group-by done") );
       ( $[lbl]_next () )
-    ) @Barrier(lbl=[# $[lbl]_punc], count=[$ workers.size() ])
+    ) @Barrier(lbl=[# $[lbl]_punc], count=[$ peers.size() ])
   }
 }
 
@@ -194,7 +196,7 @@ control DistributedHashJoin2 [ lbl : label ]
 
        // Receive punctuation indicating that the input stream is exhausted
        trigger $[lbl]_lhs_stream_punc: () = \_ -> (
-         workers.iterate (\p -> ($[lbl]_lhs_punc, p.addr) <- () )
+         peers.iterate (\p -> ($[lbl]_lhs_punc, p.addr) <- () )
        )
 
        trigger $[lbl]_lhs_punc: () = \_ -> (
@@ -202,7 +204,7 @@ control DistributedHashJoin2 [ lbl : label ]
            {key: me, value: me}
            (\_ -> error (print "Missing Peer Master") )
            (\kv -> ($[lbl]_rhs_stream, kv.value) <- () )
-       ) @OnCounter(id=[# $[lbl]_peer_build_done], eq=[$ workers.size()], reset=[$ false], profile=[$ false])
+       ) @OnCounter(id=[# $[lbl]_peer_build_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
 
        declare $[lbl]_rhs_started: mut bool = false
        trigger $[lbl]_rhs_stream: () = \_ -> (
@@ -233,7 +235,7 @@ control DistributedHashJoin2 [ lbl : label ]
 
         // Receive punctuation indicating that the input stream is exhausted
         trigger $[lbl]_rhs_stream_punc: () = \_ -> (
-          workers.iterate (\p -> ($[lbl]_rhs_punc, p.addr) <- () )
+          peers.iterate (\p -> ($[lbl]_rhs_punc, p.addr) <- () )
         )
      }
 
@@ -251,12 +253,12 @@ control DistributedHashJoin2 [ lbl : label ]
                                         acc)))
                                     ($[|equijoinEmptyMap 'LKeyT.typ 'LQueryT.typ|]) )@ShuffleByKey(dest_trig=[$ $[lbl]_lhs_process_redistribute ])
          );
-         workers.iterate (\p -> ($[lbl]_lhs_punc, p.addr) <- () )
+         peers.iterate (\p -> ($[lbl]_lhs_punc, p.addr) <- () )
        )
 
        trigger $[lbl]_lhs_punc: () = \_ -> (
          ($[lbl]_rhs_redistribute, me) <- ()
-       ) @OnCounter(id=[# $[lbl]_peer_build_done], eq=[$ workers.size()], reset=[$ false], profile=[$ false])
+       ) @OnCounter(id=[# $[lbl]_peer_build_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
 
        trigger $[lbl]_rhs_redistribute : () = \_ -> (
          (ignore ( $.[RQueryE].fold (\acc -> \e ->
@@ -266,7 +268,7 @@ control DistributedHashJoin2 [ lbl : label ]
                                         acc)))
                                     ($[|equijoinEmptyMap 'RKeyT.typ 'RQueryT.typ|]) )@ShuffleByKey(dest_trig=[$ $[lbl]_rhs_process_redistribute])
           );
-          workers.iterate (\w -> ($[lbl]_rhs_punc, w.addr) <- () )
+          peers.iterate (\w -> ($[lbl]_rhs_punc, w.addr) <- () )
        )
      }
 
@@ -298,7 +300,7 @@ control DistributedHashJoin2 [ lbl : label ]
       ( print ($[|exprLabel 'lbl|] ++ " " ++ atos me ++ " peer equijoin done") );
       ( $[lbl]_lhs_ht = $[|equijoinEmptyMap 'LKeyT.typ 'LQueryT.typ|]);
       ( $[lbl]_next () )
-    ) @OnCounter(id=[# $[lbl]_rhs_done], eq=[$ workers.size()], reset=[$ false], profile=[$ false])
+    ) @OnCounter(id=[# $[lbl]_rhs_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
   }
 }
 

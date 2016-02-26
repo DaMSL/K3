@@ -56,10 +56,16 @@
                 {% for host in hostlist.all %}
                   <div class="row">
                     <div class="col-md-3">{{host}}</div>
-                    <div class="col-md-2"><label class="radio-inline"><input type="radio" value="master" {% if host in hostlist.master %}checked{%endif%} name="{{host}}">Master</label></div>
+                    <div class="col-md-2"><label class="checkbox-inline"><input class="checkbox-inline" type="checkbox" value="master" {% if host in hostlist.master %}checked{%endif%} name="role_{{host}}">Master</label></div>
+                    <div class="col-md-2"><label class="checkbox-inline"><input class="checkbox-inline" type="checkbox" value="worker" {% if host in hostlist.worker %}checked{%endif%} name="role_{{host}}">Worker</label></div>
+                    <div class="col-md-2"><label class="checkbox-inline"><input class="checkbox-inline" type="checkbox" value="client" {% if host in hostlist.client %}checked{%endif%} name="role_{{host}}">Client</label></div>
+
+
+<!--                    <div class="col-md-2"><label class="radio-inline"><input type="radio" value="master" {% if host in hostlist.master %}checked{%endif%} name="{{host}}">Master</label></div>
                     <div class="col-md-2"><label class="radio-inline"><input type="radio" value="worker" {% if host in hostlist.worker %}checked{%endif%} name="{{host}}">Worker</label></div>
                     <div class="col-md-2"><label class="radio-inline"><input type="radio" value="client" {% if host in hostlist.client %}checked{%endif%} name="{{host}}">Client</label></div>
                     <div class="col-md-2"><label class="radio-inline"><input type="radio" value="none" {% if host in hostlist.none %}checked{%endif%} name="{{host}}">None</label></div>
+-->
                   </div>
                 {% endfor %}
                 </div>

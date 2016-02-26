@@ -3,7 +3,6 @@ annotation Collection given type a, b, c, d
   provides lifted size : () -> int
     with effects \_ -> R[self]
 
-  // Erases the data structure without removing backing storage
   provides lifted clear : () -> ()
     with effects \_ -> [R[self]; W[self]]
 
@@ -28,16 +27,9 @@ annotation Collection given type a, b, c, d
   provides lifted extend : self -> ()
     with effects \col -> [R[self]; R[col]; W[self]]
 
-  provides lifted erase : content -> ()
-    with effects \elem -> [R[self]; R[elem]; W[self]]
-
   @:CArgs 2
   provides lifted update : content -> content -> ()
     with effects \oldElem -> \newElem -> [R[self]; R[oldElem]; R[newElem]; W[self]]
-
-  provides lifted erase : content -> ()
-    with effects \elem -> [R[self]; R[elem]; W[self]]
-
 
   ///////////////////////////////////////////////////
   // Bulk transformations.

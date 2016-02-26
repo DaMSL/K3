@@ -259,7 +259,7 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
                            peers.iterate (\p -> (shutdown, p.addr) <- ())
                         ],
   preShutdownExpr     = [$ ()],
-  finishAsShutdownExpr = [$ true]
+  finishAsShutdownExpr = [$ false]
 )
 
 sink results_sink : (string, real) = file "results.csv" text psv

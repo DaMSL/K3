@@ -14,10 +14,12 @@ import Data.Functor.Identity
 import Data.List
 import Data.String
 
-import qualified Data.HashSet as HashSet
-import qualified Data.Map     as Map
-import Data.HashSet ( HashSet )
-import Data.Map     ( Map )
+import qualified Data.HashSet        as HashSet
+import qualified Data.HashMap.Strict as Map
+import qualified Data.IntMap         as IntMap
+import Data.HashSet        ( HashSet )
+import Data.HashMap.Strict ( HashMap )
+import Data.IntMap.Strict  ( IntMap )
 
 import qualified Text.Parsec          as P
 import qualified Text.Parsec.Prim     as PP
@@ -54,9 +56,9 @@ type EndpointsBQG      = [(Identifier, EndpointInfo)]
     The outer key is the alias identifier, while the inner key is the frame level.
     The datatype maintains a level counter on every push or pop of the environment frame.
 -}
-type TAEnv        = Map Identifier (Map Int [K3 Type])
-data TypeAliasEnv = TypeAliasEnv Int TAEnv
-                  deriving (Eq, Ord, Read, Show)
+type TAEnv        = HashMap Identifier (IntMap [K3 Type])
+data TypeAliasEnv = TypeAliasEnv !Int !TAEnv
+                  deriving (Eq, Read, Show)
 
 {-| Parser environment type.
     This includes two scoped frames, one for source metadata, and another as a
@@ -76,13 +78,13 @@ data ParseMode = Normal | Splice | SourcePattern
     This includes a parse mode, a UID counter, a list of generated declarations,
     a type alias environment and a parser environment as defined above.
 -}
-data ParserState = ParserState { pMode     :: ParseMode
-                               , pUid      :: Int
-                               , pEffId    :: Int
-                               , pGenDecls :: [K3 Declaration]
-                               , pTaEnv    :: TypeAliasEnv
-                               , pEnv      :: ParserEnv }
-                 deriving (Eq, Ord, Read, Show)
+data ParserState = ParserState { pMode     :: !ParseMode
+                               , pUid      :: !Int
+                               , pEffId    :: !Int
+                               , pGenDecls :: ![K3 Declaration]
+                               , pTaEnv    :: !TypeAliasEnv
+                               , pEnv      :: !ParserEnv }
+                 deriving (Eq, Read, Show)
 
 -- | Parser type synonyms
 type K3Parser          = PP.ParsecT String ParserState Identity
@@ -105,9 +107,9 @@ type AnnotationCtor a = Identifier -> Annotation a
 type ApplyAnnCtor   a = Identifier -> SpliceEnv -> Annotation a
 
 -- | Metaprogram expression embedding as identifiers.
-data MPEmbedding = MPENull  Identifier
-                 | MPEPath  Identifier [Identifier]
-                 | MPEHProg String
+data MPEmbedding = MPENull  !Identifier
+                 | MPEPath  !Identifier ![Identifier]
+                 | MPEHProg !String
                  deriving (Eq, Ord, Read, Show)
 
 type   EmbeddingParser a = K3Parser (Either [MPEmbedding] a)
@@ -150,8 +152,10 @@ k3Keywords = [
     "with", "symbol", "effects", "return", "fresh", "none", "io",
 
     {- Syntactic sugar keywords -}
-    "typedef"
+    "typedef",
 
+    {- Delayed messages. -}
+    "delay", "override", "edge"
   ]
 
 {- Style definitions for parsers library -}
@@ -198,7 +202,8 @@ spliceSymbols = [ ("$",[])
                 , ("$#",  [spliceVIdSym])
                 , ("$::", [spliceVTSym])
                 , ("$.",  [spliceVESym])
-                , ("$!",  [spliceVLSym])]
+                , ("$!",  [spliceVLSym])
+                , ("$~!", [spliceVBSym])]
 
 splicePath :: K3Parser [String]
 splicePath = i `sepBy1` (string ".")
@@ -240,6 +245,23 @@ exprEmbedding = choice [try (Left <$> identParts), Right . EC.variable <$> ident
 literalEmbedding :: K3EmbeddingParser Literal
 literalEmbedding = choice [try (Left <$> (some $ try spliceEmbedding)), Right . LC.string <$> many anyChar]
 
+bindEmbedding :: EmbeddingParser Binder
+bindEmbedding = choice [try (Left <$> identParts), Right <$> choice [bindInd, bindTup, bindRec]]
+
+
+{- Binders -}
+
+bindInd :: K3Parser Binder
+bindInd = BIndirection <$> (keyword "ind" *> identifier)
+
+bindTup :: K3Parser Binder
+bindTup = BTuple <$> parens (commaSep identifier)
+
+bindRec :: K3Parser Binder
+bindRec = BRecord <$> braces (commaSep ((,) <$> identifier <*> (colon *> identifier)))
+
+bindSplice :: K3Parser Binder
+bindSplice = BSplice <$> identifier
 
 {- Comments -}
 
@@ -441,15 +463,18 @@ popFrame = modifyEnv $ \env -> (removeFrame env, currentFrame env)
 
 {- Type alias enviroment helpers -}
 lookupTAliasE :: Identifier -> TypeAliasEnv -> Maybe (K3 Type)
-lookupTAliasE n (TypeAliasEnv lvl env) = Map.lookup n env >>= Map.lookupLE lvl >>= tryHead . snd
+lookupTAliasE n (TypeAliasEnv lvl env) = do
+    nenv <- Map.lookup n env
+    ta <- IntMap.lookupLE lvl nenv
+    tryHead $! snd ta
   where tryHead []    = Nothing
         tryHead (h:_) = Just h
 
 appendTAliasEAtLevel :: Identifier -> K3 Type -> Int -> Int -> TypeAliasEnv -> TypeAliasEnv
 appendTAliasEAtLevel n t ilvl nlvl (TypeAliasEnv _ env) = TypeAliasEnv nlvl appendAlias
-  where slvl                 = Map.singleton ilvl [t]
+  where slvl                 = IntMap.singleton ilvl [t]
         appendAlias          = Map.insertWith appendLevel n slvl env
-        appendLevel _ lvlEnv = Map.insertWith (++) ilvl [t] lvlEnv
+        appendLevel _ lvlEnv = IntMap.insertWith (++) ilvl [t] lvlEnv
 
 appendTAliasE :: Identifier -> K3 Type -> TypeAliasEnv -> TypeAliasEnv
 appendTAliasE n t tae@(TypeAliasEnv lvl _) = appendTAliasEAtLevel n t lvl lvl tae
@@ -460,9 +485,9 @@ pushTAliasE taBindings tae@(TypeAliasEnv lvl _) =
 
 popTAliasE :: TypeAliasEnv -> TypeAliasEnv
 popTAliasE (TypeAliasEnv lvl env) = TypeAliasEnv (lvl-1) rebuildEnv
-  where rebuildEnv = Map.foldlWithKey deleteLevel Map.empty env
-        deleteLevel nEnv n lvlEnv = let nlvlEnv = Map.delete lvl lvlEnv
-                                    in if Map.null nlvlEnv then nEnv else Map.insert n nlvlEnv nEnv
+  where rebuildEnv = Map.foldlWithKey' deleteLevel Map.empty env
+        deleteLevel nEnv n lvlEnv = let nlvlEnv = IntMap.delete lvl lvlEnv
+                                    in if IntMap.null nlvlEnv then nEnv else Map.insert n nlvlEnv nEnv
 
 {- Helpers -}
 set :: [String] -> HashSet String

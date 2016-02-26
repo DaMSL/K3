@@ -5,6 +5,11 @@ if [ "$#" -lt 5 ]; then
     exit 1
 fi
 
+#get directory of script, handling links etc
+pushd `dirname $0` > /dev/null
+SCRIPTPATH=`pwd -P`
+popd > /dev/null
+
 STRIP_STACKS=$1
 BINARY_PATH=$2
 SHADOW_PERF_PATH=$3
@@ -17,11 +22,11 @@ BINARY=`basename $BINARY_PATH`
 SHADOW_BINARY_DIR=/mnt/mesos/sandbox
 DOCKER_BASE_DIR=/var/lib/docker/aufs/diff
 PERF_DIR=/usr/bin
-FLAMEGRAPH_DIR=./FlameGraph
+FLAMEGRAPH_DIR="$SCRIPTPATH"/FlameGraph
 
 test -d $OUTPUT_DIR || mkdir -p $OUTPUT_DIR
 test -d $SHADOW_BINARY_DIR || mkdir -p $SHADOW_BINARY_DIR
-test -f $SHADOW_BINARY_DIR/$BINARY || cp $BINARY_PATH $SHADOW_BINARY_DIR/$BINARY
+cp $BINARY_PATH $SHADOW_BINARY_DIR/$BINARY
 test -d $DOCKER_BASE_DIR || mkdir -p $DOCKER_BASE_DIR
 
 cp $PERF_DIR/perf $PERF_DIR/perf.bak

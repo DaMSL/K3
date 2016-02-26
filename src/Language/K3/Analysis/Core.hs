@@ -4,11 +4,13 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TupleSections #-}
+{-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Language.K3.Analysis.Core where
 
 import Control.Arrow
+import Control.DeepSeq
 import Control.Monad
 
 import Data.Binary
@@ -24,8 +26,8 @@ import Data.Tree
 import Data.Word ( Word8 )
 import Numeric
 
-import Data.IntMap ( IntMap )
-import qualified Data.IntMap as IntMap
+import Data.IntMap.Strict ( IntMap )
+import qualified Data.IntMap.Strict as IntMap
 
 import Data.Vector.Binary ()
 import Data.Vector.Unboxed ( Vector, (!?) )
@@ -51,7 +53,7 @@ import qualified Language.K3.Utils.PrettyText as PT
 type ClosureEnv = IntMap [Identifier]
 
 -- | Metadata for indexing on variables at a given scope
-data IndexedScope = IndexedScope { scids :: [Identifier], scsz :: Int }
+data IndexedScope = IndexedScope { scids :: ![Identifier], scsz :: !Int }
                     deriving (Eq, Ord, Read, Show, Generic)
 
 -- | Binding point scopes, as a map of binding point expression UIDS to current scope
@@ -65,23 +67,28 @@ type BVector = Vector Word8
 type ScopeUsageEnv = IntMap (UID, BVector)
 
 -- | Expression-variable metadata container.
-data VarPosEnv = VarPosEnv { lcenv :: ClosureEnv, scenv :: ScopeEnv, vuenv :: ScopeUsageEnv }
+data VarPosEnv = VarPosEnv { lcenv :: !ClosureEnv, scenv :: !ScopeEnv, vuenv :: !ScopeUsageEnv }
                  deriving (Eq, Ord, Read, Show, Generic)
 
 -- | Traversal indexes, indicating subtree variable (from abstract interpretation or K3) usage.
 type TrIndex = K3 BVector
 
-data instance Annotation BVector = BUID UID deriving (Eq, Ord, Read, Show, Generic)
+data instance Annotation BVector = BUID !UID deriving (Eq, Ord, Read, Show, Generic)
 
 -- | Traversal environment, from an abstract interpretation (AI) index to
 --   either another AI index, or a traversal index.
 type AVTraversalEnv = IntMap (TrIndex, Maybe Int)
 
 -- Abstract interpretation environment.
-data AIVEnv = AIVEnv { avtenv :: AVTraversalEnv }
+data AIVEnv = AIVEnv { avtenv :: !AVTraversalEnv }
               deriving (Eq, Read, Show, Generic)
 
 {- Instances -}
+instance NFData    IndexedScope
+instance NFData    VarPosEnv
+instance NFData    AIVEnv
+instance NFData    (Annotation BVector)
+
 instance Binary    IndexedScope
 instance Binary    VarPosEnv
 instance Binary    AIVEnv
@@ -305,30 +312,31 @@ indexMapRebuildTree f mask ti t =
 freeVariables :: K3 Expression -> [Identifier]
 freeVariables expr = either (const []) id $ foldMapTree extractVariable [] expr
   where
-    extractVariable chAcc (tag -> EVariable n) = return $ concat chAcc ++ [n]
-    extractVariable chAcc (tag -> EAssign i)   = return $ concat chAcc ++ [i]
-    extractVariable chAcc (tag -> ELambda n)   = return $ filter (/= n) $ concat chAcc
-    extractVariable chAcc (tag -> EBindAs b)   = return $ (chAcc !! 0) ++ (filter (`notElem` bindingVariables b) $ chAcc !! 1)
-    extractVariable chAcc (tag -> ELetIn i)    = return $ (chAcc !! 0) ++ (filter (/= i) $ chAcc !! 1)
-    extractVariable chAcc (tag -> ECaseOf i)   = return $ let [e, s, n] = chAcc in e ++ filter (/= i) s ++ n
-    extractVariable chAcc _                    = return $ concat chAcc
+    extractVariable chAcc (tag -> EVariable n) = return $! concat chAcc ++ [n]
+    extractVariable chAcc (tag -> EAssign i)   = return $! concat chAcc ++ [i]
+    extractVariable chAcc (tag -> ELambda n)   = return $! filter (/= n) $ concat chAcc
+    extractVariable chAcc (tag -> EBindAs b)   = return $! (chAcc !! 0) ++ (filter (`notElem` bindingVariables b) $ chAcc !! 1)
+    extractVariable chAcc (tag -> ELetIn i)    = return $! (chAcc !! 0) ++ (filter (/= i) $ chAcc !! 1)
+    extractVariable chAcc (tag -> ECaseOf i)   = return $! let [e, s, n] = chAcc in e ++ filter (/= i) s ++ n
+    extractVariable chAcc _                    = return $! concat chAcc
 
 -- | Retrieves all variables introduced by a binder
 bindingVariables :: Binder -> [Identifier]
 bindingVariables (BIndirection i) = [i]
 bindingVariables (BTuple is)      = is
 bindingVariables (BRecord ivs)    = snd (unzip ivs)
+bindingVariables (BSplice _)      = []
 
 -- | Retrieves all variables modified in an expression.
 modifiedVariables :: K3 Expression -> [Identifier]
 modifiedVariables expr = either (const []) id $ foldMapTree extractVariable [] expr
   where
-    extractVariable chAcc (tag -> EAssign n)   = return $ concat chAcc ++ [n]
-    extractVariable chAcc (tag -> ELambda n)   = return $ filter (/= n) $ concat chAcc
-    extractVariable chAcc (tag -> EBindAs b)   = return $ (chAcc !! 0) ++ (filter (`notElem` bindingVariables b) $ chAcc !! 1)
-    extractVariable chAcc (tag -> ELetIn i)    = return $ (chAcc !! 0) ++ (filter (/= i) $ chAcc !! 1)
-    extractVariable chAcc (tag -> ECaseOf i)   = return $ let [e, s, n] = chAcc in e ++ filter (/= i) s ++ n
-    extractVariable chAcc _                    = return $ concat chAcc
+    extractVariable chAcc (tag -> EAssign n)   = return $! concat chAcc ++ [n]
+    extractVariable chAcc (tag -> ELambda n)   = return $! filter (/= n) $ concat chAcc
+    extractVariable chAcc (tag -> EBindAs b)   = return $! (chAcc !! 0) ++ (filter (`notElem` bindingVariables b) $ chAcc !! 1)
+    extractVariable chAcc (tag -> ELetIn i)    = return $! (chAcc !! 0) ++ (filter (/= i) $ chAcc !! 1)
+    extractVariable chAcc (tag -> ECaseOf i)   = return $! let [e, s, n] = chAcc in e ++ filter (/= i) s ++ n
+    extractVariable chAcc _                    = return $! concat chAcc
 
 
 -- | Computes the closure variables captured at lambda expressions.
@@ -342,7 +350,7 @@ lambdaClosuresDecl n lc p = foldNamedDeclExpression n lambdaClosuresExpr lc p
 lambdaClosuresExpr :: ClosureEnv -> K3 Expression -> Either String (ClosureEnv, K3 Expression)
 lambdaClosuresExpr lc expr = do
   (nlc,_) <- biFoldMapTree bind extract [] (IntMap.empty, []) expr
-  return $ (IntMap.union nlc lc, expr)
+  return $! (IntMap.union nlc lc, expr)
 
   where
     bind :: [Identifier] -> K3 Expression -> Either String ([Identifier], [[Identifier]])
@@ -355,10 +363,10 @@ lambdaClosuresExpr lc expr = do
     extract :: [Identifier] -> [(ClosureEnv, [Identifier])] -> K3 Expression -> Either String (ClosureEnv, [Identifier])
     extract _ chAcc (tag -> EVariable i) = rt chAcc (++[i])
     extract _ chAcc (tag -> EAssign i)   = rt chAcc (++[i])
-    extract l (concatLc -> (lcAcc,chAcc)) e@(tag -> ELambda n) = extendLc lcAcc e $ filter (onlyLocals n l) $ concat chAcc
-    extract _ (concatLc -> (lcAcc,chAcc))   (tag -> EBindAs b) = return . (lcAcc,) $ (chAcc !! 0) ++ (filter (`notElem` bindingVariables b) $ chAcc !! 1)
-    extract _ (concatLc -> (lcAcc,chAcc))   (tag -> ELetIn i)  = return . (lcAcc,) $ (chAcc !! 0) ++ (filter (/= i) $ chAcc !! 1)
-    extract _ (concatLc -> (lcAcc,chAcc))   (tag -> ECaseOf i) = return . (lcAcc,) $ let [e, s, n] = chAcc in e ++ filter (/= i) s ++ n
+    extract l (concatLc -> (lcAcc,chAcc)) e@(tag -> ELambda n) = extendLc lcAcc e $! filter (onlyLocals n l) $ concat chAcc
+    extract _ (concatLc -> (lcAcc,chAcc))   (tag -> EBindAs b) = return . (lcAcc,) $! (chAcc !! 0) ++ (filter (`notElem` bindingVariables b) $ chAcc !! 1)
+    extract _ (concatLc -> (lcAcc,chAcc))   (tag -> ELetIn i)  = return . (lcAcc,) $! (chAcc !! 0) ++ (filter (/= i) $ chAcc !! 1)
+    extract _ (concatLc -> (lcAcc,chAcc))   (tag -> ECaseOf i) = return . (lcAcc,) $! let [e, s, n] = chAcc in e ++ filter (/= i) s ++ n
     extract _ chAcc _ = rt chAcc id
 
     onlyLocals n l i = i /= n && i `elem` l
@@ -368,10 +376,10 @@ lambdaClosuresExpr lc expr = do
 
     extendLc :: ClosureEnv -> K3 Expression -> [Identifier] -> Either String (ClosureEnv, [Identifier])
     extendLc elc e ids = case e @~ isEUID of
-      Just (EUID (UID i)) -> return $ (IntMap.insert i (nub ids) elc, ids)
+      Just (EUID (UID i)) -> return $! (IntMap.insert i (nub ids) elc, ids)
       _ -> Left $ boxToString $ ["No UID found on lambda"] %$ prettyLines e
 
-    rt subAcc f = return $ second (f . concat) $ concatLc subAcc
+    rt subAcc f = return $! second (f . concat) $ concatLc subAcc
 
 
 -- | Compute lambda closures and binding point scopes in a single pass.
@@ -384,7 +392,7 @@ variablePositionsDecl n vp p = foldNamedDeclExpression n variablePositionsExpr v
 variablePositionsExpr :: VarPosEnv -> K3 Expression -> Either String (VarPosEnv, K3 Expression)
 variablePositionsExpr vp expr = do
   (nvp,_) <- biFoldMapTree bind extract ([], -1) (vp0, []) expr
-  return $ (vpunion nvp vp, expr)
+  return $! (vpunion nvp vp, expr)
 
   where
     uidOf :: K3 Expression -> Either String Int
@@ -399,14 +407,14 @@ variablePositionsExpr vp expr = do
     bind l (children -> ch)   = return (l, replicate (length ch) l)
 
     extract :: ([Identifier], Int) -> [(VarPosEnv, [Identifier])] -> K3 Expression -> Either String (VarPosEnv, [Identifier])
-    extract td        chAcc e@(tag -> EVariable i) = rt td chAcc e [] $ const $ var i
-    extract td        chAcc e@(tag -> EAssign i)   = rt td chAcc e [] $ const $ var i
-    extract td@(sc,_) chAcc e@(tag -> ELambda n)   = rt td chAcc e [n] $ scope Nothing [n] sc
+    extract td        chAcc e@(tag -> EVariable i) = rt td chAcc e []  $! const $ var i
+    extract td        chAcc e@(tag -> EAssign i)   = rt td chAcc e []  $! const $ var i
+    extract td@(sc,_) chAcc e@(tag -> ELambda n)   = rt td chAcc e [n] $! scope Nothing [n] sc
     extract td@(sc,_) chAcc e@(tag -> EBindAs b)   = let bvs = bindingVariables b in
-                                                     rt td chAcc e bvs $ scope (Just 1) bvs sc
-    extract td@(sc,_) chAcc e@(tag -> ELetIn i)    = rt td chAcc e [i] $ scope (Just 1) [i] sc
-    extract td@(sc,_) chAcc e@(tag -> ECaseOf i)   = rt td chAcc e [i] $ scope (Just 1) [i] sc
-    extract td        chAcc e                      = rt td chAcc e [] $ const concatvi
+                                                     rt td chAcc e bvs $! scope (Just 1) bvs sc
+    extract td@(sc,_) chAcc e@(tag -> ELetIn i)    = rt td chAcc e [i] $! scope (Just 1) [i] sc
+    extract td@(sc,_) chAcc e@(tag -> ECaseOf i)   = rt td chAcc e [i] $! scope (Just 1) [i] sc
+    extract td        chAcc e                      = rt td chAcc e []  $! const concatvi
 
     concatvi :: [VarPosEnv] -> [[Identifier]] -> (VarPosEnv, [Identifier])
     concatvi vps subvars = (vpunions vps, concat subvars)
@@ -455,21 +463,23 @@ variablePositionsExpr vp expr = do
 
 -- | Compute all global declarations used by the supplied list of declaration identifiers.
 --   This method returns all transitive dependencies.
-minimalProgramDecls :: [Identifier] -> K3 Declaration -> Either String [(Identifier, K3 Declaration)]
-minimalProgramDecls declIds prog = fixpointAcc [] declIds
+minimalProgramDecls :: [Identifier] -> K3 Declaration -> Either String [(Identifier, (Identifier, K3 Declaration))]
+minimalProgramDecls declIds prog = fixpointAcc True [] $ map ("",) declIds
   where
-    fixpointAcc acc ids = do
-      (dip, _) <- filterDeclIds ids prog
+    fixpointAcc asSubstr acc ids = do
+      (dip, _) <- filterDeclIds asSubstr ids prog
       let nacc = nub $ acc ++ dip
       next <- foldM declGlobals [] dip
-      if all (isJust . flip lookup nacc) next then return nacc else fixpointAcc nacc next
+      if all (isJust . flip lookup nacc) (map snd next) then return nacc else fixpointAcc False nacc next
 
-    filterDeclIds ids p = foldProgram (accF ids) idF idF Nothing [] p
-    accF ids a d = return $ maybe (a,d) (\i -> (if any (`isInfixOf` i) ids then a ++ [(i,d)] else a, d)) $ declarationName d
+    filterDeclIds asSubstr ids p = foldProgram (accF asSubstr ids) idF idF Nothing [] p
+    accF asSubstr ids a d = return $! maybe (a,d) (matchIds asSubstr ids a d) $ declarationName d
+    matchIds asSubstr ids a d i = maybe (a,d) (\(p,mi) -> (a ++ [(i,(p,d))], d)) $ find (matchF asSubstr i) ids
+    matchF asSubstr i (_,y) = if asSubstr then y `isInfixOf` i else y == i
     idF a b = return (a,b)
 
-    declGlobals acc (_,d) = maybe (return acc) (extractGlobals acc) $ declarationExpr d
-    extractGlobals acc e = return $ acc ++ freeVariables e
+    declGlobals acc (i,(_,d)) = maybe (return acc) (extractGlobals acc i) $ declarationExpr d
+    extractGlobals acc pi e = return $! acc ++ map (pi,) (freeVariables e)
 
 
 instance Pretty TrIndex where

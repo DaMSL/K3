@@ -1,7 +1,7 @@
 name: role 1
 peers: 128
 hostmask: ".*hm.*"
-privileged: False
+privileged: True
 k3_globals:
   role: [{i: rows}]
         #role: rows

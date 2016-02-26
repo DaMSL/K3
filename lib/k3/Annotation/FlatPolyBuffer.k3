@@ -1,6 +1,11 @@
+include "Annotation/Vector.k3"
+
 annotation FlatPolyBuffer[variants: [labeltylit]] given type a
 {
   provides lifted size : () -> int
+    with effects \_ -> R[self]
+
+  provides lifted byte_size : () -> int
     with effects \_ -> R[self]
 
   provides lifted clear : () -> ()
@@ -9,13 +14,29 @@ annotation FlatPolyBuffer[variants: [labeltylit]] given type a
   provides lifted tag_at : int -> int
     with effects \_ -> R[self]
 
-  // Iterate and fold functions arguments are: tag, tuple index, tuple offset.
+  provides lifted extend : self -> ()
+    with effects \col -> [R[self]; R[col]; W[self]]
+
+  provides lifted splitMany : int -> collection {elem: self} @Vector
+    with effects \splitSize -> [R[self]; R[splitSize]]
+
+  // Iterate, fold and traverse functions arguments are: tag, tuple index, tuple offset.
   provides lifted iterate : (int -> int -> int -> ()) -> ()
     with effects \iterF -> [R[self]; ([R[content]; (((iterF none) none) none)])*]
 
   // TODO: code generator attempts to turn this into a for loop if named 'fold'
-  provides lifted foldl : (a -> (int -> int -> int -> a)) -> a -> a
+  provides lifted foldl : (a -> int -> int -> int -> a) -> a -> a
     with effects \foldF -> \z -> [R[self]; R[z]; ([R[content]; ((((foldF z) none) none) none)])*]
+
+  // The traverse function returns the index and offset after which the traverse should continue.
+  provides lifted traverse : (int -> int -> int -> {key: int, value: int}) -> ()
+    with effects \iterF -> [R[self]; ([R[content]; (((iterF none) none) none)])*]
+
+  // The traverse2 function is more flexible than traverse
+  // Returning the same value in the lambda as the one we were given causes the iterations to stop, returning
+  // our point in the polybuffer
+  provides lifted traverse2 : int -> int -> (int -> int -> int -> {key: int, value: int}) -> {key: int, value: int}
+    with effects \idx -> \offset -> \iterF -> [R[self]; R[idx]; R[offset]; ([R[content]; (((iterF none) none) none)])*]
 
   // Externalization/internalization methods.
   provides lifted repack : () -> ()
@@ -23,6 +44,9 @@ annotation FlatPolyBuffer[variants: [labeltylit]] given type a
 
   provides lifted unpack : () -> ()
     with effects \_ -> [R[self]; W[self]]
+
+  provides lifted reserve : int -> int -> int -> ()
+    with effects \tags -> \fixed -> \var -> [R[self]; R[tags]; R[fixed]; R[var]; W[self]]
 
   provides lifted load : string -> ()
     with effects \data -> [R[self]; R[data]; W[self]]
@@ -35,11 +59,36 @@ annotation FlatPolyBuffer[variants: [labeltylit]] given type a
     provides lifted $#[v]_at : int -> int -> $::[v]
       with effects \idx -> \offset -> [R[self]; R[idx]; R[offset]]
 
-    provides lifted $#[v]_safe_at : int -> int -> ($::[v] -> a) -> (() -> a) -> a
-      with effects \idx -> \offset -> \someF -> \noneF -> [R[self]; R[idx]; R[offset]; f none; g none]
+    provides lifted $#[v]_safe_at : int -> int -> (() -> a) -> ($::[v] -> a) -> a
+      with effects \idx -> \offset -> \f -> \g -> [R[self]; R[idx]; R[offset]; f none; g content]
+
+    provides lifted $#[v]_unsafe_at : int -> int -> ($::[v] -> a) -> a
+      with effects \idx -> \offset -> \f -> [R[self]; R[idx]; R[offset]; f content]
+
+    // Skips one element starting at the given tag/index/offset.
+    // Returns the next index/offset pair.
+    @:{Tag "$![v]"}
+    provides lifted skip_$#[v] : int -> int -> {key: int, value: int}
+      with effects \idx -> \offset -> [R[self]; R[idx]; R[offset]]
+
+    // Skips all elements starting at the given tag/index/offset.
+    // Returns the next index/offset pair.
+    @:{Tag "$![v]"}
+    provides lifted skip_all_$#[v] : int -> int -> {key: int, value: int}
+      with effects \idx -> \offset -> [R[self]; R[idx]; R[offset]]
 
     @:{Tag "$![v]"}
     provides lifted append_$#[v] : $::[v] -> ()
       with effects \elem -> [R[self]; R[elem]; W[self]]
+
+    @:{Tag "$![v]"}
+    provides lifted iterate_$#[v] : int -> int -> (int -> int -> $::[v] -> ()) -> ()
+      with effects \idx -> \offset -> \iterF ->
+              [R[self]; R[idx]; R[offset]; ([R[content]; (((iterF none) none) none)])*]
+
+    @:{Tag "$![v]"}
+    provides lifted foldl_$#[v] : int -> int -> (a -> int -> int -> $::[v] -> a) -> a -> a
+      with effects \idx -> \offset -> \foldF -> \z ->
+              [R[self]; R[idx]; R[offset]; R[z]; ([R[content]; ((((foldF z) none) none) none)])*]
 
 }

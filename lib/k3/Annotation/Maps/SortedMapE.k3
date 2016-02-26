@@ -12,6 +12,9 @@ annotation SortedMapE[key: [labeltype], value: [labeltype]] given type a,b
   provides lifted size : () -> int
     with effects \_ -> R[self]
 
+  provides lifted clear : () -> ()
+    with effects \_ -> [R[self]; W[self]]
+
   //////////////////////////////////////////////////////////
   // Map retrieval, with explicit keys.
 

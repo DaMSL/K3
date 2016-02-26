@@ -71,6 +71,26 @@ control PartitionShuffleWithMissing[lbl: label, dest_trg: expr, nodes: expr, sen
   +> {
     declare $[lbl]_send_ty_default: $[send_ty]
   }
+
+  (ignore (?e : collection ?t @Collection )) => (
+    let partition_table = (((((($.[e].group_by @:HGroupBy)
+                                     ((\v -> ($[nodes].at (index_by_hash v.key)).addr) @:Projection)
+                                     ((\acc -> \v -> ((acc.insert v); acc)) @:Accumulate)
+                                     empty $::[t] @Map) @:Fuse) @ManualFusion)
+				    .fold
+				      (\a -> \e -> (a.insert e; a))
+				      empty {key: address, value: collection $::[t] @Map} @Map)
+				    )
+    in $[nodes].iterate (\n ->
+    (partition_table.lookup { key: n.addr, value: empty $::[t] @Map }
+        (\_ -> ($[dest_trg], n.addr) <- $[lbl]_send_ty_default)
+        (\y -> ($[dest_trg], n.addr) <- $[send_extra_fn] y.value)
+        )
+    )
+  )
+  +> {
+    declare $[lbl]_send_ty_default: $[send_ty]
+  }
 }
 
 control PartitionByKey {

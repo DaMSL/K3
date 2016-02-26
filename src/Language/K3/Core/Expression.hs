@@ -1,6 +1,7 @@
 {-# LANGUAGE DeriveDataTypeable #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TypeFamilies #-}
 {-# LANGUAGE ViewPatterns #-}
 
@@ -42,6 +43,9 @@ module Language.K3.Core.Expression (
   , isAnyEEffectAnn
   , isAnyETypeOrEffectAnn
   , namedEAnnotations
+
+  , (@:?)
+  , (@:+)
 ) where
 
 import Control.DeepSeq
@@ -50,10 +54,11 @@ import Data.Binary
 import Data.Serialize
 
 import Data.List
+import Data.Maybe (isJust)
 import Data.Tree
 import Data.Typeable
 
-import qualified Data.Map as M
+import qualified Data.Map.Strict as M
 
 import GHC.Generics (Generic)
 
@@ -84,23 +89,23 @@ import {-# SOURCE #-} Language.K3.Core.Metaprogram ( SpliceEnv )
 
 -- | Expression tags. Every expression can be qualified with a mutability annotation.
 data Expression
-    = EConstant   Constant
-    | EVariable   Identifier
+    = EConstant   !Constant
+    | EVariable   !Identifier
     | ESome
     | EIndirect
     | ETuple
-    | ERecord     [Identifier]
-    | ELambda     Identifier
-    | EOperate    Operator
-    | EProject    Identifier
-    | ELetIn      Identifier
-    | EAssign     Identifier
-    | ECaseOf     Identifier
-    | EBindAs     Binder
+    | ERecord     ![Identifier]
+    | ELambda     !Identifier
+    | EOperate    !Operator
+    | EProject    !Identifier
+    | ELetIn      !Identifier
+    | EAssign     !Identifier
+    | ECaseOf     !Identifier
+    | EBindAs     !Binder
     | EIfThenElse
     | EAddress
     | ESelf
-    | EImperative ImperativeExpression
+    | EImperative !ImperativeExpression
   deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 data ImperativeExpression
@@ -109,13 +114,13 @@ data ImperativeExpression
 
 -- | Constant expression values.
 data Constant
-    = CBool    Bool
-    | CByte    Word8
-    | CInt     Int
-    | CReal    Double
-    | CString  String
-    | CNone    NoneMutability
-    | CEmpty   (K3 Type)
+    = CBool    !Bool
+    | CByte    !Word8
+    | CInt     !Int
+    | CReal    !Double
+    | CString  !String
+    | CNone    !NoneMutability
+    | CEmpty   !(K3 Type)
   deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Operators (unary and binary).
@@ -144,41 +149,42 @@ data Operator
 -- | Binding Forms.
 data Binder
     = BIndirection Identifier
-    | BTuple       [Identifier]
-    | BRecord      [(Identifier, Identifier)]
+    | BTuple       ![Identifier]
+    | BRecord      ![(Identifier, Identifier)]
+    | BSplice      !Identifier
   deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Annotations on expressions.
 data instance Annotation Expression
-    = ESpan Span
-    | EUID UID
+    = ESpan       !Span
+    | EUID        !UID
     | EMutable
     | EImmutable
 
-    | EAnnotation Identifier
-    | EProperty   PropertyE
+    | EAnnotation !Identifier
+    | EProperty   !PropertyE
         -- ^ Properties are either types, with a left variant indicating a
         -- user-defined property, while a right variant represents an inferred property.
 
-    | EApplyGen   Bool Identifier SpliceEnv
+    | EApplyGen   !Bool !Identifier !SpliceEnv
         -- ^ Apply a K3 generator, with a bool indicating a control annotation generator (vs a data annotation),
         --   a generator name, and a splice environment.
 
-    | ESyntax     SyntaxAnnotation
-    | EAnalysis   AnalysisAnnotation
+    | ESyntax     !SyntaxAnnotation
+    | EAnalysis   !AnalysisAnnotation
 
     -- TODO: the remainder of these should be pushed into
     -- an annotation category (e.g., EType, EAnalysis, etc)
-    | EProvenance (K3 Provenance)
-    | ESEffect    (K3 S.Effect)
-    | EFStructure (K3 S.Effect)
-    | EOpt        OptHint
-    | EMaterialization (M.Map (Identifier, Z.Direction) Z.Method)
-    | EType       (K3 Type)
-    | EQType      (K3 QType)
-    | ETypeLB     (K3 Type)
-    | ETypeUB     (K3 Type)
-    | EPType      (K3 Type)  -- Annotation embedding for pattern types
+    | EProvenance !(K3 Provenance)
+    | ESEffect    !(K3 S.Effect)
+    | EFStructure !(K3 S.Effect)
+    | EOpt        !OptHint
+    | EMaterialization !(M.Map (Identifier, Z.Direction) Z.Method)
+    | EType       !(K3 Type)
+    | EQType      !(K3 QType)
+    | ETypeLB     !(K3 Type)
+    | ETypeUB     !(K3 Type)
+    | EPType      !(K3 Type)  -- Annotation embedding for pattern types
     | EEmbedding EmbeddingAnnotation
   deriving (Eq, Ord, Read, Show, Generic)
 
@@ -277,6 +283,12 @@ isEInferredProperty _                     = False
 isEUserProperty :: Annotation Expression -> Bool
 isEUserProperty (EProperty (Left _)) = True
 isEUserProperty _                    = False
+
+(@:?) :: K3 Expression -> Identifier -> Bool
+(@:?) e p = isJust $ e @~ \case  { EProperty s -> ePropertyName s == p; _ -> False }
+
+(@:+) :: K3 Expression -> Identifier -> K3 Expression
+(@:+) e p = e @+ (EProperty (Left (p, Nothing)))
 
 isESyntax :: Annotation Expression -> Bool
 isESyntax (ESyntax _) = True

@@ -46,9 +46,9 @@ def convert_dict(d):
             res.append(convert_any(d["key"]))
         res.append(convert_any(d["value"]))
         return res
-    elif "i" in d:
+    elif "elem" in d:
         res = []
-        res.append(convert_any(d["i"]))
+        res.append(convert_any(d["elem"]))
         return res
     elif "addr" in d:
         res = []
@@ -125,12 +125,29 @@ def process_files(files, prefix_path):
                 else:
                     convert_file(f, msg_writer, [0, 5])
 
+# Translate all files in their respective directories
+def inplace_process(prefix):
+    for root, dirs, files in os.walk(prefix):
+        for f in files:
+            name, ext = os.path.splitext(f)
+            new_name = name + "_clean" + ext
+            tests = [("Globals$", [0]), ("Messages$", [0, 5])]
+            for regex, indices in tests:
+                if re.search(regex, name):
+                    with open(os.path.join(root, new_name), "w", newline='') as out_file:
+                        writer = csv.writer(out_file, delimiter='|', quotechar="'")
+                        convert_file(os.path.join(root, f), writer, indices)
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("json_files", type=str, nargs='+', help="Specify path")
-    parser.add_argument("--prefix_path", type=str, help="Specify prefix to output", default="")
+    parser.add_argument("json_files", type=str, nargs='*', help="Specify path")
+    parser.add_argument("--prefix-path", type=str, help="Specify prefix to output", default="")
+    parser.add_argument("--inplace", type=str, help="Modify files in-place", default="")
     args = parser.parse_args()
-    process_files(args.json_files, args.prefix_path)
+    if args.inplace != "":
+        inplace_process(args.inplace)
+    else:
+        process_files(args.json_files, args.prefix_path)
 
 if __name__=='__main__':
     main ()

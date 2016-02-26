@@ -1,0 +1,69 @@
+name: role 1
+peers: 128
+hostmask: ".*hm.*"
+privileged: True
+k3_globals:
+  role: [{i: rows}]
+  master: auto
+
+  # Primary
+  q1_selectivity_shipdate_ubound: 19981203
+  q3_selectivity_mktsegments: [ {key: AUTOMOBILE, value: []},
+                                {key: BUILDING,   value: []},
+                                {key: FURNITURE,  value: []},
+                                {key: HOUSEHOLD,  value: []},
+                                {key: MACHINERY,  value: []}
+                              ]
+
+  q5_selectivity_regions: [ {key: ASIA, value: []},
+                            {key: AMERICA, value: []},
+                            {key: EUROPE, value: []},
+                            {key: AFRICA, value: []},
+                            {key: 'MIDDLE EAST', value: []}
+                          ]
+  q6_selectivity_shipdate_lbound: 19920101
+  q18_selectivity_sum_quantity_lbound: 255
+  q22_selectivity_valid_phones: [ {key: "10", value: ()}, {key: "11", value: ()}, {key: "12", value: ()}, {key: "13", value: ()},
+                                  {key: "14", value: ()}, {key: "15", value: ()}, {key: "16", value: ()}, {key: "17", value: ()},
+                                  {key: "18", value: ()}, {key: "19", value: ()}, {key: "20", value: ()}, {key: "21", value: ()},
+                                  {key: "22", value: ()}, {key: "23", value: ()}, {key: "24", value: ()}, {key: "25", value: ()},
+                                  {key: "26", value: ()}, {key: "27", value: ()}, {key: "28", value: ()}, {key: "29", value: ()},
+                                  {key: "30", value: ()}, {key: "31", value: ()}, {key: "32", value: ()}, {key: "33", value: ()},
+                                  {key: "34", value: ()}, {key: "35", value: ()}, {key: "36", value: ()}, {key: "37", value: ()},
+                                  {key: "38", value: ()}, {key: "39", value: ()}, {key: "40", value: ()}, {key: "41", value: ()},
+                                  {key: "42", value: ()}, {key: "43", value: ()}, {key: "44", value: ()}, {key: "45", value: ()},
+                                  {key: "46", value: ()}, {key: "47", value: ()}, {key: "48", value: ()}, {key: "49", value: ()},
+                                  {key: "50", value: ()}, {key: "51", value: ()}, {key: "52", value: ()}, {key: "53", value: ()},
+                                  {key: "54", value: ()}, {key: "55", value: ()}, {key: "56", value: ()}, {key: "57", value: ()},
+                                  {key: "58", value: ()}, {key: "59", value: ()}, {key: "60", value: ()}, {key: "61", value: ()},
+                                  {key: "62", value: ()}, {key: "63", value: ()}, {key: "64", value: ()}, {key: "65", value: ()},
+                                  {key: "66", value: ()}, {key: "67", value: ()}, {key: "68", value: ()}, {key: "69", value: ()},
+                                  {key: "70", value: ()}, {key: "71", value: ()}, {key: "72", value: ()}, {key: "73", value: ()},
+                                  {key: "74", value: ()}, {key: "75", value: ()}, {key: "76", value: ()}, {key: "77", value: ()},
+                                  {key: "78", value: ()}, {key: "79", value: ()}, {key: "80", value: ()}, {key: "81", value: ()},
+                                  {key: "82", value: ()}, {key: "83", value: ()}, {key: "84", value: ()}, {key: "85", value: ()},
+                                  {key: "86", value: ()}, {key: "87", value: ()}, {key: "88", value: ()}, {key: "89", value: ()},
+                                  {key: "90", value: ()}, {key: "91", value: ()}, {key: "92", value: ()}, {key: "94", value: ()},
+                                  {key: "95", value: ()}, {key: "96", value: ()}, {key: "97", value: ()}, {key: "98", value: ()},
+                                  {key: "99", value: ()}
+                                ]
+
+  # Secondary
+  q3_selectivity_shipdate_lbound: 19920101
+  q3_selectivity_orderdate_ubound: 19980803
+  q5_selectivity_orderdate_lbound: 19920101
+  q5_selectivity_orderdate_ubound: 19980803
+  q6_selectivity_shipdate_ubound: 19981202
+
+volumes:
+  - {host: /local, container: /local}
+k3_data:
+  - {var: dataFiles, path: /local/data/tpch10g/lineitem, policy: global}
+  - {var: lineitemFiles, path: /local/data/tpch10g/lineitem, policy: global}
+  - {var: customerFiles, path: /local/data/tpch10g/customer, policy: global}  
+  - {var: ordersFiles, path: /local/data/tpch10g/orders, policy: global}  
+  - {var: supplierFiles, path: /local/data/tpch10g/supplier, policy: global}  
+  - {var: partsuppFiles, path: /local/data/tpch10g/partsupp, policy: global}  
+  - {var: partFiles, path: /local/data/tpch10g/part, policy: global}  
+  - {var: regionFiles, path: /local/data/tpch10g/region, policy: replicate}
+  - {var: nationFiles, path: /local/data/tpch10g/nation, policy: replicate}

@@ -28,7 +28,7 @@ shared_ptr<vector<asio::const_buffer>> NetworkMessage::outputBuffers() const {
   shared_ptr<vector<asio::const_buffer>> result;
   result = make_shared<vector<asio::const_buffer>>();
 
-  #ifdef K3DEBUG
+  #ifdef K3MESSAGETRACE
   // Source Address
   auto& s_ip = source_.ip;
   auto& s_port = source_.port;
@@ -67,7 +67,7 @@ shared_ptr<vector<asio::mutable_buffer>> NetworkMessage::inputBuffers() {
   result = make_shared<vector<asio::mutable_buffer>>();
 
   // Source Address
-  #ifdef K3DEBUG
+  #ifdef K3MESSAGETRACE
   auto& s_ip = source_.ip;
   auto& s_port = source_.port;
   result->push_back(asio::buffer(reinterpret_cast<char*>(&s_ip), sizeof(s_ip)));
@@ -95,7 +95,7 @@ shared_ptr<vector<asio::mutable_buffer>> NetworkMessage::inputBuffers() {
 
 size_t NetworkMessage::networkHeaderSize() {
   size_t size = 0;
-  #ifdef K3DEBUG
+  #ifdef K3MESSAGETRACE
   size += sizeof(source_.ip) + sizeof(source_.port) +
          sizeof(destination_.ip) + sizeof(destination_.port);
   #endif

@@ -149,26 +149,33 @@ declaration _ = return []
 -- Map special builtin suffix to a function that will generate the builtin.
 -- These suffixes are taken from L.K3.Parser.ProgramBuilder.hs
 source_builtin_map :: [(String, (String -> K3 Type -> String -> CPPGenM R.Definition))]
-source_builtin_map = [("MuxHasRead", genHasRead True),
-                      ("MuxRead",    genDoRead True),
-                      ("HasRead",    genHasRead False),
-                      ("Read",       genDoRead False),
-                      ("HasWrite",   genHasWrite),
-                      ("Write",      genDoWrite)]
+source_builtin_map = [("MuxHasRead",   genHasRead True     Nothing),
+                      ("MuxRead",      genDoRead  True     Nothing),
+                      ("PDataHasRead", genHasRead True     Nothing),
+                      ("PDataRead",    genDoRead  True     Nothing),
+                      ("POrdHasRead",  genHasRead False  $ Just "order"),
+                      ("POrdRead",     genDoRead  False  $ Just "order"),
+                      ("HasRead",      genHasRead False    Nothing),
+                      ("Read",         genDoRead  False    Nothing),
+                      ("HasWrite",     genHasWrite),
+                      ("Write",        genDoWrite)]
                      ++ extraSuffixes
 
         -- These suffixes are for data loading hacks.
-  where extraSuffixes = [("Loader",    genLoader False False False False ","),
-                         ("LoaderC",   genLoader False False True  False ","),
-                         ("LoaderF",   genLoader False True  False False ","),
-                         ("LoaderFC",  genLoader False True  True  False ","),
-                         ("LoaderE",   genLoader True  False False False ","),
-                         ("LoaderP",   genLoader False False False False "|"),
-                         ("LoaderPC",  genLoader False False True  False "|"),
-                         ("LoaderPF",  genLoader False True  False False "|"),
-                         ("LoaderPFC", genLoader False True  True  False "|"),
-                         ("LoaderRP",  genLoader False False False True  "|"),
-                         ("LoaderPE",  genLoader True  False False False "|"),
+	-- TODO this needs refactoring, big time
+  where extraSuffixes = [("Loader",       genLoader False False False False False False ","),
+                         ("LoaderC",      genLoader False False True  False False False ","),
+                         ("LoaderF",      genLoader False True  False False False False ","),
+                         ("LoaderFC",     genLoader False True  True  False False False ","),
+                         ("LoaderE",      genLoader True  False False False False False ","),
+                         ("LoaderP",      genLoader False False False False False False "|"),
+                         ("LoaderPC",     genLoader False False True  False False False "|"),
+                         ("LoaderPF",     genLoader False True  False False False False "|"),
+                         ("LoaderPFC",    genLoader False True  True  False False False "|"),
+                         ("LoaderRP",     genLoader False False False True  False False "|"),
+                         ("LoaderPE",     genLoader True  False False False False False "|"),
+                         ("LoaderMPC",    genLoader False False True  False True  False "|"),
+                         ("LoaderMosaic", genLoader False False False False False True  "|"),
                          ("Logger",    genLogger)]
 
 source_builtins :: [String]
@@ -190,38 +197,51 @@ getSourceBuiltin k =
         []         -> error $ "Could not find builtin with name" ++ k
         ((_,f):_) -> f k
 
-genHasRead :: Bool -> String -> K3 Type -> String -> CPPGenM R.Definition
-genHasRead asMux suf _ name = do
+genHasRead :: Bool -> Maybe String -> String -> K3 Type -> String -> CPPGenM R.Definition
+genHasRead asMux chanIdSuffixOpt suf _ name = do
+    concatOp        <- binarySymbol OConcat
     let source_name = stripSuffix suf name
-    let e_has_r = R.Variable $ R.Name "hasRead"
-    let source_e = R.Literal $ R.LString $ source_name ++ if asMux then "_" else ""
-    concatId <- binarySymbol OConcat
-    let call_args = [R.Variable $ R.Name "me"] ++
-                    if asMux then [R.Binary concatId source_e $
-                                   R.Call (R.Variable $ R.Name "itos") [R.Variable $ R.Name "muxid"]]
-                             else [source_e]
-    let body = R.Return $ R.Call e_has_r call_args
-    let args = if asMux then [(Just "muxid", R.Primitive R.PInt)]
-                        else [(Just "_", R.Named $ R.Name "unit_t")]
-    return $ R.FunctionDefn (R.Name $ source_name ++ suf) args
-      (Just $ R.Primitive R.PBool) [] False [body]
+    let e_has_r     = R.Variable $ R.Name "hasRead"
+    let source_pfx  = source_name ++ if asMux || isJust chanIdSuffixOpt then "_" else ""
 
-genDoRead :: Bool -> String -> K3 Type -> String -> CPPGenM R.Definition
-genDoRead asMux suf typ name = do
-    ret_type    <- genCType $ last $ children typ
-    let source_name =  stripSuffix suf name
-    let source_e = R.Literal $ R.LString $ source_name ++ if asMux then "_" else ""
-    concatId <- binarySymbol OConcat
-    let call_args = [R.Variable $ R.Name "me"] ++
-                    if asMux then [R.Binary concatId source_e $
-                                   R.Call (R.Variable $ R.Name "itos") [R.Variable $ R.Name "muxid"]]
-                             else [source_e]
-    let return_stmt = R.Return $ (R.Call (R.Variable (R.Specialized [ret_type] $ R.Name "doRead"))
-                               call_args)
+    let chan_id_e   = case (chanIdSuffixOpt, asMux) of
+                        (Just chan_suf, _) -> R.Literal $ R.LString $ source_pfx ++ chan_suf
+
+                        (Nothing, True) -> R.Binary concatOp (R.Literal $ R.LString source_pfx) $
+                                             R.Call (R.Variable $ R.Name "itos")
+                                               [R.Variable $ R.Name "muxid"]
+
+                        (_, _) -> R.Literal $ R.LString source_pfx
+
+    let body = R.Return $ R.Call e_has_r [R.Variable $ R.Name "me", chan_id_e]
     let args = if asMux then [(Just "muxid", R.Primitive R.PInt)]
                         else [(Just "_", R.Named $ R.Name "unit_t")]
-    return $ R.FunctionDefn (R.Name $ source_name ++ suf) args
-      (Just ret_type) [] False ([return_stmt])
+
+    return $ R.FunctionDefn (R.Name name) args (Just $ R.Primitive R.PBool) [] False [body]
+
+genDoRead :: Bool -> Maybe String -> String -> K3 Type -> String -> CPPGenM R.Definition
+genDoRead asMux chanIdSuffixOpt suf typ name = do
+    concatOp <- binarySymbol OConcat
+    ret_type <- genCType $ last $ children typ
+    let source_name = stripSuffix suf name
+    let source_pfx  = source_name ++ if asMux || isJust chanIdSuffixOpt then "_" else ""
+
+    let chan_id_e   = case (chanIdSuffixOpt, asMux) of
+                        (Just chan_suf, _) -> R.Literal $ R.LString $ source_pfx ++ chan_suf
+
+                        (Nothing, True) -> R.Binary concatOp (R.Literal $ R.LString source_pfx) $
+                                             R.Call (R.Variable $ R.Name "itos")
+                                               [R.Variable $ R.Name "muxid"]
+
+                        (_, _) -> R.Literal $ R.LString source_pfx
+
+    let body = R.Return $ (R.Call (R.Variable (R.Specialized [ret_type] $ R.Name "doRead"))
+                            [R.Variable $ R.Name "me", chan_id_e])
+
+    let args = if asMux then [(Just "muxid", R.Primitive R.PInt)]
+                        else [(Just "_", R.Named $ R.Name "unit_t")]
+
+    return $ R.FunctionDefn (R.Name name) args (Just ret_type) [] False [body]
 
 genHasWrite :: String -> K3 Type -> String -> CPPGenM R.Definition
 genHasWrite suf _ name = do
@@ -243,8 +263,8 @@ genDoWrite suf typ name = do
 
 -- TODO: Loader is not quite valid K3. The collection should be passed by indirection so we are not working with a copy
 -- (since the collection is technically passed-by-value)
-genLoader :: Bool -> Bool -> Bool -> Bool -> String -> String -> K3 Type -> String -> CPPGenM R.Definition
-genLoader elemWrap fixedSize projectedLoader asReturn sep suf ft@(children -> [_,f]) name = do
+genLoader :: Bool -> Bool -> Bool -> Bool -> Bool -> Bool -> String -> String -> K3 Type -> String -> CPPGenM R.Definition
+genLoader elemWrap fixedSize projectedLoader asReturn addMeta addMultiplicity sep suf ft@(children -> [_,f]) name = do
  void (genCType ft) -- Force full type to generate potential record/collection variants.
  (colType, recType, fullRecTypeOpt) <- return $ getColType f
  cColType      <- genCType colType
@@ -252,6 +272,8 @@ genLoader elemWrap fixedSize projectedLoader asReturn sep suf ft@(children -> [_
  cfRecType     <- maybe (return Nothing) (\t -> genCType t >>= return . Just) fullRecTypeOpt
  fields        <- getRecFields recType
  fullFieldsOpt <- maybe (return Nothing) (\frt -> getRecFields frt >>= return . Just) fullRecTypeOpt
+ br <- gets (boxRecords . flags)
+ let bw = if br then R.Dereference else id
  let coll_name = stripSuffix suf name
  let bufferDecl = [R.Forward $ R.ScalarDecl (R.Name "tmp_buffer")
                         (R.Named $ R.Qualified (R.Name "std") (R.Name "string")) Nothing]
@@ -262,7 +284,7 @@ genLoader elemWrap fixedSize projectedLoader asReturn sep suf ft@(children -> [_
                                      ] ++ [R.Literal (R.LChar sep) | not b]
                             ] ++
                             (if skip then []
-                             else [ R.Assignment (R.Project (R.Variable $ R.Name "record") (R.Name f))
+                             else [ R.Assignment (R.Project (bw $ R.Variable $ R.Name "record") (R.Name f))
                                            (typeMap t $ R.Variable $ R.Name "tmp_buffer")
                                   ])
 
@@ -272,24 +294,33 @@ genLoader elemWrap fixedSize projectedLoader asReturn sep suf ft@(children -> [_
  let fullfts = fullFieldsOpt >>= return . uncurry zip
 
  let ftsWSkip = maybe (map (\(x,y) -> (x, y, False)) fts)
-                      (map (\(x,y) -> (x, y, x `notElem` (map fst fts))))
+                      (map (\(x,y) -> (x, y, (x /= "meta") && (x `notElem` (map fst fts)))))
                       fullfts
 
  let containerDecl = R.Forward $ R.ScalarDecl (R.Name "c2") cColType Nothing
  let container = R.Variable $ R.Name (if asReturn then "c2" else "c")
 
- let recordGetLines = recordDecl
-                      ++ concat [readField field ft skip False | (field, ft, skip)  <- init ftsWSkip]
-                      ++ (\(a,b,c) -> readField a b c True) (last ftsWSkip)
-                      ++ [R.Return $ R.Variable $ R.Name "record"]
+ let setMeta = R.Assignment (R.Project (bw $ R.Variable $ R.Name "record") (R.Name "meta")) (R.Call (R.Variable $ R.Name "mf") [R.Initialization R.Unit [] ])
+ let setMult = R.Assignment (R.Project (R.Variable $ R.Name "record") (R.Name . last . fst $ fields)) (R.Literal $ R.LInt 1)
 
- let readRecordFn = R.Lambda [R.ThisCapture]
+ let ftsToRead = if addMultiplicity then init ftsWSkip else ftsWSkip
+ let recordGetLines = recordDecl
+                      ++ concat [readField field ft skip False | (field, ft, skip)  <- init ftsToRead]
+                      ++ (\(a,b,c) -> readField a b c True) (last ftsToRead)
+		      ++ (if addMeta then [setMeta] else [])
+		      ++ (if addMultiplicity then [setMult] else [])
+                      ++ [R.Return $ R.Variable $ R.Name "record"]
+ let extraCaptures = if addMeta then [R.RefCapture (Just ("mf", Nothing))] else []
+
+ let readRecordFn = R.Lambda ([R.ThisCapture] ++ extraCaptures)
                     [ (Just "in", (R.Reference $ R.Named $ R.Qualified (R.Name "std") (R.Name "istream")))
                     , (Just "tmp_buffer", (R.Reference $ R.Named $ (R.Qualified (R.Name "std") (R.Name "string"))))
                     ] False Nothing recordGetLines
 
+ let rrm = if br then (++ "_boxed") else id
+
  let readRecordsCall = if asReturn
-                       then R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "read_records_into_container")
+                       then R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name $ rrm "read_records_into_container")
                               [ R.Variable $ R.Name "paths"
                               , container
                               , readRecordFn ]
@@ -301,27 +332,28 @@ genLoader elemWrap fixedSize projectedLoader asReturn sep suf ft@(children -> [_
                                 , container
                                 , readRecordFn
                                 ]
-                         else R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name "read_records")
+                         else R.Call (R.Variable $ R.Qualified (R.Name "K3") $ R.Name $ rrm "read_records")
                                 [ R.Variable $ R.Name "paths"
                                 , container
                                 , readRecordFn
                                 ])
 
- let defaultArgs = [  (Just "paths", R.Named $ R.Specialized
-                         [R.Named $ R.Specialized [R.Named $ R.Name "string_impl"] (R.Name "R_path")]
-                         (R.Name "_Collection"))]
+ pathsType <- genCType ((T.collection $ T.record [("path", T.string)]) @+ TAnnotation "Collection")
+ let defaultArgs = [(Just "paths", pathsType)]
 
  let args = defaultArgs
               ++ [(Just "c", R.Reference $ (if asReturn then R.Const else id) cColType)]
               ++ (if projectedLoader then [(Just "_rec", R.Reference $ fromJust cfRecType)] else [])
               ++ (if fixedSize       then [(Just "size", R.Primitive R.PInt)] else [])
+	      ++ (if addMeta         then [(Just "mf", R.Named $ R.Name "MetaFn")] else [])
 
  let returnType   = if asReturn then cColType else R.Named $ R.Name "unit_t"
  let functionBody = if asReturn
                       then [ containerDecl, R.Return $ readRecordsCall ]
                       else [ R.Ignore $ readRecordsCall, R.Return $ R.Initialization R.Unit [] ]
 
- return $ R.FunctionDefn (R.Name $ coll_name ++ suf) args (Just $ returnType) [] False functionBody
+ let defaultDefn = R.FunctionDefn (R.Name $ coll_name ++ suf) args (Just $ returnType) [] False functionBody
+ return $ if addMeta then R.TemplateDefn [("MetaFn", Nothing)] defaultDefn else defaultDefn
 
  where
    typeMap :: K3 Type -> R.Expression -> R.Expression
@@ -341,6 +373,7 @@ genLoader elemWrap fixedSize projectedLoader asReturn sep suf ft@(children -> [_
    getColType = case fnArgs [] f of
                   [c, fr, sz] | projectedLoader && fixedSize -> colRecOfType c >>= \(x,y) -> return (x, y, Just fr)
                   [c, fr]     | projectedLoader              -> colRecOfType c >>= \(x,y) -> return (x, y, Just fr)
+                  [c, fr, f]  | projectedLoader              -> colRecOfType c >>= \(x,y) -> return (x, y, Just fr)
                   [c, _]      | fixedSize                    -> colRecOfType c >>= \(x,y) -> return (x, y, Nothing)
                   [c]                                        -> colRecOfType c >>= \(x,y) -> return (x, y, Nothing)
                   _                                          -> type_mismatch
@@ -360,7 +393,7 @@ genLoader elemWrap fixedSize projectedLoader asReturn sep suf ft@(children -> [_
 
    type_mismatch = error "Invalid type for Loader function. Should Be String -> Collection R -> ()"
 
-genLoader _ _ _ _ _ _ _ _ =  error "Invalid type for Loader function."
+genLoader _ _ _ _ _ _ _ _ _ _ =  error "Invalid type for Loader function."
 
 genLogger :: String -> K3 Type -> String -> CPPGenM R.Definition
 genLogger _ (children -> [_,f]) name = do

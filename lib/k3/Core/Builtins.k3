@@ -87,6 +87,27 @@ with effects \_ -> io
 declare pcmStop: () -> ()
 with effects \_ -> io
 
+declare perfRecordStart: () -> ()
+  with effects \_ -> io
+
+declare perfRecordStop: () -> ()
+  with effects \_ -> io
+
+declare perfStatStart: () -> ()
+  with effects \_ -> io
+
+declare perfStatStop: () -> ()
+  with effects \_ -> io
+
+declare vmapStart : address -> ()
+with effects \_ -> io
+
+declare vmapStop : () -> ()
+with effects \_ -> io
+
+declare vmapDump : () -> ()
+with effects \_ -> io
+
 // openBuiltin: channel id -> builtin channel id -> format -> ()
 // builtin channel id is one of: stdin, stdout, stderr
 @:CArgs 3
@@ -157,6 +178,12 @@ declare random : int -> int
 // Uniform random real generation in [0,1)
 declare randomFraction : () -> real
 
+declare randomWord : () -> string
+
+// Perform n trials with probability p, where n and p are the
+// first and second arguments respectively.
+declare randomBinomial : int -> real -> int
+
 // Polymorphic hash function
 declare hash : forall a . a -> int
   with effects \x -> R[x]
@@ -192,8 +219,8 @@ declare sqrt : real -> real
 // Collection builtins
 
 // Collection enumeration [0,1,..n-1]
-@:ErrorFn
-declare range : int -> collection {i : int} @ { Seq }
+@:{Boxable}
+declare range : int -> collection {elem : int} @Seq
   with effects \x -> R[x]
 
 ///////////////////////
@@ -246,6 +273,10 @@ declare haltEngine : () -> ()
 // Terminate engine once queues are empty
 declare drainEngine : () -> ()
 
-// Sleep the engine (microseconds)
+// Sleep the engine (milliseconds)
 declare sleep : int -> ()
+with effects  \_ -> io
+
+// Sleep the engine (microseconds)
+declare usleep : int -> ()
 with effects  \_ -> io

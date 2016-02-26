@@ -53,6 +53,11 @@ class STLDS {
     return container.size();
   }
 
+  unit_t clear(const unit_t&) {
+    container.clear();
+    return unit_t();
+  }
+
   template <class F, class G>
   auto peek(F f, G g) const {
     auto it = container.begin();
@@ -83,21 +88,6 @@ class STLDS {
   template <class T>
   unit_t insert(T &&e) {
     container.insert(container.end(), std::forward<T>(e));
-    return unit_t();
-  }
-
-  unit_t extend(STLDS&& other) {
-    for (auto& e : other.container) {
-      insert(std::move(e));
-    }
-    return unit_t();
-  }
-
-  unit_t extend(const STLDS& other) {
-    auto &c = other.getConstContainer();
-    for (auto& e : c) {
-      insert(e);
-    }
     return unit_t();
   }
 

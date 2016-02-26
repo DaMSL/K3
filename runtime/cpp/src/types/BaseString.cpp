@@ -5,48 +5,14 @@
 
 namespace K3 {
 // Constructors/Destructors/Assignment.
-base_string::base_string() : buffer_(nullptr) {}
-
-base_string::base_string(const base_string& other)
-    : buffer_(dupbuf(other))
-{
-  set_header(other.has_header());
-  set_advance(other.has_advance());
-}
-
-base_string::base_string(base_string&& other) noexcept : base_string() {
-  set_header(other.has_header());
-  set_advance(other.has_advance());
-  swap(*this, other);
-}
-
-base_string::base_string(const char* b) : buffer_(dupstr(b)) {}
-base_string::base_string(const std::string& s) : buffer_(dupstr(s.c_str())) {}
-
-base_string::base_string(const char* from, std::size_t count) : base_string() {
-  if (from && count) {
-    buffer_ = new char[count + 1];
-    strncpy(buffer_, from, count);
-    buffer_[count] = 0;
-  }
-}
-
-base_string::~base_string() {
-  if (bufferp_()) {
-    delete[] bufferp_();
-  }
-  buffer_ = 0;
-}
-
-void base_string::steal(char *p) {
-  if (bufferp_()) {
-    delete[] bufferp_();
-  }
-  buffer_ = p;
-}
+// By default, with every constructor we'll own our own buffer
 
 base_string& base_string::operator+=(const base_string& other) {
-  bool new_header = has_header() || other.has_header();
+  if (has_header() != other.has_header()) {
+    throw std::runtime_error("BaseString +=: invalid concat");
+  }
+
+  bool new_header = has_header();
   size_t len = length() + other.length() + (new_header? header_size : 0);
   auto new_buffer_ = new char[len + 1];
   auto new_c_str_ = new_buffer_ + (new_header? header_size : 0);
@@ -60,7 +26,7 @@ base_string& base_string::operator+=(const base_string& other) {
   std::strcpy(new_c_str_, (bufferp_() ? c_str() : ""));
   std::strcat(new_c_str_, (other.bufferp_() ? other.c_str() : ""));
 
-  if (bufferp_()) {
+  if (!is_borrowing()) {
     delete[] bufferp_();
   }
   buffer_ = new_buffer_;
@@ -68,7 +34,7 @@ base_string& base_string::operator+=(const base_string& other) {
 }
 
 base_string& base_string::operator+=(const char* other) {
-  return * this += base_string(other);
+  return *this += base_string(other);
 }
 
 base_string& base_string::operator=(const base_string& other) {
@@ -78,7 +44,14 @@ base_string& base_string::operator=(const base_string& other) {
 }
 
 base_string& base_string::operator=(base_string&& other) {
-  swap(*this, other);
+  // If the other string has ownership, move, else copy and set our ownership
+  if (!other.is_borrowing()) {
+    swap(*this, other);
+  } else {
+    buffer_ = dupbuf(other);
+    set_header(other.has_header());
+    set_advance(other.has_advance());
+  }
   return *this;
 }
 
@@ -88,23 +61,7 @@ void swap(base_string& first, base_string& second) {
 }
 
 // Tag accessors.
-bool base_string::has_header() const {
-  return (as_bits & header_flag) != 0;
-}
 
-void base_string::set_header(const bool& on) {
-  if ( on ) { as_bits |= header_flag; }
-  else { as_bits &= ~header_flag; }
-}
-
-bool base_string::has_advance() const {
-  return (as_bits & advance_flag) != 0;
-}
-
-void base_string::set_advance(const bool& on) {
-  if ( on ) { as_bits |= advance_flag; }
-  else { as_bits &= ~advance_flag; }
-}
 
 // Conversions
 base_string::operator bool() const {
@@ -137,7 +94,7 @@ std::size_t base_string::raw_length() const {
 }
 
 const char* base_string::c_str() const {
-  if ( !has_header() ) { return bufferp_(); }
+  if (!has_header()) { return bufferp_(); }
   else {
     return bufferp_() + header_size;
   }
@@ -327,7 +284,7 @@ void base_string::serialize(csv::parser& a, const unsigned int) {
   std::string tmp;
   a& tmp;
 
-  if (bufferp_()) {
+  if (!is_borrowing()) {
     delete[] bufferp_();
   }
   buffer_ = dupstr(tmp.c_str());

@@ -14,6 +14,7 @@ module Language.K3.Core.Constructor.Expression (
     record,
     empty,
     lambda,
+    lambdaMany,
     unop,
     binop,
     applyMany,
@@ -84,9 +85,13 @@ record vs = Node (ERecord ids :@: []) es where (ids, es) = unzip vs
 empty :: K3 Type -> K3 Expression
 empty t = Node (EConstant (CEmpty t) :@: []) []
 
--- | Create an anonymous function..
+-- | Create an anonymous function.
 lambda :: Identifier -> K3 Expression -> K3 Expression
 lambda x b = Node (ELambda x :@: []) [b]
+
+-- | Create a multi-argument anonymous function.
+lambdaMany :: [Identifier] -> K3 Expression -> K3 Expression
+lambdaMany args b = foldr lambda b args
 
 -- | Create an application of a unary operator.
 unop :: Operator -> K3 Expression -> K3 Expression
@@ -108,7 +113,7 @@ block exprs = foldl (\sq e -> binop OSeq sq e) (head exprs) (tail exprs)
 
 send :: K3 Expression -> K3 Expression -> K3 Expression -> K3 Expression
 send target addr arg = binop OSnd (tuple [qualifyE target, qualifyE addr]) arg
-  where qualifyE e = if null $ filter isEQualified $ annotations e then e @+ EImmutable else e
+  where qualifyE e = if null $! filter isEQualified $! annotations e then e @+ EImmutable else e
 
 -- | Project a field from a record.
 project :: Identifier -> K3 Expression -> K3 Expression

@@ -60,6 +60,7 @@ import Data.Char
 import Data.Hashable ( Hashable(..) )
 import Data.IORef
 import Data.Typeable
+import Data.Word ( Word8 )
 
 import Data.HashMap.Lazy ( HashMap )
 import qualified Data.HashMap.Lazy as HashMap ( toList, fromList )
@@ -80,7 +81,7 @@ type Identifier = String
 
 
 -- | Address implementation
-data Address = Address (String, Int) deriving (Eq, Ord, Typeable, Generic)
+data Address = Address !(String, Int) deriving (Eq, Ord, Typeable, Generic)
 
 defaultAddress :: Address
 defaultAddress = Address ("127.0.0.1", 40000)
@@ -88,22 +89,24 @@ defaultAddress = Address ("127.0.0.1", 40000)
 
 -- | Spans are either locations in the program source, or generated code.
 data Span
-    = Span String Int Int Int Int
+    = Span !String !Int !Int !Int !Int
         -- ^ Source name, start line and column, end line and column.
 
-    | GeneratedSpan String
+    | GeneratedSpan !Word8
         -- ^ Generator-specific metadata.
   deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Unique identifiers for AST nodes.
-data UID = UID Int deriving (Eq, Ord, Read, Show, Typeable, Generic)
+data UID = UID !Int deriving (Eq, Ord, Read, Show, Typeable, Generic)
+
+instance Hashable UID
 
 gUID :: UID -> Int
 gUID (UID i) = i
 
 
 {- Symbol generation -}
-data ParGenSymS = ParGenSymS { stride :: Int, offset :: Int, current :: Int }
+data ParGenSymS = ParGenSymS { stride :: !Int, offset :: !Int, current :: !Int }
                   deriving (Eq, Ord, Read, Show, Generic)
 
 zerosymS :: Int -> Int -> ParGenSymS
@@ -140,6 +143,7 @@ forksymS i (ParGenSymS str off cur)
 gensym :: ParGenSymS -> (ParGenSymS, Int)
 gensym (ParGenSymS str off cur) = (ParGenSymS str off (cur + str), cur + off)
 
+instance NFData    ParGenSymS
 instance Binary    ParGenSymS
 instance Serialize ParGenSymS
 
@@ -169,6 +173,12 @@ data EndpointSpec
   | FileMuxseqEP String Bool String
     -- ^ File sequence collection (as expression), text/binary, format
 
+  | PolyFileMuxEP String Bool String String String
+    -- ^ File path collection, text/binary, format, order file, rebatch size variable
+
+  | PolyFileMuxSeqEP String Bool String String String
+    -- ^ File sequence collection, text/binary, format, order file, rebatch size variable
+
   | NetworkEP String Bool String
     -- ^ Address, text/binary, format
   deriving (Eq, Ord, Read, Show, Typeable, Generic)
@@ -178,7 +188,8 @@ coverSpans :: Span -> Span -> Span
 coverSpans (Span n l1 c1 _ _) (Span _ _ _ l2 c2) = Span n l1 c1 l2 c2
 coverSpans s@(Span _ _ _ _ _) (GeneratedSpan _)  = s
 coverSpans (GeneratedSpan _) s@(Span _ _ _ _ _)  = s
-coverSpans (GeneratedSpan s1) (GeneratedSpan s2) = GeneratedSpan $ s1++", "++s2
+coverSpans (GeneratedSpan s1) (GeneratedSpan s2) =
+  GeneratedSpan $! fromIntegral ((fromIntegral s1 :: Int) `hashWithSalt` s2)
 
 -- | Left extension of a span.
 prefixSpan :: Int -> Span -> Span

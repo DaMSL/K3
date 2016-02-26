@@ -10,6 +10,8 @@ import Data.List.Split (splitOn)
 import Data.Maybe (catMaybes, fromMaybe)
 import Data.Tree
 
+import Debug.Trace
+
 import Text.PrettyPrint.ANSI.Leijen hiding ((<$>))
 
 import Language.K3.Core.Annotation
@@ -19,6 +21,8 @@ import Language.K3.Core.Type
 import Language.K3.Core.Literal
 
 import qualified Language.K3.Core.Constructor.Type as TC
+
+import Language.K3.Utils.Pretty
 
 import Language.K3.Codegen.CPP.Primitives (genCType)
 import qualified Language.K3.Codegen.CPP.Representation as R
@@ -310,7 +314,7 @@ indexes name ans content_ts = do
 
       let slice k_t = R.Call (R.Project this $ R.Name "fold_slice_by_index")
                         $ call_args n index [ tuple (R.Name "key") k_t
-                                            , R.Variable $ R.Name "f", R.Variable $ R.Name "acc" ]
+                                            , R.Variable $ R.Name "f", R.Move $ R.Variable $ R.Name "acc" ]
 
       let defn k_t c_t = R.TemplateDefn [("Fun", Nothing), ("Acc", Nothing)] $
                          R.FunctionDefn (R.Name fname)
@@ -341,7 +345,7 @@ indexes name ans content_ts = do
 
       let range k_t = R.Call (R.Project this $ R.Name "fold_range_by_index")
                         $ call_args n index [ tuple (R.Name "a") k_t, tuple (R.Name "b") k_t
-                                            , R.Variable $ R.Name "f", R.Variable $ R.Name "acc" ]
+                                            , R.Variable $ R.Name "f", R.Move $ R.Variable $ R.Name "acc" ]
 
       let defn k_t c_t = R.TemplateDefn [("Fun", Nothing), ("Acc", Nothing)] $
                          R.FunctionDefn (R.Name fname)
@@ -371,7 +375,7 @@ indexes name ans content_ts = do
 
       let slice k_t = R.Call (R.Project this $ R.Name "fold_slice_vid_by_index")
                         $ call_args n index [ tuple (R.Name "key") k_t
-                                            , R.Variable $ R.Name "f", R.Variable $ R.Name "acc" ]
+                                            , R.Variable $ R.Name "f", R.Move $ R.Variable $ R.Name "acc" ]
 
       let defn k_t c_t = R.TemplateDefn [("Fun", Nothing), ("Acc", Nothing)] $
                          R.FunctionDefn (R.Name fname)
@@ -386,25 +390,114 @@ indexes name ans content_ts = do
       return result
 
     fold_slice_vid_fn _ = return Nothing
+   
+-- Specialize for unit record
+pattern RElemUnit = R.Named (R.Specialized [R.Named (R.Name "unit_t")] (R.Name "R_elem"))
 
 
--- Returns member definitions for a FlatPolyBuffer
+-- Returns member definitions for a FlatPolyBuffer or UniquePolyBuffer
 polybuffer :: Identifier -> [(Identifier, [AnnMemDecl])] -> CPPGenM [R.Definition]
-polybuffer name ans = do
-  let indexed   = zip [1..] $ filter is_polybuffer ans
+polybuffer name ans  = do
+  let indexed   = zip [1..] $ filter (is_polybuffer . fst) ans
   let flattened = concatMap (\(i, (n, mems)) -> zip (repeat (i,n)) mems) indexed
   at_defns                   <- catMaybes <$> mapM at_fn flattened
   safe_at_defns              <- catMaybes <$> mapM safe_at_fn flattened
+  unsafe_at_defns            <- catMaybes <$> mapM unsafe_at_fn flattened
+  iterate_tag_defns          <- catMaybes <$> mapM iterate_tag_fn flattened
+  fold_tag_defns             <- catMaybes <$> mapM fold_tag_fn flattened
   (tgs, types, append_defns) <- unzip3 . catMaybes <$> mapM append_fn flattened
+  skip_tag_defns             <- catMaybes <$> mapM skip_fn flattened
+  skip_all_tag_defns         <- catMaybes <$> mapM skip_all_fn flattened
   extra_defns                <- extra_fns tgs types
-  return $ super_defn ++ at_defns ++ safe_at_defns ++ append_defns ++ extra_defns
+  return $ super_defn ++ copy_ctor ++ move_ctor ++ copy_assign ++ move_assign ++ dtor
+           ++ at_defns ++ safe_at_defns ++ unsafe_at_defns ++ append_defns
+           ++ iterate_tag_defns ++ fold_tag_defns ++ skip_tag_defns ++ skip_all_tag_defns ++ extra_defns
 
   where
-    super_defn = [R.GlobalDefn $ R.Forward $ R.UsingDecl
-                   (Right $ R.Name "Super")
-                   (Just $ R.Qualified (R.Name "K3") $ R.Specialized [elem_type] $ R.Name "FlatPolyBuffer")]
+    is_polybuffer n = any (`isInfixOf` n) ["FlatPolyBuffer", "UniquePolyBuffer"]
+    is_flat_polybuffer = "FlatPolyBuffer" `isInfixOf` name
+
+    super_type = R.Qualified (R.Name "K3") $
+                  if is_flat_polybuffer
+                  then R.Specialized [elem_type, R.Named $ R.Name name] $ R.Name "FlatPolyBuffer"
+                  else R.Specialized [elem_type, R.Named $ R.Name name] $ R.Name "UniquePolyBuffer"
+
+    super_defn = if is_polybuffer name then
+                  [R.GlobalDefn $ R.Forward $ R.UsingDecl
+                    (Right $ R.Name "Super")
+                    (Just $ super_type)]
+
+                 else []
+
+    -- TODO we need to complete the rule of 5 (move, copyAssign, moveAssign, destructor)
+    copy_ctor :: [R.Definition]
+    copy_ctor = if not (is_polybuffer name) then [] else
+      [ R.FunctionDefn
+          (R.Name name)
+          [(Just "other", R.Reference $ R.Const $ R.Named $ R.Name name)]
+          Nothing
+          [R.Call (R.Variable super_type) [R.Variable $ R.Name "other"]]
+          False
+          [ R.IfThenElse
+              (R.Project (R.Dereference $ R.Project (R.Variable $ R.Name "other") $ R.Name "container") $ R.Name "internalized")
+              [R.Ignore $ R.Call
+                (R.Variable $ R.Qualified (R.Name "Super") (R.Name "unpack"))
+                [R.Initialization R.Unit []]
+              ]
+              []
+          ]
+       ]
+
+    move_ctor :: [R.Definition]
+    move_ctor = if not (is_polybuffer name) then [] else
+      [ R.FunctionDefn
+          (R.Name name)
+          [(Just "other", R.RValueReference $ R.Named $ R.Name name)]
+          Nothing
+          [R.Call (R.Variable super_type) [R.Move $ R.Variable $ R.Name "other"]]
+          False
+          []
+       ]
+
+    copy_assign :: [R.Definition]
+    copy_assign = if not (is_polybuffer name) then [] else
+      [ R.FunctionDefn
+          (R.Name "operator=")
+          [(Just "other", R.Reference $ R.Const $ R.Named $ R.Name name)]
+          (Just $ R.Reference $ R.Named $ R.Name name)
+          []
+          False
+          [ R.Ignore $ R.Call (R.Variable $ R.Qualified (R.Name "Super") (R.Name "operator=")) [R.Variable $ R.Name "other"],
+            R.Return $ R.Dereference $ R.Variable $ R.Name "this"
+          ]
+       ]
+
+    move_assign :: [R.Definition]
+    move_assign = if not (is_polybuffer name) then [] else
+      [ R.FunctionDefn
+          (R.Name "operator=")
+          [(Just "other", R.RValueReference $ R.Named $ R.Name name)]
+          (Just $ R.Reference $ R.Named $ R.Name name)
+          []
+          False
+          [ R.Ignore $ R.Call (R.Variable $ R.Qualified (R.Name "Super") (R.Name "operator=")) [R.Move $ R.Variable $ R.Name "other"],
+            R.Return $ R.Dereference $ R.Variable $ R.Name "this"
+          ]
+       ]
+
+    dtor :: [R.Definition]
+    dtor = if not (is_polybuffer name) then [] else
+      [ R.FunctionDefn
+          (R.Name $ "~" ++ name)
+          []
+          Nothing
+          []
+          False
+          []
+       ]
 
     at_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
+    at_fn (_, Lifted _ fname _ _ _) | "_unsafe_at" `isSuffixOf` fname = return Nothing
     at_fn (_, Lifted _ fname _ _ _) | "_safe_at" `isSuffixOf` fname = return Nothing
     at_fn (_, Lifted _ fname t _ _) | "_at" `isSuffixOf` fname = do
       let (arg1, arg2) = ("idx", "offset")
@@ -418,7 +511,7 @@ polybuffer name ans = do
                       [(Just arg1, int_t), (Just arg2, int_t)]
                       (Just $ ct)
                       []
-                      False
+                      True
                       [R.Return $ typed_at ct]
 
       c_at_rt <- maybe (return Nothing) (\x -> genCType x >>= return . Just) at_rt
@@ -442,13 +535,36 @@ polybuffer name ans = do
                       [(Just arg1, int_t), (Just arg2, int_t), (Just arg3, f_t), (Just arg4, g_t)]
                       (Just $ R.Named $ R.Name "auto")
                       []
-                      False
+                      True
                       [R.Return $ typed_safe_at ct]
 
       c_safe_at_t <- maybe (return Nothing) (\x -> genCType x >>= return . Just) safe_at_t
       return $ defn <$> c_safe_at_t
 
     safe_at_fn _ = return Nothing
+
+    unsafe_at_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
+    unsafe_at_fn (_, Lifted _ fname t _ _) | "_unsafe_at" `isSuffixOf` fname = do
+      let (arg1, arg2, arg3) = ("idx", "offset", "f")
+      let int_t = R.Primitive R.PInt
+      let f_t   = R.Named $ R.Name "F"
+      let unsafe_at_t = get_unsafe_at_type t
+      let typed_unsafe_at ct = R.Call
+                                (R.Variable $ suqualnm $ R.Specialized [ct, f_t] $ R.Name "template unsafe_at")
+                                (map (R.Variable . R.Name) [arg1, arg2, arg3])
+
+      let defn ct = R.TemplateDefn [("F", Nothing)] $
+                    R.FunctionDefn (R.Name fname)
+                      [(Just arg1, int_t), (Just arg2, int_t), (Just arg3, f_t)]
+                      (Just $ R.Named $ R.Name "auto")
+                      []
+                      True
+                      [R.Return $ typed_unsafe_at ct]
+
+      c_unsafe_at_t <- maybe (return Nothing) (\x -> genCType x >>= return . Just) unsafe_at_t
+      return $ defn <$> c_unsafe_at_t
+
+    unsafe_at_fn _ = return Nothing
 
     append_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe (Int, R.Type, R.Definition))
     append_fn (_, Lifted _ fname t _ danns) | "append_" `isPrefixOf` fname = do
@@ -458,7 +574,7 @@ polybuffer name ans = do
                                      [R.Literal $ R.LInt ct_tag, R.Variable $ R.Name "elem"]
 
       let defn ct_tag ct = R.FunctionDefn (R.Name fname)
-                             [(Just "elem", ct)]
+                             [(Just "elem", R.Reference $ R.Const ct)]
                              (Just $ R.Unit)
                              []
                              False
@@ -470,10 +586,133 @@ polybuffer name ans = do
 
     append_fn _ = return Nothing
 
+    iterate_tag_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
+    iterate_tag_fn (_, Lifted _ fname t _ danns) | "iterate_" `isPrefixOf` fname = do
+      let int_t = R.Primitive R.PInt
+      let val_t = get_iterate_type t
+      let f_t   = R.Named $ R.Name "F"
+      let typed_iterate ct_tag ct = R.Call
+                                     (R.Variable $ suqualnm $ R.Specialized [ct, f_t] $ R.Name "template iterate_tag")
+                                     [R.Literal $ R.LInt ct_tag,
+                                      R.Variable $ R.Name "idx",
+                                      R.Variable $ R.Name "offset",
+                                      R.Variable $ R.Name "f"]
+
+      let defn ct_tag ct = R.TemplateDefn [("F", Nothing)] $
+                           R.FunctionDefn (R.Name fname)
+                             [(Just "idx", int_t), (Just "offset", int_t), (Just "f", f_t)]
+                             (Just R.Unit)
+                             []
+                             True
+                             [R.Return $ typed_iterate ct_tag ct]
+
+      c_val_t <- maybe (return Nothing) (\x -> genCType x >>= return . Just) val_t
+      t_tag <- maybe (return Nothing) (return . tag_value) $ find is_tag danns
+      return $ defn <$> t_tag <*> c_val_t
+
+    iterate_tag_fn _ = return Nothing
+
+    fold_tag_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
+    fold_tag_fn (_, Lifted _ fname t _ danns) | "foldl_" `isPrefixOf` fname = do
+      let int_t = R.Primitive R.PInt
+      let val_t = get_fold_type t
+      let f_t   = R.Named $ R.Name "Fun"
+      let acc_t = R.Named $ R.Name "Acc"
+      let typed_fold ct_tag ct = R.Call
+                                     (R.Variable $ suqualnm $ R.Specialized [ct, f_t] $ R.Name "template foldl_tag")
+                                     [R.Literal $ R.LInt ct_tag,
+                                      R.Variable $ R.Name "idx",
+                                      R.Variable $ R.Name "offset",
+                                      R.Variable $ R.Name "f",
+                                      R.Move $ R.Variable $ R.Name "acc"]
+
+      let defn ct_tag ct = R.TemplateDefn [("Fun", Nothing), ("Acc", Nothing)] $
+                           R.FunctionDefn (R.Name fname)
+                             [(Just "idx", int_t), (Just "offset", int_t), (Just "f", f_t), (Just "acc", acc_t)]
+                             (Just acc_t)
+                             []
+                             True
+                             [R.Return $ typed_fold ct_tag ct]
+
+      c_val_t <- maybe (return Nothing) (\x -> genCType x >>= return . Just) val_t
+      t_tag <- maybe (return Nothing) (return . tag_value) $ find is_tag danns
+      return $ defn <$> t_tag <*> c_val_t
+
+    fold_tag_fn _ = return Nothing
+
+    skip_common fname danns call_name = do
+      let (arg1, arg2) = ("idx", "offset")
+      let int_t = R.Primitive R.PInt
+      let skip_rt = R.Named $ R.Specialized [int_t, int_t] $ R.Name "R_key_value"
+      let skip_call ct_tag = R.Call (R.Variable $ suqualnm $ R.Name call_name)
+                               [R.Literal $ R.LInt ct_tag,
+                                R.Variable $ R.Name arg1,
+                                R.Variable $ R.Name arg2]
+
+      let defn ct_tag = R.FunctionDefn (R.Name fname)
+                          [(Just arg1, int_t), (Just arg2, int_t)]
+                          (Just $ skip_rt)
+                          []
+                          True
+                          [R.Return $ skip_call ct_tag]
+
+      t_tag <- maybe (return Nothing) (return . tag_value) $ find is_tag danns
+      return $ defn <$> t_tag
+
+    skip_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
+    skip_fn (_, Lifted _ fname _ _ _) | "skip_all_" `isPrefixOf` fname = return Nothing
+    skip_fn (_, Lifted _ fname _ _ danns) | "skip_" `isPrefixOf` fname = skip_common fname danns "skip_tag"
+    skip_fn _ = return Nothing
+
+    skip_all_fn :: ((Integer, Identifier), AnnMemDecl) -> CPPGenM (Maybe R.Definition)
+    skip_all_fn (_, Lifted _ fname _ _ danns) | "skip_all_" `isPrefixOf` fname = skip_common fname danns "skip_all_tag"
+    skip_all_fn _ = return Nothing
+
     extra_fns :: [Int] -> [R.Type] -> CPPGenM [R.Definition]
     extra_fns [] [] = return []
     extra_fns tags types = catMaybes <$> mapM (\f -> f tags types)
-      [elemsize_fn, externalize_fn, internalize_fn, yamlencode_fn, yamldecode_fn, jsonencode_fn]
+      [equalelem_fn, hashelem_fn, elemsize_fn, elemappend_fn,
+       externalize_fn, internalize_fn,
+       yamlencode_fn, yamldecode_fn, jsonencode_fn]
+
+    equalelem_fn :: [Int] -> [R.Type] -> CPPGenM (Maybe R.Definition)
+    equalelem_fn tags types = do
+      let void_ptr_t = R.Pointer $ R.Void
+      return $ Just $ R.FunctionDefn (R.Name "equalelem")
+                        [(Just "ltag", tag_t), (Just "lelem", void_ptr_t),
+                         (Just "rtag", tag_t), (Just "relem", void_ptr_t)]
+                        (Just $ R.Named $ R.Name "static bool")
+                        []
+                        False
+                        [R.IfThenElse (R.Binary "==" (R.Variable $ R.Name "ltag") (R.Variable $ R.Name "rtag"))
+                          [branch_chain "ltag" tags types elseStmt elemStmt]
+                          [R.Return $ R.Literal $ R.LBool False]]
+
+      where
+        elemStmt _ ty = R.Return $ R.Binary "==" (deref "lelem" ty) (deref "relem" ty)
+
+        deref n ty = R.Dereference $
+                       R.Call (R.Variable $ R.Specialized [R.Pointer ty] $ R.Name "reinterpret_cast")
+                         [R.Variable $ R.Name n]
+
+        elseStmt = R.Ignore $ R.ThrowRuntimeErr $ R.Literal $ R.LString "Invalid poly buffer tag"
+
+    hashelem_fn :: [Int] -> [R.Type] -> CPPGenM (Maybe R.Definition)
+    hashelem_fn tags types = do
+      let void_ptr_t = R.Pointer $ R.Void
+      return $ Just $ R.FunctionDefn (R.Name "hashelem")
+                        [(Just "tag", tag_t), (Just "elem", void_ptr_t)]
+                        (Just $ R.Named $ R.Name "static size_t")
+                        []
+                        False
+                        [branch_chain "tag" tags types elseStmt elemStmt]
+
+      where elemStmt _ ty = R.Return $ R.Call (R.Variable $ R.Name "hash_value")
+                              [R.Dereference $
+                                R.Call (R.Variable $ R.Specialized [R.Pointer ty] $ R.Name "reinterpret_cast")
+                                  [R.Variable $ R.Name "elem"]]
+
+            elseStmt = R.Ignore $  R.ThrowRuntimeErr $ R.Literal $ R.LString "Invalid poly buffer tag"
 
     elemsize_fn :: [Int] -> [R.Type] -> CPPGenM (Maybe R.Definition)
     elemsize_fn tags types =
@@ -484,8 +723,24 @@ polybuffer name ans = do
                         True
                         [branch_chain "tag" tags types elseStmt elemStmt]
 
-      where elemStmt _ ty = R.Return $ R.Call (R.Variable $ R.Name "sizeof") [R.ExprOnType ty]
+      where elemStmt _ RElemUnit = R.Return $ R.Literal $ R.LInt 0
+            elemStmt _ ty = R.Return $ R.Call (R.Variable $ R.Name "sizeof") [R.ExprOnType ty]
             elseStmt = R.Ignore $  R.ThrowRuntimeErr $ R.Literal $ R.LString "Invalid poly buffer tag"
+
+    elemappend_fn :: [Int] -> [R.Type] -> CPPGenM (Maybe R.Definition)
+    elemappend_fn tags types =
+      return $ Just $ R.FunctionDefn (R.Name "elemappend")
+                        [(Just "tag", tag_t), (Just "data", char_ptr_t)]
+                        (Just $ R.Void)
+                        []
+                        False
+                        [branch_chain "tag" tags types elseStmt elemStmt]
+
+      where elemStmt tg ty = R.Ignore $ R.Call
+                              (R.Variable $ suqualnm $ R.Specialized [ty] $ R.Name "template append")
+                              [R.Literal $ R.LInt tg, castExpr $ R.Pointer ty]
+            castExpr ty = R.Dereference $ R.Call (reinterpret_cast_expr ty) [R.Variable $ R.Name "data"]
+            elseStmt = R.Ignore $ R.ThrowRuntimeErr $ R.Literal $ R.LString "Invalid poly buffer tag"
 
     externalize_fn :: [Int] -> [R.Type] -> CPPGenM (Maybe R.Definition)
     externalize_fn tags types =
@@ -493,7 +748,7 @@ polybuffer name ans = do
                         [(Just "e", R.Reference externalizer_t),
                          (Just "tag", tag_t),
                          (Just "data", char_ptr_t)]
-                        (Just $ R.Void)
+                        (Just $ R.Named $ R.Name "static void")
                         []
                         False
                         [branch_chain "tag" tags types elseStmt elemStmt]
@@ -509,7 +764,7 @@ polybuffer name ans = do
                         [(Just "i", R.Reference internalizer_t),
                          (Just "tag", tag_t),
                          (Just "data", char_ptr_t)]
-                        (Just $ R.Void)
+                        (Just $ R.Named $ R.Name "static void")
                         []
                         False
                         [branch_chain "tag" tags types elseStmt elemStmt]
@@ -610,7 +865,6 @@ polybuffer name ans = do
     branch_chain n tags types elseStmt f = (\foldF -> foldl foldF elseStmt $ zip tags types) $
       \accStmt (tg,ty) -> R.IfThenElse (R.Binary "==" (R.Variable $ R.Name n) (R.Literal $ R.LInt tg)) [f tg ty] [accStmt]
 
-    is_polybuffer (n,_) = "FlatPolyBuffer" `isInfixOf` n
 
     is_tag (DProperty (dPropertyName -> "Tag")) = True
     is_tag _ = False
@@ -623,15 +877,30 @@ polybuffer name ans = do
     get_at_return_type _ = Nothing
 
     get_safe_at_type :: K3 Type -> Maybe (K3 Type)
-    get_safe_at_type (PTFunction _ (PTFunction _ (PTFunction (PTFunction rt _ _) _ _) _) _) = Just rt
+    get_safe_at_type (PTFun4 _ _ _ (PTFunction rt _ _) _ _ _ _ _) = Just rt
     get_safe_at_type _ = Nothing
+
+    get_unsafe_at_type :: K3 Type -> Maybe (K3 Type)
+    get_unsafe_at_type (PTFun3 _ _ (PTFunction rt _ _) _ _ _ _) = Just rt
+    get_unsafe_at_type _ = Nothing
 
     get_append_type :: K3 Type -> Maybe (K3 Type)
     get_append_type (PTFunction vt _ _) = Just vt
     get_append_type _ = Nothing
+
+    get_iterate_type :: K3 Type -> Maybe (K3 Type)
+    get_iterate_type (PTFun3 _ _ (PTFun3 _ _ rt _ _ _ _) _ _ _ _) = Just rt
+    get_iterate_type _ = Nothing
+
+    get_fold_type :: K3 Type -> Maybe (K3 Type)
+    get_fold_type (PTFun3 _ _ (PTFun4 _ _ _ rt _ _ _ _ _) _ _ _ _) = Just rt
+    get_fold_type _ = Nothing
 
 
 {- Pattern synonyms for index functions. -}
 
 pattern PTRecord ids ch anns = Node (TRecord ids :@: anns) ch
 pattern PTFunction arg rt anns = Node (TFunction :@: anns) [arg, rt]
+pattern PTFun2 arg1 arg2 rt anns1 anns2 = PTFunction arg1 (PTFunction arg2 rt anns2) anns1
+pattern PTFun3 arg1 arg2 arg3 rt anns1 anns2 anns3 = PTFunction arg1 (PTFun2 arg2 arg3 rt anns2 anns3) anns1
+pattern PTFun4 arg1 arg2 arg3 arg4 rt anns1 anns2 anns3 anns4 = PTFunction arg1 (PTFun3 arg2 arg3 arg4 rt anns2 anns3 anns4) anns1

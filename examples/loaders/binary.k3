@@ -1,0 +1,39 @@
+include "Annotation/Collection.k3"
+include "Core/Builtins.k3"
+
+declare c: mut collection {elem: real} @Collection
+
+trigger save: () = \_ -> (
+  c.insert {elem: 1.0};
+  c.insert {elem: 2.0};
+  c.insert {elem: 3.0};
+  (sink1, me) <- c;
+  (halt, me) <- ()
+)
+
+trigger load: collection {elem: real} @Collection = \i -> (
+  i.iterate (\x -> print (rtos x.elem));
+  (halt, me) <- ()
+)
+
+trigger manual_load: () = \_ -> (
+  openFile me "input" "test.in" "k3" false "r";
+  c = doRead me "input";
+  c.iterate (\x -> print (rtos x.elem));
+  (halt, me) <- ()
+)
+
+trigger halt: () = \_ -> haltEngine()
+
+// Construct a collection and output as binary
+source source1: () = value ()
+feed source1 |> save
+sink sink1: collection {elem: real} @Collection = file "test.out" binary k3
+
+// Load binary directly via source
+source source2: collection {elem: real} @Collection = file "test.in" binary k3
+feed source2 |> load
+
+// Manual-mode
+source source3: () = value ()
+feed source3 |> manual_load

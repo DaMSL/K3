@@ -1,0 +1,6 @@
+include "kvs/Common.k3"
+include "kvs/KvsServer.k3"
+include "kvs/KvsClient.k3"
+
+source client: () = value ()
+feed client |> main

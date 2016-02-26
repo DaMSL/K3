@@ -11,12 +11,3 @@ where
         l_partkey = p_partkey
         and l_shipdate >= date '1995-09-01'
         and l_shipdate < date '1995-10-01'
-
-        ((lineitem.filter 
-                  (\e -> 19950901 <= e.l_shipdate < 19951001)
-                 )
-                 .groupBy
-                  (\l -> l.l_partkey)
-                  (\a -> \e -> a + (e.l_extendedprice * (1.0 - e.l_discount)))
-                  0.0
-                 )

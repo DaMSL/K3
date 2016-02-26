@@ -1,0 +1,105 @@
+#  Dockerfile:  k3-app
+#
+#  Description:  Image for use with K3 to run applications ONLY
+#    Contains minimal amount of libs & dependencies
+#
+#  Version:   Boost (1.57), Mesos (0.22.1), Protobuf (2.5)
+#
+#  Requirements:  Copy mesos libs (libmesos-<version>.so, libmesos.la) to local work dir
+
+FROM ubuntu:15.10
+
+ENV BOOST_VER=1.57.0 BOOST_DIR=boost_1_57_0 \
+    PROTO_VER=2.5.0 \
+    JEMALLOC_VER=4.0.0 \
+    MESOS_VER=0.22.1 \
+    MESOS_INT_VER=0.22.1.1 \
+    BLOOMBERG_VER=2.24.x \
+    YAML_CPP_VER=0.5.1 \
+    JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64 \
+    LD_LIBRARY_PATH=/usr/local/lib:/usr/lib \
+    PATH=/software/bde-tools/bin:$PATH \
+    DEBIAN_FRONTEND=noninteractive
+
+# Install basic packages to build the image
+RUN apt-get update && apt-get upgrade -y && apt-get install -y \
+  apt-utils bzip2 unzip autoconf libtool \
+  gcc g++ clang-3.5 openjdk-8-jre make cmake git curl wget sudo \
+  libunwind-dev subversion libre2-dev python
+
+# Install Boost
+RUN wget http://sourceforge.net/projects/boost/files/boost/$BOOST_VER/$BOOST_DIR.tar.bz2/download && \
+  tar --bzip2 -xvf ./download                                                                     && \
+  rm download                                                                                     && \
+  cd $BOOST_DIR                                                                                   && \
+  ./bootstrap.sh --with-libraries=serialization,system,thread,log,program_options,filesystem --prefix=/usr/local libdir=/usr/local/lib && \
+  ./b2 stage threading=multi link=shared   && \
+  ./b2 install threading=multi link=shared && \
+  cd ..                                    && \
+  rm -Rf $BOOST_DIR
+
+# Install Bloomberg BSL and BDL
+RUN mkdir -p /software && cd /software                                         && \
+    git clone https://github.com/bloomberg/bde-tools.git                       && \
+    git clone https://github.com/bloomberg/bde.git                             && \
+    cd bde                                                                     && \
+    git checkout releases/$BLOOMBERG_VER && \
+    waf configure --targets=bsl,bdl --build-type=release --library-type=shared && \
+    waf build --targets=bsl,bdl --build-type=release --library-type=shared     && \
+    waf install --targets=bsl,bdl                                              && \
+    rm -Rf bde-tools bde
+
+# Install CSV++
+RUN git clone https://git01.codeplex.com/forks/wjjt/csvpp && \
+  cd csvpp && \
+  cmake . && \
+  make && \
+  mv libcsvpp.so /usr/lib/ && \
+  cd .. && \
+  rm -Rf csvpp
+
+# Install libdynamic
+RUN git clone https://github.com/DaMSL/libdynamic && \
+    cd libdynamic                                 && \
+    ./autogen.sh                                  && \
+    ./configure --prefix=/usr                     && \
+    make                                          && \
+    make install                                  && \
+    cd ..                                         && \
+    rm -Rf libdynamic
+
+# Copy in Mesos libs & include files
+ADD assets/libmesos-$MESOS_VER.so /usr/lib/
+ADD assets/libmesos.la /usr/lib/
+ADD assets/include/mesos /usr/include/mesos/
+
+# Install Protobuf
+RUN wget https://github.com/google/protobuf/releases/download/v$PROTO_VER/protobuf-$PROTO_VER.tar.bz2 && \
+  tar -xvf protobuf-$PROTO_VER.tar.bz2 && \
+  rm protobuf-$PROTO_VER.tar.bz2 && \
+  cd protobuf-$PROTO_VER && \
+  ./autogen.sh && \
+  ./configure --prefix=/usr && \
+  make && \
+  make check && \
+  make install && \
+  protoc --proto_path=/usr/include/mesos --cpp_out=/usr/include/mesos/ /usr/include/mesos/mesos.proto && \
+  cd .. && \
+  rm -Rf /protobuf-$PROTO_VER
+
+# Install yaml-cpp
+RUN wget https://github.com/jbeder/yaml-cpp/archive/release-$YAML_CPP_VER.tar.gz && \
+  tar -xvzf release-$YAML_CPP_VER.tar.gz && \
+  rm release-$YAML_CPP_VER.tar.gz && \
+  cd yaml-cpp-release-$YAML_CPP_VER && \
+  mkdir build && cd build && \
+  cmake .. && make && make install && \
+  cd / && rm -Rf /yaml-cpp-release-$YAML_CPP_VER
+
+# Finish & Clean up
+RUN ln -s /usr/lib/libmesos-$MESOS_VER.so /usr/lib/libmesos.so && \
+    apt-get autoremove -y && \
+    apt-get autoclean -y
+
+# Add env variables for bloomberg
+ENV CPLUS_INCLUDE_PATH=/usr/local/include/bsl:/usr/local/include/bdl

@@ -14,6 +14,7 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
                          , masters : expr, masters_map : expr
                          , send_ty : type, send_extra_fn : expr]
 {
+  ((\?x -> ?b) @:DirectReceive) => (\$#[x] -> $.[b])
   // Rewrite the receiving trigger to to synchronously call the existing trigger on the global
   // stashed by the machine-local master. As long as the trigger doesn't modify its argument, the
   // global will be passed in by constant reference, and no copies will take place.
@@ -33,6 +34,10 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
               else ( error (print ("Invalid bc peer master at " ++ (atos me))) ) )
           )
         }
+
+  ( ignore ?e ) @:DirectSend
+    => (let $[lbl]_broadcast_out = $.[e]
+        in $[masters_map].iterate (\r -> (($[dest_trg], r.key) <- $[lbl]_broadcast_out)))
 
   ( ignore ?e ) @: SendBroadcast
      => ( let r = $.[e] in
@@ -60,7 +65,7 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
           trigger $[lbl]_machproxy : $[send_ty] = \m -> (
             ( if $[lbl]_machvar_initialized then () else (
                 ( (range ($[masters_map].size())).iterate (\i ->
-                    $[lbl]_machvar.insert {key: i.i, value: $[lbl]_machvar_default} )
+                    $[lbl]_machvar.insert {key: i.elem, value: $[lbl]_machvar_default} )
                 );
                 $[lbl]_machvar_initialized = true
               )
@@ -74,7 +79,7 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
             if $[lbl]_machvar_cnt == $[masters_map].size() then
             ( (range ($[masters_map].size())).iterate (\i ->
                 local_peers.iterate (\a ->
-                 ($[lbl]_peerproxy, a.addr) <- i.i
+                 ($[lbl]_peerproxy, a.addr) <- i.elem
                 )
               )
             )
@@ -85,7 +90,7 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
             let gcentry = {key: msg_id, value: 0} in
             if $[lbl]_machvar_gc_ids.member gcentry
             then
-            ( $[lbl]_machvar_gc_ids.lookup gcentry (\_ -> () ) 
+            ( $[lbl]_machvar_gc_ids.lookup gcentry (\_ -> () )
                 (\r -> if r.value == 1
                        then ( // ( print ("Machine " ++ (atos me) ++ " GCing bc " ++ (itos msg_id)) );
                               ($[lbl]_machvar_gc_ids.erase r);
@@ -108,7 +113,7 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
             // ( print ("Peer " ++ (atos me) ++ " proxying shf " ++ (itos msg_id)) );
             let oentry = {key: msg_id, value: $[lbl]_machvar_peer_default} in
             if $[lbl]_machvar.member oentry
-            then ( $[lbl]_machvar.lookup oentry (\_ -> ()) 
+            then ( $[lbl]_machvar.lookup oentry (\_ -> ())
                       (\r -> (
                         ( let ientry = {key: me, value: $[lbl]_machvar_default} in
                           if r.value.member ientry
@@ -156,7 +161,7 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
           trigger $[lbl]_machproxy : collection {key: address, value: $[send_ty]} @Map = \m -> (
             ( if $[lbl]_machvar_initialized then () else (
                 ( (range ($[masters_map].size())).iterate (\i ->
-                    $[lbl]_machvar.insert {key: i.i, value: $[lbl]_machvar_peer_default} )
+                    $[lbl]_machvar.insert {key: i.elem, value: $[lbl]_machvar_peer_default} )
                 );
                 $[lbl]_machvar_initialized = true
               )
@@ -177,7 +182,7 @@ control DispatchByMachine[ lbl : label, dest_trg : expr
           trigger $[lbl]_machvar_gc : int = \msg_id -> (
             let gcentry = {key: msg_id, value: 0} in
             if $[lbl]_machvar_gc_ids.member gcentry then
-            ( $[lbl]_machvar_gc_ids.lookup gcentry (\_ -> () ) 
+            ( $[lbl]_machvar_gc_ids.lookup gcentry (\_ -> () )
                 (\r -> if r.value == 1
                        then ( // ( print ("Machine " ++ (atos me) ++ " GCing shf " ++ (itos msg_id)) );
                               ($[lbl]_machvar_gc_ids.erase r);
@@ -200,7 +205,7 @@ control BroadcastByMachine[lbl : label, dest_trg : expr, masters : expr, masters
                          , send_ty : type, send_extra_fn : expr]
 {
   ( ignore (?e : collection ?t) ) @:Send
-    => (( ignore $.[e] ) @: SendBroadcast
+    => (( ignore $.[e] ) @:SendBroadcast
        ) @DispatchByMachine( lbl = lbl, dest_trg = dest_trg
                            , masters = masters, masters_map = masters_map
                            , send_ty = send_ty, send_extra_fn = send_extra_fn )
@@ -208,7 +213,7 @@ control BroadcastByMachine[lbl : label, dest_trg : expr, masters : expr, masters
     +> {}
 
   () @:Send
-    => ( ( ignore () ) @: SendBroadcast
+    => ( ( ignore () ) @:SendBroadcast
        ) @DispatchByMachine( lbl = lbl, dest_trg = dest_trg
                            , masters = masters, masters_map = masters_map
                            , send_ty = send_ty, send_extra_fn = send_extra_fn )

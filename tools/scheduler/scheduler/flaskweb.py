@@ -156,7 +156,7 @@ def initWeb(port, **kwargs):
     webapp.config['COMPILELOG'] = compileFile
 
     compile_fmt = ServiceFormatter(u'[%(asctime)s] %(message)s'.encode("utf8", errors='ignore'))
-    compile_file = logging.handlers.RotatingFileHandler(compileFile, maxBytes=1024*1024, backupCount=5, mode='w')
+    compile_file = logging.handlers.RotatingFileHandler(compileFile, maxBytes=5*1024*1024, backupCount=20, mode='w')
     compile_file.setFormatter(compile_fmt)
     compileLogger.addHandler(compile_file)
 
@@ -297,7 +297,7 @@ def getYamlInstructions():
 def trace():
   """
   #------------------------------------------------------------------------------
-  #  /trace - Debugging respose. Returns the client's HTTP request data in json
+  #  /trace - Debugging response. Returns the client's HTTP request data in json
   #------------------------------------------------------------------------------
   """
   logger.debug('[FLASKWEB  /trace] Trace debug request')
@@ -575,9 +575,11 @@ def listJobs():
   #------------------------------------------------------------------------------
   """
   logger.debug('[FLASKWEB  /jobs] Request for job listing')
-  jobs = db.getJobs()
+  jobs = db.getJobs(numdays=2)
   for job in jobs:
     job['time'] = datetime.datetime.strptime(job['time'], db.TS_FMT).replace(tzinfo=db.timezone('UTC')).isoformat()
+    if job['complete']:
+      job['complete'] = datetime.datetime.strptime(job['complete'], db.TS_FMT).replace(tzinfo=db.timezone('UTC')).isoformat()
 
   #  Garbage Collect Orpahened jobs
   compiles = db.getCompiles()
@@ -621,7 +623,8 @@ def createJob(appName, appUID):
   #             -F logging=[True | False]
   #             -F jsonlog=[True | False]
   #             -F jsonfinal=[True | False]
-  #             -F perfprofile=[True | False]
+  #             -F perf_profile=[True | False]
+  #             -F perf_frequency=[n]
   #             -F http://<host>:<port>/jobs/<appName>/<appUID>
   #             NOTE: if appUID is omitted, job will be submitted to latest version of this app
   #
@@ -637,10 +640,12 @@ def createJob(appName, appUID):
         # TODO: Get user
         file = request.files['file']
         text = request.form['text'] if 'text' in request.form else None
-        k3logging = True if 'logging' in request.form else False
-        jsonlog = True if 'jsonlog' in request.form else False
-        jsonfinal = True if 'jsonfinal' in request.form else False
-        perfprofile = True if 'perfprofile' in request.form else False
+        k3logging      = True if 'logging' in request.form else False
+        jsonlog        = True if 'jsonlog' in request.form else False
+        jsonfinal      = True if 'jsonfinal' in request.form else False
+        perf_profile   = True if 'perf_profile' in request.form else False
+        perf_frequency = request.form['perf_frequency'] if 'perf_frequency' in request.form else ''
+        core_dump      = True if 'core_dump' in request.form else False
         stdout = request.form['stdout'] if 'stdout' in request.form else False
         user = request.form['user'] if 'user' in request.form else 'anonymous'
         tag = request.form['tag'] if 'tag' in request.form else ''
@@ -649,10 +654,11 @@ def createJob(appName, appUID):
         if jsonfinal and not jsonlog:
           jsonlog = True
 
-        logger.debug("K3 LOGGING is :  %s" %  ("ON" if k3logging else "OFF"))
-        logger.debug("JSON LOGGING is :  %s" %  ("ON" if jsonlog else "OFF"))
+        logger.debug("K3 LOGGING is :  %s"         %  ("ON" if k3logging else "OFF"))
+        logger.debug("JSON LOGGING is :  %s"       %  ("ON" if jsonlog else "OFF"))
         logger.debug("JSON FINAL LOGGING is :  %s" %  ("ON" if jsonfinal else "OFF"))
-        logger.debug("PERF PROFILING is :  %s" %  ("ON" if perfprofile else "OFF"))
+        logger.debug("PERF PROFILING is :  %s"     %  ("ON" if perf_profile else "OFF"))
+        logger.debug("CORE DUMPS are :  %s"        %  ("ON" if core_dump else "OFF"))
         # trials = int(request.form['trials']) if 'trials' in request.form else 1
 
         # Check for valid submission
@@ -686,7 +692,8 @@ def createJob(appName, appUID):
 
         newJob = Job(binary=apploc, appName=appName, jobId=jobId,
                      rolefile=os.path.join(path, filename), logging=k3logging,
-                     jsonlog=jsonlog, jsonfinal=jsonfinal, perfprofile=perfprofile)
+                     jsonlog=jsonlog, jsonfinal=jsonfinal,
+                     perf_profile=perf_profile, perf_frequency=perf_frequency, core_dump=core_dump)
 
         # Submit to Mesos
         dispatcher.submit(newJob)
@@ -1064,11 +1071,17 @@ def compServiceUp():
 
     nodelist = {n : [] for n in ['master', 'worker', 'client', 'none']}
     for host in compileService.getAllNodes()['all']:
-      logger.debug(' Host added as ' + host)
-      if host in request.form:
-        logger.debug("    -->Recevied host val as: " + request.form[host])
-        nodelist[request.form[host].lower()].append(host)
-        logger.debug(' %s added as %s ' % (host, request.form[host].lower()))
+    #   if host in request.form:
+    #     logger.debug("    -->Recevied host val as: " + request.form[host])
+    #     nodelist[request.form[host].lower()].append(host)
+    #     logger.debug(' %s added as %s ' % (host, request.form[host].lower()))
+    # compileService.setNodes(nodelist)
+     
+      test = request.form.getlist("role_" + host)
+      logger.debug("Compiler Host Requested:  %s", str(test))
+      for role in request.form.getlist("role_" + host):
+        logger.debug(" Compiler: adding `%s` as `%s`", host, role)
+        nodelist[role.lower()].append(host)
     compileService.setNodes(nodelist)
 
 
@@ -1486,6 +1499,7 @@ if __name__ == '__main__':
     if dispatcher == None:
       logger.error("[FLASKWEB] Failed to create dispatcher. Aborting")
       sys.exit(1)
+
     driverDispatch = mesos.native.MesosSchedulerDriver(dispatcher, frameworkDispatch, master)
     threadDispatch = threading.Thread(target=driverDispatch.run)
     threadDispatch.start()
@@ -1501,7 +1515,7 @@ if __name__ == '__main__':
     threadCompiler.start()
 
     logger.info("[FLASKWEB] Starting FlaskWeb Server...")
-    socketio.run(webapp, host='0.0.0.0', port=port, use_reloader=False)
+    socketio.run(webapp, host='192.168.0.22', port=port, use_reloader=False)
     webserverTerminate.clear()
     initSocketIO = False
 

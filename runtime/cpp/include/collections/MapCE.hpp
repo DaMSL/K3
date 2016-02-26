@@ -81,6 +81,11 @@ class MapCE {
   // Functionality
   int size(unit_t) const { return container.size(); }
 
+  unit_t clear(const unit_t&) {
+    container.clear();
+    return unit_t();
+  }
+
   template <typename F, typename G>
   auto peek(F f, G g) const {
     auto it = container.begin();

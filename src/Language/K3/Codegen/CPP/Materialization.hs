@@ -99,7 +99,7 @@ formatMR r = putStrLn "Materialization Report" >> mapM_ (uncurry formatR) r
              _ -> error "Incorrect Closure Provenance"
            printf "      Captured from: %s\n" $ case op of
              PBVar (PMatVar { pmvloc = (UID i) }) -> "identifier bound at " ++ show i
-             PFVar _ -> "free variable in parent scope."
+             PFVar _ _ -> "free variable in parent scope."
            printf "      Is written to inside lambda: %s\n" (show hw)
            printf "      Moveable: %s\n" (show b)
            printf "      Decision: %s\n" (show $ inD d)
@@ -352,11 +352,11 @@ materializationE e@(Node (t :@: as) cs)
                 (tag &&& children -> (PLambda _ _, [rp])) -> rp
                 _ -> error "Invalid provenance structure"
 
-        readOnly <- not <$> hasWriteInP (P.pfvar x) b
+        readOnly <- not <$> hasWriteInP (P.pfvar x $ getUID e) b
 
         let nrvoProvenance q =
               case q of
-                (tag -> PFVar _) -> return True
+                (tag -> PFVar _ _) -> return True
                 (tag -> PBVar _) -> not <$> isGlobalP q
                 (tag -> PSet) -> anyM nrvoProvenance (children q)
                 _ -> return False
@@ -384,7 +384,7 @@ materializationE e@(Node (t :@: as) cs)
 
           let decisionSetter = case tag outerProxyProvenance of
                 PBVar _ -> setDecision
-                PFVar _ -> setNullDecision
+                PFVar _ _ -> setNullDecision
 
           decisionSetter (getUID e) (pmvn s) $ closureDecision defaultDecision
 
@@ -402,7 +402,7 @@ materializationE e@(Node (t :@: as) cs)
 
       EBindAs b -> do
         let [x, y] = cs
-        let newBindings = case b of { BIndirection i -> [i]; BTuple is -> is; BRecord iis -> snd (unzip iis) }
+        let newBindings = case b of { BIndirection i -> [i]; BTuple is -> is; BRecord iis -> snd (unzip iis); _ -> [] }
         y' <- withLocalBindings newBindings (getUID e) $ materializationE y
         x' <- withLocalDS [y] (materializationE x)
 
@@ -415,6 +415,7 @@ materializationE e@(Node (t :@: as) cs)
           BIndirection i -> setDecision (getUID e) i $ referenceBind defaultDecision
           BTuple is -> mapM_ (\i -> setDecision (getUID e) i $ referenceBind defaultDecision) is
           BRecord iis -> mapM_ (\(_, i) -> setDecision (getUID e) i $ referenceBind defaultDecision) iis
+          BSplice _ -> error "Incomplete bind splice in materialization analysis"
 
         decisions <- dLookupAll (getUID e)
         return (Node (t :@: (EMaterialization decisions:as)) [x', y'])
@@ -525,7 +526,7 @@ isWrittenInF xp ff =
 hasWriteInIF :: Identifier -> K3 Effect -> MaterializationM Bool
 hasWriteInIF ident effect =
   case effect of
-    (tag -> FWrite (tag -> PFVar i)) | i == ident -> return True
+    (tag -> FWrite (tag -> PFVar i _)) | i == ident -> return True
     (tag -> FWrite (tag -> PBVar m)) | pmvn m == ident -> return True
 
     (tag -> FScope _) -> anyM (hasWriteInIF ident) (children effect)
@@ -567,14 +568,14 @@ hasWriteInI ident expr =
 pBindInfo :: K3 Provenance -> Maybe (Identifier, Maybe Int)
 pBindInfo p =
   case p of
-    (tag -> PFVar j) -> Just (j, Nothing)
+    (tag -> PFVar j _) -> Just (j, Nothing)
     (tag -> PBVar (PMatVar { pmvn = n, pmvloc = (UID u) })) -> Just (n, Just u)
     _ -> Nothing
 
 hasWriteInP :: K3 Provenance -> K3 Expression -> MaterializationM Bool
 hasWriteInP prov expr =
   case expr of
-    (tag -> ELambda x) | (PFVar x) == tag prov -> return False
+    (tag -> ELambda x) | (PFVar x _) == tag prov -> return False
     (tag &&& children -> (ELambda _, [b])) -> do
       closureDecisions <- dLookupAllWithBindings (getUID expr)
       let writeInClosure = fromMaybe False $ do
@@ -666,7 +667,7 @@ isMoveable p = case tag p of
 isMoveableIn :: ProxyProvenance -> Downstream -> MaterializationM Bool
 isMoveableIn (p, m) (d, n) =
   case tag p of
-    PFVar i -> case m of
+    PFVar i _ -> case m of
       Just (j, u) | j == i -> case n of
         Just (k, v) | (j, u) == (k, v) -> isMoveableIn' p d
         _ -> return True
@@ -695,7 +696,7 @@ isReferenceableIn' x c = do
 isReferenceableIn :: ProxyProvenance -> Downstream -> MaterializationM Bool
 isReferenceableIn (p, m) (d, n) =
   case tag p of
-    PFVar i -> case m of
+    PFVar i _ -> case m of
       Just (j, u) | j == i -> case n of
         Just (k, v) | (j, u) == (k, v) -> isReferenceableIn' p d
         _ -> return True
@@ -711,7 +712,7 @@ isReferenceableNow p = do
 (=*=) :: K3 Provenance -> K3 Provenance -> Bool
 a =*= b = case (tag a, tag b) of
             (PBVar mva, PBVar mvb) -> pmvn mva == pmvn mvb && pmvloc mva == pmvloc mvb
-            (PFVar ia, PFVar ib) -> ia == ib
+            (PFVar ia _, PFVar ib _) -> ia == ib
             (PGlobal ia, PGlobal ib) -> ia == ib
 
             -- TODO: Handle more cases.

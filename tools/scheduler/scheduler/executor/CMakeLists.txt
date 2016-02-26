@@ -28,7 +28,7 @@ include_directories(${MESOS_INCLUDE_DIR}/mesos)
 
 add_definitions(-Wall -Wno-variadic-macros)
 add_executable(k3executor  k3_executor.cpp)
-target_link_libraries(k3executor -lpthread mesos ${YAMLCPP_STATIC})
+target_link_libraries(k3executor -lpthread protobuf mesos ${YAMLCPP_STATIC})
 
 # we need the following definitions in order to get some special
 # OS-level features like posix_fadvise() or readahead().
@@ -37,5 +37,3 @@ add_definitions(-D_GNU_SOURCE)
 
 # ISO C99: explicitely request format specifiers
 add_definitions(-D__STDC_FORMAT_MACROS)
-
-

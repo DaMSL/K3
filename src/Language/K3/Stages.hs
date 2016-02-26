@@ -16,7 +16,9 @@ import Control.DeepSeq
 import Control.Exception
 import Control.Monad
 import Control.Monad.IO.Class
-import Control.Monad.State
+import Control.Monad.Par.IO
+import Control.Monad.Par.Combinator
+import Control.Monad.State.Strict
 import Control.Monad.Trans.Except
 
 import Control.Concurrent
@@ -31,9 +33,9 @@ import Data.Function
 import Data.Functor.Identity
 import Data.List
 import Data.List.Split
-import Data.Map ( Map )
+import Data.Map.Strict ( Map )
 import Data.Monoid
-import qualified Data.Map as Map
+import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
 import Data.Tree
 import Data.Tuple
@@ -59,6 +61,9 @@ import qualified Language.K3.Analysis.SEffects.Inference   as SEffects
 
 import qualified Language.K3.Analysis.SendGraph as SG
 
+import qualified Language.K3.Codegen.CPP.Materialization.Inference as Mat
+import qualified Language.K3.Codegen.CPP.Materialization.Inference as Mat
+
 import Language.K3.Transform.Simplification
 import Language.K3.Transform.TriggerSymbols (triggerSymbols)
 
@@ -72,30 +77,30 @@ import Language.K3.Codegen.CPP.Preprocessing
 type SnapshotSpec = Map String [String]
 
 -- | Stage specifications are a pair of pass identifiers, and a snapshot spec.
-data StageSpec = StageSpec { passesToRun    :: Maybe [Identifier]
-                           , passesToFilter :: Maybe [Identifier]
-                           , snapshotSpec   :: SnapshotSpec }
+data StageSpec = StageSpec { passesToRun    :: !(Maybe [Identifier])
+                           , passesToFilter :: !(Maybe [Identifier])
+                           , snapshotSpec   :: !SnapshotSpec }
                  deriving (Eq, Ord, Read, Show, Generic)
 
 -- | Configuration metadata for compiler stages
-data CompilerSpec = CompilerSpec { blockSize :: Int
-                                 , stageSpec :: StageSpec }
+data CompilerSpec = CompilerSpec { blockSize :: !Int
+                                 , stageSpec :: !StageSpec }
                     deriving (Eq, Ord, Read, Show, Generic)
 
 -- | Compilation profiling
-data TransformReport = TransformReport { statistics :: Map String [Measured]
-                                       , snapshots  :: Map String [K3 Declaration] }
+data TransformReport = TransformReport { statistics :: !(Map String [Measured])
+                                       , snapshots  :: !(Map String [K3 Declaration]) }
                       deriving (Eq, Read, Show, Generic)
 
 -- | The program transformation composition monad
-data TransformSt = TransformSt { nextuid    :: ParGenSymS
-                               , cseCnt     :: ParGenSymS
-                               , tenv       :: TIEnv
-                               , prenv      :: Properties.PIEnv
-                               , penv       :: Provenance.PIEnv
-                               , fenv       :: SEffects.FIEnv
-                               , report     :: TransformReport
-                               , mzFlags    :: MZFlags }
+data TransformSt = TransformSt { nextuid    :: !ParGenSymS
+                               , cseCnt     :: !ParGenSymS
+                               , tenv       :: !TIEnv
+                               , prenv      :: !Properties.PIEnv
+                               , penv       :: !Provenance.PIEnv
+                               , fenv       :: !SEffects.FIEnv
+                               , report     :: !TransformReport
+                               , mzFlags    :: !MZFlags }
                   deriving (Eq, Read, Show, Generic)
 
 -- | Monoid instance for transform reports.
@@ -105,14 +110,20 @@ instance Monoid TransformReport where
   mappend (TransformReport ast asn) (TransformReport bst bsn) =
     TransformReport (ast <> bst) (asn <> bsn)
 
-data TransformStSymS = TransformStSymS { uidSym :: ParGenSymS, cseSym :: ParGenSymS
-                                       , prvSym :: ParGenSymS, effSym :: ParGenSymS }
+data TransformStSymS = TransformStSymS { uidSym :: !ParGenSymS, cseSym :: !ParGenSymS
+                                       , prvSym :: !ParGenSymS, effSym :: !ParGenSymS }
                       deriving (Eq, Ord, Read, Show, Generic)
 
 -- | Stage-based transformation monad.
 type TransformM = ExceptT String (StateT TransformSt IO)
 
 {- Stage-based transform instances -}
+instance NFData StageSpec
+instance NFData CompilerSpec
+instance NFData TransformReport
+instance NFData TransformSt
+instance NFData TransformStSymS
+
 instance Binary StageSpec
 instance Binary CompilerSpec
 instance Binary TransformReport
@@ -135,30 +146,30 @@ rp0 :: TransformReport
 rp0 = TransformReport Map.empty Map.empty
 
 mz0 :: MZFlags
-mz0 = MZFlags
+mz0 = Mat.defaultMZFlags
 
 st0 :: Maybe ParGenSymS -> K3 Declaration -> IO (Either String TransformSt)
 st0 symSOpt prog =
-  return $ mkEnv >>= \(stpe, stfe) ->
-    return $ TransformSt uidSymS cseSymS tienv0 Properties.pienv0 stpe stfe rp0 mz0
+  return $! mkEnv >>= \(stpe, stfe) ->
+    return $! TransformSt uidSymS cseSymS tienv0 Properties.pienv0 stpe stfe rp0 mz0
 
   where puid = let UID i = maxProgramUID prog in i + 1
         uidSymS = maybe (contigsymAtS puid) (lowerboundsymS puid) symSOpt
-        [cseSymS, prvSymS, effSymS] = replicate 3 $ resetsymS uidSymS
+        [cseSymS, prvSymS, effSymS] = replicate 3 $! resetsymS uidSymS
         mkEnv = do
           vpenv <- variablePositions prog
           let pe = Provenance.pienv0 (Just prvSymS) vpenv
-          return (pe, SEffects.fienv0 (Just effSymS) (Provenance.ppenv pe) $ lcenv vpenv)
+          return (pe, SEffects.fienv0 (Just effSymS) (Provenance.ppenv pe) $! lcenv vpenv)
 
 runTransformM :: TransformSt -> TransformM a -> IO (Either String (a, TransformSt))
 runTransformM st m = do
   (a, s) <- runStateT (runExceptT m) st
-  return $ either Left (Right . (,s)) a
+  return $! either Left (Right . (,s)) a
 
 evalTransformM :: TransformSt -> TransformM a -> IO (Either String a)
 evalTransformM st m = do
   e <- runTransformM st m
-  return $ either Left (Right . fst) e
+  return $! either Left (Right . fst) e
 
 liftEitherM :: Either String a -> TransformM a
 liftEitherM = either throwE return
@@ -173,10 +184,10 @@ mergeTransformSt d agg new = rewindTransformStSyms new $
 
 -- | A merge function that propagates only the transform report.
 mergeTransformStReport :: TransformSt -> TransformSt -> TransformSt
-mergeTransformStReport st1 st2 = rewindTransformStSyms st2 $ st1 { report  = (report st1) <> (report st2) }
+mergeTransformStReport st1 st2 = rewindTransformStSyms st2 $! st1 { report  = (report st1) <> (report st2) }
 
 getTransformSyms :: TransformSt -> TransformStSymS
-getTransformSyms s = TransformStSymS (nextuid s) (cseCnt s) (Provenance.pcnt $ penv s) (SEffects.fcnt $ fenv s)
+getTransformSyms s = TransformStSymS (nextuid s) (cseCnt s) (Provenance.pcnt $! penv s) (SEffects.fcnt $! fenv s)
 
 putTransformSyms :: TransformStSymS -> TransformSt -> TransformSt
 putTransformSyms syms s =
@@ -187,8 +198,8 @@ putTransformSyms syms s =
 
 mapTransformStSyms :: (Monad m) => (TransformStSymS -> m TransformStSymS) -> TransformSt -> m TransformSt
 mapTransformStSyms f s = do
-    rsyms <- f $ getTransformSyms s
-    return $ putTransformSyms rsyms s
+    rsyms <- f $! getTransformSyms s
+    return $! putTransformSyms rsyms s
 
 advanceTransformStSyms :: Int -> TransformSt -> Maybe TransformSt
 advanceTransformStSyms delta s = mapTransformStSyms advance s
@@ -196,13 +207,13 @@ advanceTransformStSyms delta s = mapTransformStSyms advance s
         advance (TransformStSymS a b c d) = TransformStSymS <$> adv a <*> adv b <*> adv c <*> adv d
 
 rewindTransformStSyms :: TransformSt -> TransformSt -> TransformSt
-rewindTransformStSyms s t = runIdentity $ mapTransformStSyms (rewind $ getTransformSyms s) t
-  where rw a b = return $ rewindsymS a b
+rewindTransformStSyms s t = runIdentity $! mapTransformStSyms (rewind $! getTransformSyms s) t
+  where rw a b = return $! rewindsymS a b
         rewind (TransformStSymS a b c d) (TransformStSymS a' b' c' d') =
           TransformStSymS <$> rw a a' <*> rw b b' <*> rw c c' <*> rw d d'
 
 forkTransformStSyms :: Int -> TransformSt -> TransformSt
-forkTransformStSyms factor s = runIdentity $ mapTransformStSyms fork s
+forkTransformStSyms factor s = runIdentity $! mapTransformStSyms fork s
   where f = return . forksymS factor
         fork (TransformStSymS a b c d) = TransformStSymS <$> f a <*> f b <*> f c <*> f d
 
@@ -212,8 +223,8 @@ partitionTransformStSyms forkFactor assignOffset s = mapTransformStSyms part s
         part (TransformStSymS a b c d) = TransformStSymS <$> p a <*> p b <*> p c <*> p d
 
 ensureParallelStSyms :: Int -> TransformM ()
-ensureParallelStSyms parFactor = modify $ \s -> runIdentity $ mapTransformStSyms ensure s
-  where e sym@(ParGenSymS str off cur) | str < parFactor = return $ ParGenSymS parFactor off cur
+ensureParallelStSyms parFactor = modify $! \s -> runIdentity $! mapTransformStSyms ensure s
+  where e sym@(ParGenSymS str off cur) | str < parFactor = return $! ParGenSymS parFactor off cur
                                        | otherwise = return sym
         ensure (TransformStSymS a b c d) = TransformStSymS <$> e a <*> e b <*> e c <*> e d
 
@@ -239,50 +250,57 @@ type TrSF a = a -> K3 Declaration -> (a, K3 Declaration)
 type TrSE a = a -> K3 Declaration -> Either String (a, K3 Declaration)
 
 runPasses :: [ProgramTransform] -> ProgramTransform
-runPasses passes p = foldM (flip ($)) p passes
+runPasses passes p = foldM (flip ($!)) p passes
 
 bracketPasses :: String -> ProgramTransform -> [ProgramTransform] -> [ProgramTransform]
 bracketPasses n f l = pass "preBracket" f ++ l ++ pass "postBracket" f
-  where pass tg f' = if True then [f'] else [displayPass (unwords [n, tg]) $ f']
+  where pass tg f' = if True then [f'] else [displayPass (unwords [n, tg]) $! f']
 
 type PrpTrE = Properties.PIEnv -> K3 Declaration -> Either String (K3 Declaration, Properties.PIEnv)
 type TypTrE = TIEnv -> K3 Declaration -> Either String (K3 Declaration, TIEnv)
 type EffTrE = Provenance.PIEnv -> SEffects.FIEnv -> K3 Declaration
               -> Either String (K3 Declaration, Provenance.PIEnv, SEffects.FIEnv)
+type EffTrED = Provenance.PIEnv -> SEffects.FIEnv -> K3 Declaration
+               -> Either String (Bool, K3 Declaration, Provenance.PIEnv, SEffects.FIEnv)
 
 -- | Forces evaluation of the program transformation, by fully evaluating its result.
 reifyPass :: ProgramTransform -> ProgramTransform
 reifyPass f p = do
   np <- f p
-  return $!! np
+  return $! np
 
 reifyPassD :: ProgramTransformD -> ProgramTransformD
 reifyPassD f p = do
   (r,np) <- f p
-  return $!! (r,np)
+  return $! (r,np)
 
 -- | Show the program after applying the given program transform.
 displayPass :: String -> ProgramTransform -> ProgramTransform
 displayPass n f p = f p >>= \np -> mkTg n np (return np)
-  where mkTg str p' = trace (boxToString $ [str] %$ prettyLines p')
+  where mkTg str p' = trace (boxToString $! [str] %$ prettyLines p')
 
 -- | Show the program both before and after applying the given program transform.
 debugPass :: String -> ProgramTransform -> ProgramTransform
 debugPass n f p = mkTg ("Before " ++ n) p (f p) >>= \np -> mkTg ("After " ++ n) np (return np)
-  where mkTg str p' = trace (boxToString $ [str] %$ prettyLines p')
+  where mkTg str p' = trace (boxToString $! [str] %$ prettyLines p')
+
+-- | Show the program both before and after applying the given program transform.
+debugPassD :: String -> ProgramTransformD -> ProgramTransformD
+debugPassD n f p = mkTg ("Before " ++ n) p (f p) >>= \(r,np) -> mkTg ("After " ++ n) np (return (r,np))
+  where mkTg str p' = trace (boxToString $! [str] %$ prettyLines p')
 
 -- | Measure the execution time of a transform
 timePass :: String -> ProgramTransform -> ProgramTransform
 timePass n f prog = do
-  (npE, sample) <- get >>= \st -> liftIO (profile $ const $ runTransformM st $ f prog)
+  (npE, sample) <- get >>= \st -> liftIO (profile $! const $! runTransformM st $! f prog)
   (np, nst)     <- liftEitherM npE
-  void $ put $ addMeasurement n sample nst
+  void $! put $! addMeasurement n sample nst
   return np
 
   where
     addMeasurement n' sample st =
       let rp  = report st
-          nrp = rp {statistics = Map.insertWith (++) n' [sample] $ statistics rp}
+          nrp = rp {statistics = Map.insertWith (++) n' [sample] $! statistics rp}
       in st {report = nrp}
 
 -- This is a reimplementation of Criterion.Measurement.measure that returns the value computed.
@@ -297,7 +315,7 @@ profile m = do
   endCpuTime     <- liftIO getCPUTime
   endCycles      <- liftIO getCycles
   endStats       <- liftIO getGCStats
-  let msr = applyGCStats endStats startStats $ measured {
+  let msr = applyGCStats endStats startStats $! measured {
               measTime    = max 0 (endTime - startTime)
             , measCpuTime = max 0 (endCpuTime - startCpuTime)
             , measCycles  = max 0 (fromIntegral (endCycles - startCycles))
@@ -315,58 +333,65 @@ lastSnapshot a _ = a
 snapshotPass :: String -> SnapshotCombineF -> ProgramTransform -> ProgramTransform
 snapshotPass n combineF f prog = do
   np <- f prog
-  modify $ addSnapshot n np
+  modify $! addSnapshot n np
   return np
 
   where addSnapshot n' np st =
           let rp  = report st
-              nrp = rp {snapshots = Map.insertWith combineF n' [np] $ snapshots rp}
+              nrp = rp {snapshots = Map.insertWith combineF n' [np] $! snapshots rp}
           in st {report = nrp}
 
 {-- Stateful transformations --}
 withStateTransform :: (TransformSt -> a) -> (a -> TransformSt -> TransformSt) -> TrSE a -> ProgramTransform
 withStateTransform getStF modifyStF f p = do
   st <- get
-  (na, np) <- liftEitherM $ f (getStF st) p
-  void $ put $ modifyStF na st
+  (na, np) <- liftEitherM $! f (getStF st) p
+  void $! put $! modifyStF na st
   return np
 
 withPropertyTransform :: PrpTrE -> ProgramTransform
 withPropertyTransform f p = do
   st <- get
-  (np, pre) <- liftEitherM $ f (prenv st) p
-  void $ put $ st {prenv=pre}
+  (np, pre) <- liftEitherM $! f (prenv st) p
+  void $! put $! st {prenv=pre}
   return np
 
 withTypeTransform :: TypTrE -> ProgramTransform
 withTypeTransform f p = do
-  --void $ ensureNoDuplicateUIDs p
+  --void $! ensureNoDuplicateUIDs p
   st <- get
-  (np, te) <- liftEitherM $ f (tenv st) p
-  void $ put $ st {tenv=te}
+  (np, te) <- liftEitherM $! f (tenv st) p
+  void $! put $! st {tenv=te}
   return np
 
 withEffectTransform :: EffTrE -> ProgramTransform
 withEffectTransform f p = do
   st <- get
   (np,pe,fe) <- liftEitherM (f (penv st) (fenv st) p)
-  void $ put (st {penv=pe, fenv=fe})
+  void $! put (st {penv=pe, fenv=fe})
   return np
+
+withEffectTransformD :: EffTrED -> ProgramTransformD
+withEffectTransformD f p = do
+  st <- get
+  (r,np,pe,fe) <- liftEitherM (f (penv st) (fenv st) p)
+  void $! put (st {penv=pe, fenv=fe})
+  return (r,np)
 
 withRepair :: String -> ProgramTransform -> ProgramTransform
 withRepair msg f prog = do
   np <- f prog
   st <- get
-  let (i,np') = repairProgram msg (Just $ nextuid st) np
-  void $ put $ st {nextuid = i}
+  let (i,np') = repairProgram msg (Just $! nextuid st) np
+  void $! put $! st {nextuid = i}
   return np'
 
 withRepairD :: String -> ProgramTransformD -> ProgramTransformD
 withRepairD msg f prog = do
   (r,np) <- f prog
   st <- get
-  let (i,np') = repairProgram msg (Just $ nextuid st) np
-  void $ put $ st {nextuid = i}
+  let (i,np') = repairProgram msg (Just $! nextuid st) np
+  void $! put $! st {nextuid = i}
   return (r,np')
 
 
@@ -375,27 +400,27 @@ transformFromDelta :: ProgramTransformD -> ProgramTransform
 transformFromDelta f p = f p >>= return . snd
 
 transformF :: TrF -> ProgramTransform
-transformF f p = return $ f p
+transformF f p = return $! f p
 
 transformE :: TrE -> ProgramTransform
-transformE f p = liftEitherM $ f p
+transformE f p = liftEitherM $! f p
 
 transformEDbg :: String -> TrE -> ProgramTransform
 transformEDbg tg f p = do
-  p' <- mkTg "Before " p $ transformE f p
-  mkTg "After " p' $ return p'
-  where mkTg pfx p' = trace (boxToString $ [pfx ++ tg] %$ prettyLines p')
+  p' <- mkTg "Before " p $! transformE f p
+  mkTg "After " p' $! return p'
+  where mkTg pfx p' = trace (boxToString $! [pfx ++ tg] %$ prettyLines p')
 
 transformED :: TrED -> ProgramTransformD
-transformED f p = liftEitherM $ f p
+transformED f p = liftEitherM $! f p
 
 transformEDDbg :: String -> TrED -> ProgramTransformD
 transformEDDbg tg f p = do
-  (changed, p') <- mkTg "Before " p $ transformED f p
-  mkTg (after changed) p' $ return (changed, p')
+  (changed, p') <- mkTg "Before " p $! transformED f p
+  mkTg (after changed) p' $! return (changed, p')
   where
     after b = unwords ["After", "(", show b, ")"]
-    mkTg pfx p' = trace (boxToString $ [pfx ++ tg] %$ prettyLines p')
+    mkTg pfx p' = trace (boxToString $! [pfx ++ tg] %$ prettyLines p')
 
 transformTF :: TrTF -> ProgramTransform
 transformTF f p = get >>= return . flip f p
@@ -404,10 +429,10 @@ transformTE :: TrTE -> ProgramTransform
 transformTE f p = get >>= liftEitherM . flip f p
 
 transformSF :: TrSF a -> ProgramTransformSt a
-transformSF f z p = return $ f z p
+transformSF f z p = return $! f z p
 
 transformSE :: TrSE a -> ProgramTransformSt a
-transformSE f z p = liftEitherM $ f z p
+transformSE f z p = liftEitherM $! f z p
 
 {- Fixpoint transform constructors -}
 transformFixpoint :: ProgramTransform -> ProgramTransform
@@ -438,35 +463,35 @@ transformFixpointID interF f p = do
   else runPasses interF np >>= transformFixpointID interF f
 
 fixpointF :: TrF -> ProgramTransform
-fixpointF f = transformFixpoint $ transformF f
+fixpointF f = transformFixpoint $! transformF f
 
 fixpointE :: TrE -> ProgramTransform
-fixpointE f = transformFixpoint $ transformE f
+fixpointE f = transformFixpoint $! transformE f
 
 fixpointTF :: TrTF -> ProgramTransform
-fixpointTF f = transformFixpoint $ transformTF f
+fixpointTF f = transformFixpoint $! transformTF f
 
 fixpointTE :: TrTE -> ProgramTransform
-fixpointTE f = transformFixpoint $ transformTE f
+fixpointTE f = transformFixpoint $! transformTE f
 
 fixpointSF :: TrSF a -> ProgramTransformSt a
-fixpointSF f = transformFixpointSt $ transformSF f
+fixpointSF f = transformFixpointSt $! transformSF f
 
 fixpointSE :: TrSE a -> ProgramTransformSt a
-fixpointSE f = transformFixpointSt $ transformSE f
+fixpointSE f = transformFixpointSt $! transformSE f
 
 -- Fixpoint constructors with intermediate transformations between rounds.
 fixpointIF :: [ProgramTransform] -> TrF -> ProgramTransform
-fixpointIF interF f = transformFixpointI interF $ transformF f
+fixpointIF interF f = transformFixpointI interF $! transformF f
 
 fixpointIE :: [ProgramTransform] -> TrE -> ProgramTransform
-fixpointIE interF f = transformFixpointI interF $ transformE f
+fixpointIE interF f = transformFixpointI interF $! transformE f
 
 fixpointITF :: [ProgramTransform] -> TrTF -> ProgramTransform
-fixpointITF interF f = transformFixpointI interF $ transformTF f
+fixpointITF interF f = transformFixpointI interF $! transformTF f
 
 fixpointITE :: [ProgramTransform] -> TrTE -> ProgramTransform
-fixpointITE interF f = transformFixpointI interF $ transformTE f
+fixpointITE interF f = transformFixpointI interF $! transformTE f
 
 
 {- Whole program analyses -}
@@ -474,33 +499,33 @@ ensureNoDuplicateUIDs :: ProgramTransform
 ensureNoDuplicateUIDs p =
   let dupUids = duplicateProgramUIDs p
   in if null dupUids then return p
-     else throwE $ T.unpack $ PT.boxToString $ [T.pack "Found duplicate uids:"]
-                                         PT.%$ [T.pack $ show dupUids]
+     else throwE $! T.unpack $! PT.boxToString $! [T.pack "Found duplicate uids:"]
+                                         PT.%$ [T.pack $! show dupUids]
                                          PT.%$ PT.prettyLines p
 
 inferTypes :: ProgramTransform
 inferTypes prog = do
-  --void $ ensureNoDuplicateUIDs prog
-  (p, tienv) <- liftEitherM $ inferProgramTypes prog
-  p' <- liftEitherM $ translateProgramTypes p
-  void $ modify $ \st -> st {tenv = tienv}
+  --void $! ensureNoDuplicateUIDs prog
+  (p, tienv) <- liftEitherM $! inferProgramTypes prog
+  p' <- liftEitherM $! translateProgramTypes p
+  void $! modify $! \st -> st {tenv = tienv}
   return p'
 
 inferEffects :: ProgramTransform
 inferEffects prog = do
   st <- get
-  (p,  pienv) <- liftEitherM $ Provenance.inferProgramProvenance (Just $ Provenance.pcnt $ penv st) prog
-  (p', fienv) <- liftEitherM $ SEffects.inferProgramEffects Nothing (Just $ SEffects.fcnt $ fenv st)
+  (p,  pienv) <- liftEitherM $! Provenance.inferProgramProvenance (Just $! Provenance.pcnt $! penv st) prog
+  (p', fienv) <- liftEitherM $! SEffects.inferProgramEffects Nothing (Just $! SEffects.fcnt $! fenv st)
                                  (Provenance.ppenv pienv) (debugEffects "After provenance" p)
-  void $ modify $ \st' -> st' {penv = pienv, fenv = fienv}
+  void $! modify $! \st' -> st' {penv = pienv, fenv = fienv}
   return (debugEffects "After effects" p')
 
-  where debugEffects tg p = if True then p else flip trace p $ boxToString $ [tg] %$ prettyLines p
+  where debugEffects tg p = if True then p else flip trace p $! boxToString $! [tg] %$ prettyLines p
 
 inferProperties :: ProgramTransform
 inferProperties prog = do
-  (p, prienv) <- liftEitherM $ Properties.inferProgramUsageProperties prog
-  void $ modify $ \st -> st {prenv = prienv}
+  (p, prienv) <- liftEitherM $! Properties.inferProgramUsageProperties prog
+  void $! modify $! \st -> st {prenv = prienv}
   return p
 
 inferFreshProperties :: ProgramTransform
@@ -525,18 +550,28 @@ refreshProgram prog = runPasses [inferFreshTypesAndEffects, inferFreshProperties
 
 {- Whole program pass aliases -}
 
-cgPasses :: [ProgramTransform]
-cgPasses = [ withRepair "TID" $ transformE $ triggerSymbols
-           , \d -> (liftIO (SG.generateSendGraph d) >> return d)
-           , \d -> return (mangleReservedNames d)
-           , refreshProgram
-           , transformF CArgs.runAnalysis
-           , transformE markProgramLambdas
-           , \d -> get >>= \s -> liftIO (optimizeMaterialization (penv s, fenv s) d) >>= either throwE return
-           ]
+cgPreparePasses :: [ProgramTransform]
+cgPreparePasses = [ withRepair "TID" $! transformE $! triggerSymbols
+                  , \d -> (liftIO (SG.generateSendGraph d) >> return d)
+                  , \d -> return (mangleReservedNames d)
+                  , refreshProgram
+                  , transformF CArgs.runAnalysis
+                  , transformE markProgramLambdas ]
 
-runCGPassesM :: ProgramTransform
-runCGPassesM prog = runPasses cgPasses prog
+materializationPass :: Bool -> Mat.MZFlags -> Mat.IState -> ProgramTransform
+materializationPass dbg mzfs mst d = do
+  s  <- get
+  rE <- liftIO (Mat.optimizeMaterialization dbg mzfs mst (penv s, fenv s) d)
+  either throwE return rE
+
+cgPasses :: Mat.MZFlags -> [ProgramTransform]
+cgPasses mzfs = cgPreparePasses ++ [\p -> materializationPass False mzfs (Mat.prepareInitialIState False p) p]
+
+runCGPassesM :: Mat.MZFlags -> ProgramTransform
+runCGPassesM mzfs prog = runPasses (cgPasses mzfs) prog
+
+runCGPreparePassesM :: ProgramTransform
+runCGPreparePassesM prog = runPasses cgPreparePasses prog
 
 
 {- Declaration-at-a-time analyses and optimizations. -}
@@ -557,25 +592,34 @@ mapProgramDecls passesF prog =
 parmapProgramDeclsBlock :: (K3 Declaration -> [ProgramTransform]) -> [K3 Declaration] -> TransformM [K3 Declaration]
 parmapProgramDeclsBlock declPassesF block = do
     initState <- get
-    result <- debugBlock block $ liftIO $ runParallelBlock initState block
+    result <- debugBlock block $! liftIO $! runParallelBlock initState block
     case result of
       Left s -> throwE s
       Right (st', nblock) -> put st' >> return nblock
 
   where
+    {-
     runParallelBlock :: TransformSt -> [K3 Declaration] -> IO (Either String (TransformSt, [K3 Declaration]))
     runParallelBlock st ds = do
-      locks <- sequence $ newEmptyMVar <$ ds
+      newSDs <- runParIO $! parMapM (runParallelDecl st) $ zip [0..] ds
+      return $! foldl mergeEitherStateDecl (Right (st, [])) newSDs
+
+    runParallelDecl :: TransformSt -> (Int, K3 Declaration) -> ParIO (Either String (TransformSt, K3 Declaration))
+    runParallelDecl s (i, d) = liftIO $! flip (maybe stateError) (advanceTransformStSyms i s) $! \s' -> do
+      re <- runTransformM s' $! fixD (mapProgramDecls declPassesF) compareDAST d
+      return $! either Left (Right . swap) re
+    -}
+
+    runParallelBlock :: TransformSt -> [K3 Declaration] -> IO (Either String (TransformSt, [K3 Declaration]))
+    runParallelBlock st ds = do
+      locks <- sequence $! newEmptyMVar <$ ds
       sequence_ [runParallelDecl i lock d st | lock <- locks | d <- ds | i <- [0..]]
       newSDs <- mapM takeMVar locks
-      return $ foldl mergeEitherStateDecl (Right (st, [])) newSDs
-
-    stateError :: IO a
-    stateError = throwIO $ userError "Invalid parallel compilation state."
+      return $! foldl mergeEitherStateDecl (Right (st, [])) newSDs
 
     runParallelDecl :: Int -> MVar (Either String (TransformSt, K3 Declaration)) -> K3 Declaration -> TransformSt -> IO ThreadId
-    runParallelDecl i m d s = flip (maybe stateError) (advanceTransformStSyms i s) $ \s' ->
-      forkIO $ runTransformM s' (fixD (mapProgramDecls declPassesF) compareDAST d) >>= putMVar m . fmap swap
+    runParallelDecl i m d s = flip (maybe stateError) (advanceTransformStSyms i s) $! \s' ->
+      forkIO $! runTransformM s' (fixD (mapProgramDecls declPassesF) compareDAST d) >>= putMVar m . fmap swap
 
     mergeEitherStateDecl :: Either String (TransformSt, [K3 Declaration]) -> Either String (TransformSt, K3 Declaration)
                          -> Either String (TransformSt, [K3 Declaration])
@@ -583,27 +627,30 @@ parmapProgramDeclsBlock declPassesF block = do
     mergeEitherStateDecl _ (Left s) = (Left s)
     mergeEitherStateDecl (Right (aggState, aggDecls)) (Right (newState, newDecl)) =
       let resultSt = mergeTransformSt (declName newDecl) aggState newState
-      in debugMergeReport (statistics $ report aggState) (statistics $ report newState) (statistics $ report resultSt)
-          $ Right (resultSt, aggDecls++[newDecl])
+      in debugMergeReport (statistics $! report aggState) (statistics $! report newState) (statistics $! report resultSt)
+          $! Right (resultSt, aggDecls++[newDecl])
+
+    stateError :: IO a
+    stateError = throwIO $! userError "Invalid parallel compilation state."
 
     debugMergeReport srp1 srp2 srprest r = if True then r else
-      flip trace r $ boxToString $ ["Report 1"]      ++ (indent 2 $ map fst (Map.toList srp1)) ++
-                                   ["Report 2"]      ++ (indent 2 $ map fst (Map.toList srp2)) ++
-                                   ["Report result"] ++ (indent 2 $ map fst (Map.toList srprest))
+      flip trace r $! boxToString $! ["Report 1"]      ++ (indent 2 $! map fst (Map.toList srp1)) ++
+                                   ["Report 2"]      ++ (indent 2 $! map fst (Map.toList srp2)) ++
+                                   ["Report result"] ++ (indent 2 $! map fst (Map.toList srprest))
 
     fixD f (===) d = f d >>= \d' -> if d === d' then return d else fixD f (===) d'
 
     debugBlock :: [K3 Declaration] -> a -> a
     debugBlock ds = trace ("Compiling a block: " ++ intercalate ", " (map showDuid ds))
 
-    showDuid d = maybe invalidUid duid $ d @~ isDUID
+    showDuid d = maybe invalidUid duid $! d @~ isDUID
     duid (DUID (UID i)) = "DUID " ++ show i
     duid _ = invalidUid
     invalidUid = "<no duid>"
 
 blockMapProgramDecls :: Int -> [ProgramTransform] -> (K3 Declaration -> [ProgramTransform]) -> ProgramTransform
 blockMapProgramDecls blockSz blockPassesF declPassesF prog =
-  let chunks = chunksOf blockSz $ topLevelDecls prog
+  let chunks = chunksOf blockSz $! topLevelDecls prog
   in (rebuild . concat <$> mapM (parmapProgramDeclsBlock declPassesF) chunks) >>= runPasses blockPassesF
 
   where
@@ -617,24 +664,24 @@ blockMapProgramDecls blockSz blockPassesF declPassesF prog =
         _ -> error "Top level declaration is not a role."
 
 inferDeclProperties :: Identifier -> ProgramTransform
-inferDeclProperties n = withPropertyTransform $ \pre p ->
+inferDeclProperties n = withPropertyTransform $! \pre p ->
   Properties.reinferProgDeclUsageProperties pre n p
 
 inferFreshDeclProperties :: Identifier -> ProgramTransform
 inferFreshDeclProperties n = inferDeclProperties n . stripDeclProperties n
 
 inferDeclTypes :: Identifier -> ProgramTransform
-inferDeclTypes n = withTypeTransform $ \te p -> reinferProgDeclTypes te n p
+inferDeclTypes n = withTypeTransform $! \te p -> reinferProgDeclTypes te n p
 
 inferDeclEffects :: Maybe (SEffects.ExtInferF a, a) -> Identifier -> ProgramTransform
-inferDeclEffects extInfOpt n = withEffectTransform $ \pe fe p -> do
+inferDeclEffects extInfOpt n = withEffectTransform $! \pe fe p -> do
   (nvp, _)   <- variablePositionsDecl n (Provenance.pvpenv pe) p
   let pe'     = pe {Provenance.pvpenv = nvp}
   (np,  npe) <- {-debugPretty ("Reinfer P\n" ++ show nvp) p $-} Provenance.reinferProgDeclProvenance pe' n p
   let fe'     = fe {SEffects.fppenv = Provenance.ppenv npe, SEffects.flcenv = lcenv nvp}
   (np', nfe) <- {-debugPretty "Reinfer F" fe' $-} SEffects.reinferProgDeclEffects extInfOpt fe' n np
   return (np', npe, nfe)
-  where debugPretty tg a b = trace (T.unpack $ PT.boxToString $ [T.pack tg] PT.%$ PT.prettyLines a) b
+  where debugPretty tg a b = trace (T.unpack $! PT.boxToString $! [T.pack tg] PT.%$ PT.prettyLines a) b
 
 inferFreshDeclTypesAndEffects :: Maybe (SEffects.ExtInferF a, a) -> Identifier -> ProgramTransform
 inferFreshDeclTypesAndEffects extInfOpt n =
@@ -650,90 +697,130 @@ refreshDecl extInfOpt n =
 declTransforms :: StageSpec -> Maybe (SEffects.ExtInferF a, a) -> Identifier -> Map Identifier ProgramTransform
 declTransforms stSpec extInfOpt n = topLevel
   where
-    topLevel  = (Map.fromList $ fPf fst $ [
-        second mkFix $
-        mkT $ mkSeqRep "Optimize" highLevel $ fPf fst $ prepend [ ("refreshI",      False) ]
-                                                              $ [ ("Decl-Simplify", True)
-                                                                , ("Decl-Fuse",     True)
-                                                                , ("Decl-Simplify", True) ]
+    withPrepend = False
 
+    topLevel  = (Map.fromList $! fPf fst $! [
+        second mkFix $
+        mkT $! mkSeqRep "Optimize" highLevel $! fPf fst $! prepend [ ("typEffI",             False) ]
+                                                                $! [ ("Decl-Simplify-NoBR",  True, withPrepend)
+                                                                   , ("Decl-Fuse",           True, withPrepend)
+                                                                   , ("Decl-Simplify-Light", True, withPrepend) ],
+        second mkFix $
+        mkT $! mkSeqRep "Optimize-NoBR" highLevel $! fPf fst $! prepend [ ("refreshI",       False) ]
+                                                                     $! [ ("Decl-Simplify",  True, withPrepend)
+                                                                        , ("Decl-Fuse-NoBR", True, withPrepend)
+                                                                        , ("Decl-Simplify",  True, withPrepend) ],
+        second mkFix $
+        mkT $! mkSeqRep "isolateApplication" highLevel $! fPf fst $! prepend [ ("refreshI",          False) ]
+                                                                          $! [ ("Decl-Simplify",     True, withPrepend)
+                                                                             , ("Decl-Fuse-FT-NoBR", True, withPrepend)
+                                                                             , ("Decl-Simplify",     True, withPrepend) ]
+
+      , mkW (transformE mosaicWarmupMapRewrites) "Mosaic" False True False False Nothing
       ]) `Map.union` highLevel
 
-    highLevel = (Map.fromList $ fPf fst $ [
+    highLevel = (Map.fromList $! fPf fst $! [
         second mkFix $
-        mkT $ mkSeq "Decl-Simplify" lowLevel $ fP $ intersperse "refreshI" $ [ "Decl-CF"
-                                                                             , "Decl-BR"
-                                                                             , "Decl-DCE"
-                                                                             , "Decl-CSE" ]
-      , mkT $ mkSeq "Decl-Fuse" lowLevel $ fP [ "Decl-FE"
-                                              , "typEffI"
-                                              , "Decl-FT" ]
+        mkT $! mkSeq "Decl-Simplify" lowLevel $! fP $! [ "Decl-CF"
+                                                       , "Decl-BR"
+                                                       , "Decl-DCE"
+                                                       , "Decl-CSE" ]
+
+      , second mkFix $
+        mkT $! mkSeq "Decl-Simplify-NoBR" lowLevel $! fP $! [ "Decl-CF"
+                                                            , "Decl-DCE"
+                                                            , "Decl-CSE" ]
+
+      , second mkFix $
+        mkT $! mkSeq "Decl-Simplify-Light" lowLevel $! fP $! [ "Decl-BR"
+                                                             , "Decl-DCE" ]
+
+      , mkT $! mkSeq "Decl-Fuse" lowLevel $! fP [ "Decl-FE"
+                                                , "Decl-FT" ]
+
+      , mkT $! mkSeq "Decl-Fuse-NoBR" lowLevel $! fP [ "Decl-FE-NoBR" ]
+
+      , mkT $! mkSeq "Decl-Fuse-FT-NoBR" lowLevel $! fP [ "Decl-FE-NoBR"
+                                                        , "Decl-FT"
+                                                        ]
       ]) `Map.union` lowLevel
 
-    lowLevel = Map.fromList $ fPf fst $ [
-              mk  foldConstants            "Decl-CF"  False True False True  (Just [typEffI])
-      ,       betaReduce                   "Decl-BR"  False True False True
-      ,       mk  eliminateDeadCode        "Decl-DCE" False True False True  (Just [typEffI])
-      ,       mkW cseTransform             "Decl-CSE" False True False True  (Just [typEffI])
-      , mkT $ mkD encodeTransformers       "Decl-FE"  False True False True  (Just [typEffI])
-      , mkT $ mk  fuseFoldTransformers     "Decl-FT"  False True False True  (Just fusionI)
-      , mkT $ mkDebug False $ fusionReduce
-      , mkT $ mkDebug False $ ("typEffI",)  $ typEffI
-      , mkT $ mkDebug False $ ("refreshI",) $ refreshI
+    lowLevel = Map.fromList $! fPf fst $! [
+              mk   foldConstants              "Decl-CF"      False True False True (Just [typEffI])
+      ,            betaReduce                 "Decl-BR"      False True False True
+      ,       mk   eliminateDeadCode          "Decl-DCE"     False True False True (Just [typEffI])
+      ,       mkW  cseTransform               "Decl-CSE"     False True False True (Just [typEffI])
+      , mkT $! mkD (encodeTransformers False) "Decl-FE"      False True False True (Just [typEffI])
+      , mkT $! mkD (encodeTransformers True)  "Decl-FE-NoBR" False True False True (Just [typEffI])
+      , mkT $! mk  fuseFoldTransformers       "Decl-FT"      False True False True (Just fusionI)
+      , mkT $! mkDebug False $! fusionReduce
+      , mkT $! mkDebug False $! ("typEffI",)  $! typEffI
+      , mkT $! mkDebug False $! ("refreshI",) $! refreshI
       ]
 
     -- Build a transform with additional debugging/repair/reification functionality.
-    mk f i asReified asRepair asDebug asFixT fixPassOpt = mkSS $ (i,)
-      $ (maybe id (if asFixT then mkFixIT i else mkFixI) fixPassOpt)
-      $ (if asReified then reifyPass else id)
-      $ (if asRepair then withRepair i else id)
-      $ (if asDebug then transformEDbg i else transformE)
-      $ mapNamedDeclExpression n f
+    mk f i asReified asRepair asDebug asFixT fixPassOpt = mkSS $! (i,)
+      $! (maybe id (if asFixT then mkFixIT i else mkFixI) fixPassOpt)
+      $! (if asReified then reifyPass else id)
+      $! (if asRepair then withRepair i else id)
+      $! (if asDebug then transformEDbg i else transformE)
+      $! mapNamedDeclExpression n f
 
     -- Build a delta transform
-    mkD f i asReified asRepair asDebug asFixT fixPassOpt = mkSS $ (i,)
-      $ (maybe transformFromDelta (if asFixT then mkFixIDT i else mkFixID) fixPassOpt)
-      $ (if asReified then reifyPassD else id)
-      $ (if asRepair then withRepairD i else id)
-      $ (if asDebug then transformEDDbg i else transformED)
-      $ foldNamedDeclExpression n f False
+    mkD f i asReified asRepair asDebug asFixT fixPassOpt = mkSS $! (i,)
+      $! (maybe transformFromDelta (if asFixT then mkFixIDT i else mkFixID) fixPassOpt)
+      $! (if asReified then reifyPassD else id)
+      $! (if asRepair then withRepairD i else id)
+      $! (if asDebug then transformEDDbg i else transformED)
+      $! foldNamedDeclExpression n f False
 
     -- Wrap an existing transform
-    mkW tr i asReified asRepair asDebug asFixT fixPassOpt = mkSS $ (i,)
-      $ (maybe id (if asFixT then mkFixIT i else mkFixI) fixPassOpt)
-      $ (if asReified then reifyPass else id)
-      $ (if asRepair then withRepair i else id)
-      $ (if asDebug then debugPass i else id)
-      $ tr
+    mkW tr i asReified asRepair asDebug asFixT fixPassOpt = mkSS $! (i,)
+      $! (maybe id (if asFixT then mkFixIT i else mkFixI) fixPassOpt)
+      $! (if asReified then reifyPass else id)
+      $! (if asRepair then withRepair i else id)
+      $! (if asDebug then debugPass i else id)
+      $! tr
 
-    mkDebug asDebug (i,tr) = mkSS $ (i,) $ (if asDebug then debugPass i else id) tr
+    mkWD tr i asReified asRepair asDebug asFixT fixPassOpt = mkSS $! (i,)
+      $! (maybe transformFromDelta (if asFixT then mkFixIDT i else mkFixID) fixPassOpt)
+      $! (if asReified then reifyPassD else id)
+      $! (if asRepair then withRepairD i else id)
+      $! (if asDebug then debugPassD i else id)
+      $! tr
+
+    -- Build a delta transform with an effects environment argument.
+    mkED f i asReified asRepair asDebug asFixT fixPassOpt = 
+      (\pass -> mkWD pass i asReified asRepair asDebug asFixT fixPassOpt)
+        $! withEffectTransformD
+        $! \pe fe d -> foldNamedDeclExpression n (f pe fe) False d >>= \(r,nd) -> return (r,nd,pe,fe)
+
+    mkDebug asDebug (i,tr) = mkSS $! (i,) $! (if asDebug then debugPass i else id) tr
 
     -- Pass filtering
     fPf :: (a -> Identifier) -> [a] -> [a]
-    fPf f = maybe (id) (\l -> filter (\x -> (f x) `notElem` l)) $ passesToFilter stSpec
+    fPf f = maybe (id) (\l -> filter (\x -> (f x) `notElem` l)) $! passesToFilter stSpec
     fP    = fPf id
 
     -- Fixpoint pass construction
     mkFix             = transformFixpoint
     mkFixI     interF = transformFixpointI  interF
     mkFixID    interF = transformFixpointID interF
-    mkFixIT  i interF = transformFixpointI  [timePass (mkN $ i ++ "-FPI") $ runPasses interF]
-    mkFixIDT i interF = transformFixpointID [timePass (mkN $ i ++ "-FPI") $ runPasses interF]
+    mkFixIT  i interF = transformFixpointI  [timePass (mkN $! i ++ "-FPI") $! runPasses interF]
+    mkFixIDT i interF = transformFixpointID [timePass (mkN $! i ++ "-FPI") $! runPasses interF]
 
     -- Timing and snapshotting.
     mkN i = unwords [n, i]
     mkT (i,f)  = (i, timePass (mkN i) f)
     mkS (i,f)  = (i, snapshotPass (mkN i) lastSnapshot f)
     mkSS (i,f) = maybe (i,f) (\l -> if i `elem` l then mkS (i,f) else (i,f))
-                   $ Map.lookup n $ snapshotSpec stSpec
+                   $! Map.lookup n $! snapshotSpec stSpec
 
     -- Custom, and shared passes
     betaReduce i asReified asRepair asDebug asFixT =
-      (\f -> mkW f i asReified asRepair asDebug asFixT (Just [typEffI]))
-        $ withEffectTransform
-        $ \p f d -> mapNamedDeclExpression n (betaReduction p) d >>= return . (,p,f)
+      mkED betaReductionDelta i asReified asRepair asDebug asFixT (Just [typEffI])
 
-    fusionReduce = mkT $ betaReduce "Decl-FR" False True False True
+    fusionReduce = mkT $! betaReduce "Decl-FR" False True False True
 
     cseTransform = withStateTransform (Just . cseCnt)
                                       (\ncntOpt st -> st {cseCnt=maybe (cseCnt st) id ncntOpt})
@@ -745,26 +832,26 @@ declTransforms stSpec extInfOpt n = topLevel
     fusionI  = bracketPasses "fusionReduce" typEffI [snd fusionReduce]
 
     -- Derived transforms
-    mkSeq i m l = mkSS (i, runPasses $ map (flip getTransform m) l)
+    mkSeq i m l = mkSS (i, runPasses $! map (flip getTransform m) l)
 
-    mkSeqRep i m lWRep = mkSS (i, runPasses $ map (getWRep m) lWRep)
-    getWRep m (i, asRep) = (if asRep then withRepair i else id) $ getTransform i m
+    mkSeqRep i m lWRep = mkSS (i, runPasses $! map (getWRep m) lWRep)
+    getWRep m (i, asRep) = (if asRep then withRepair i else id) $! getTransform i m
 
-    prepend l1 l2 = concatMap ((l1 ++) . (:[])) l2
+    prepend l1 l2 = concatMap (\(x,y,pp) -> (if pp then l1 else []) ++ [(x,y)]) l2
 
 
 getTransform :: Identifier -> Map Identifier ProgramTransform -> ProgramTransform
-getTransform i m = maybe err id $ Map.lookup i m
-  where err = error $ "Invalid compiler transformation: " ++ i
+getTransform i m = maybe err id $! Map.lookup i m
+  where err = error $! "Invalid compiler transformation: " ++ i
 
 declOptPasses :: StageSpec -> Maybe (SEffects.ExtInferF a, a) -> K3 Declaration -> [ProgramTransform]
 declOptPasses stSpec extInfOpt d = case nameOfDecl d of
   Nothing -> []
-  Just n -> maybe (tltransforms n) (map $ flip getTransform (transforms n)) $ passesToRun stSpec
+  Just n -> maybe (tltransforms n) (map $! flip getTransform (transforms n)) $! passesToRun stSpec
 
   where transforms n = declTransforms stSpec extInfOpt n
-        tltransforms n = maybe (defaultPasses n) (\l -> if "Optimize" `elem` l then [] else defaultPasses n) $ passesToFilter stSpec
-        defaultPasses n = [getTransform "Optimize" $ transforms n]
+        tltransforms n = maybe (defaultPasses n) (\l -> if "Optimize" `elem` l then [] else defaultPasses n) $! passesToFilter stSpec
+        defaultPasses n = [getTransform "Optimize" $! transforms n]
 
         nameOfDecl (tag -> DGlobal  n _ (Just _)) = Just n
         nameOfDecl (tag -> DTrigger n _ _) = Just n
@@ -775,9 +862,18 @@ runDeclPreparePassesM = runPasses [refreshProgram]
 
 runDeclOptPassesM :: CompilerSpec -> Maybe (SEffects.ExtInferF a, a) -> ProgramTransform
 runDeclOptPassesM cSpec extInfOpt prog = do
-  ensureParallelStSyms $ blockSize cSpec
-  runPasses [blockMapProgramDecls (blockSize cSpec) [refreshProgram] passes] prog
-  where passes = declOptPasses (stageSpec cSpec) extInfOpt
+  ensureParallelStSyms $! blockSize cSpec
+  runPasses passes prog
+  where passes    = [blockMapProgramDecls (blockSize cSpec) [refreshProgram] optPasses] ++ extraPasses wp
+        optPasses = declOptPasses nsSpec extInfOpt
+
+        sSpec = stageSpec cSpec
+        (wp, declp) = maybe ([],[]) (partition (`elem` wholeProgramPasses)) $! passesToRun sSpec
+        nsSpec = sSpec {passesToRun = maybe Nothing (const $! Just declp) $! passesToRun sSpec}
+
+        extraPasses l = map (flip getTransform $! declTransforms sSpec extInfOpt "") l
+        wholeProgramPasses = ["Mosaic"]
+
 
 runDeclOptPassesBLM :: CompilerSpec -> Maybe (SEffects.ExtInferF a, a)
                     -> [K3 Declaration] -> TransformM [K3 Declaration]
@@ -791,17 +887,17 @@ instance Pretty TransformReport where
     tlines %$ [unwords ["Total observed compilation time:", secs tsum]]
            %$ Map.foldlWithKey prettySnapshot [] sn
     where
-      maxnst = maximum $ map length $ Map.keys st
-      maxnsn = maximum $ map length $ Map.keys sn
+      maxnst = maximum $! map length $! Map.keys st
+      maxnsn = maximum $! map length $! Map.keys sn
       padst s = replicate (maxnst - length s) ' '
       padsn s = replicate (maxnsn - length s) ' '
 
-      stagg = map (second $ (sum &&& length) . map measTime) $ Map.assocs st
-      tsum  = sum $ map (fst . snd) stagg
-      trep  = map (second $ (\(tt,l) -> ((tt, percent tt), l))) stagg
-      percent t = TPF.printf "%.2f" $ 100 * t / tsum
+      stagg = map (second $! (sum &&& length) . map measTime) $! Map.assocs st
+      tsum  = sum $! map (fst . snd) stagg
+      trep  = map (second $! (\(tt,l) -> ((tt, percent tt), l))) stagg
+      percent t = TPF.printf "%.2f" $! 100 * t / tsum
 
-      tlines = concatMap prettyStats $ sortBy (compare `on` (fst . fst . snd)) trep
+      tlines = concatMap prettyStats $! sortBy (compare `on` (fst . fst . snd)) trep
       prettyStats (n,((t,pt), l)) = [unwords [n ++ padst n, ":", secs t, pt, show l, "iters"]]
 
-      prettySnapshot acc n l = acc %$ (flip concatMap l $ \p -> [n ++ padsn n ++ " "] %$ (prettyLines $ stripTypeAndEffectAnns p))
+      prettySnapshot acc n l = acc %$ (flip concatMap l $! \p -> [n ++ padsn n ++ " "] %$ (prettyLines $! stripTypeAndEffectAnns p))

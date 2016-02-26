@@ -88,8 +88,9 @@ annotation MultiIndexVMap given type a,b
   ///////////////////////////////////////////////
   // Most-recent version operations.
 
-  provides lifted peek_now : () -> option content
-    with effects \_ -> [R[self]]
+  @:CArgs 2
+  provides lifted peek_now : (() -> a) -> (content -> a) -> a
+    with effects \f -> \g -> [R[self]; R[version]; f content; g content]
 
   //////////////////////////////
   //

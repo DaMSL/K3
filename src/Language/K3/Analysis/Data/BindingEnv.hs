@@ -3,8 +3,11 @@ module Language.K3.Analysis.Data.BindingEnv where
 import Prelude hiding ( lookup )
 import Control.Monad.Trans.Except
 
-import Data.HashMap.Lazy ( HashMap )
-import qualified Data.HashMap.Lazy as Map
+import Data.HashMap.Strict ( HashMap )
+import qualified Data.HashMap.Strict as Map
+
+import Data.Sequence ( Seq, (><), ViewL(..) )
+import qualified Data.Sequence as Seq
 
 import Data.Text ( Text )
 import qualified Data.Text as T
@@ -13,22 +16,22 @@ import Language.K3.Core.Common
 
 {- Binding environment data structures -}
 type BindingEnv      a = HashMap Identifier a
-type BindingStackEnv a = BindingEnv [a]
+type BindingStackEnv a = BindingEnv (Seq a)
 
 {- Data.Text helpers -}
 mkErr :: String -> Except Text a
-mkErr msg = throwE $ T.pack msg
+mkErr msg = throwE $! T.pack msg
 
 {- BindingEnv helpers -}
 empty :: BindingEnv a
 empty = Map.empty
 
 member :: BindingEnv a -> Identifier -> Except Text Bool
-member env x = return $ Map.member x env
+member env x = return $! Map.member x env
 
 lookup :: BindingEnv a -> Identifier -> Except Text a
-lookup env x = maybe err return $ Map.lookup x env
-  where err = mkErr $ "Unbound variable in binding environment: " ++ x
+lookup env x = maybe err return $! Map.lookup x env
+  where err = mkErr $! "Unbound variable in binding environment: " ++ x
 
 mlookup :: BindingEnv a -> Identifier -> Maybe a
 mlookup env x = Map.lookup x env
@@ -40,7 +43,7 @@ popWith :: BindingEnv a -> (a -> Maybe a) -> Identifier -> BindingEnv a
 popWith env f x = maybe env (maybe (Map.delete x env)
                                    (\nv -> Map.adjust (const nv) x env)
                              . f)
-                    $ Map.lookup x env
+                    $! Map.lookup x env
 
 set :: BindingEnv a -> Identifier -> a -> BindingEnv a
 set env x v = Map.insert x v env
@@ -76,17 +79,20 @@ fromList = Map.fromList
 slookup :: BindingStackEnv a -> Identifier -> Except Text a
 slookup env x = lookup env x >>= safeHead
   where
-    safeHead l = if null l then err else return $ head l
+    safeHead s = case Seq.viewl s of
+                   EmptyL -> err
+                   a :< _ -> return $! a
     err = mkErr $ "Unbound variable in binding environment: " ++ x
 
 push :: BindingStackEnv a -> Identifier -> a -> BindingStackEnv a
-push env x v = pushWith env (++) x [v]
+push env x v = pushWith env (><) x (Seq.singleton v)
 
 pop :: BindingStackEnv a -> Identifier -> BindingStackEnv a
 pop env x = popWith env safeTail x
-  where safeTail []  = Nothing
-        safeTail [_] = Nothing
-        safeTail l   = Just $ tail l
+  where safeTail y = case Seq.viewl y of
+                      EmptyL -> Nothing
+                      _ :< rest | Seq.null rest -> Nothing
+                      _ :< rest -> Just $! rest
 
 
 -- Keep a, updating from b the values corresponding to keys in ks.

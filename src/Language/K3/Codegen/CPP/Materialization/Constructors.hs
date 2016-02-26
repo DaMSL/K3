@@ -6,11 +6,12 @@ import Language.K3.Core.Annotation
 import Language.K3.Core.Common
 
 import Language.K3.Codegen.CPP.Materialization.Core
+import Language.K3.Codegen.CPP.Materialization.Common
 import Language.K3.Codegen.CPP.Materialization.Hints
 
 -- * MExpr Constructors
 
-mVar :: UID -> Identifier -> Direction -> K3 MExpr
+mVar :: UID -> Int -> Direction -> K3 MExpr
 mVar u i d  = Node (MVar (Juncture u i) d :@: []) []
 
 mAtom :: Method -> K3 (MExpr)

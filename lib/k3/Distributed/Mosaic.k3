@@ -1,0 +1,669 @@
+include "Annotation/Maps/MapE.k3"
+include "Core/Barrier.k3"
+include "Core/Messaging.k3"
+include "Distributed/SQLTransformers.k3"
+
+declare index_by_hash : forall a. a -> int = (\s -> (
+  let n = peers.size() in
+  let h = (hash s) in
+  ((h % n) + n) % n
+))
+
+declare peer_idx : mut int = 0  // Index of this peer in the peers collection.
+
+control MosaicLoader
+{
+  ?loader ?paths (?Col : collection ?T)
+  => $.[loader] $.[paths] $.[Col];
+     $[|labelExpr 'Col.expr|] =
+      ($.[Col].group_by (\x -> $[|mosaicGMRKey 'T.typ "x"|])
+                        (\a -> \x -> a + $[|mosaicGMRMultiplicity 'T.typ "x"|])
+                        0)
+              .fold     (\a -> \e -> (a.insert $[|mosaicGMRFlatten 'T.typ "e"|]; a))
+                        (empty $::[T] @Collection)
+
+}
+
+// Skip indexing for distributed execution.
+control MosaicIndex [ lbl          : label
+                    , relation     : label
+                    , key_type     : type
+                    , lookup_probe : expr
+                    , index_probe  : expr
+                    , missing_fn   : expr
+                    , present_fn   : expr
+                    , index_key    : [labeltype]
+                    , index_value  : [labeltype]]
+{
+  ((?e.filter ?filterF)
+      .fold   ?foldF (?acc1 : ?t1)
+  )
+  => (((($.[e]) @:{PartitionConstraint "$[|partitionConstraint 'lookup_probe 'index_probe|]"}
+        ).fold $.[foldF] $.[acc1])
+     ) @MosaicLogIndex(id=lbl)
+}
+
+// Create base relation indexes for Mosaic warmup map accesses.
+control MosaicIndex2[ lbl          : label
+                    , relation     : label
+                    , key_type     : type
+                    , lookup_probe : expr
+                    , index_probe  : expr
+                    , missing_fn   : expr
+                    , present_fn   : expr
+                    , index_key    : [labeltype]
+                    , index_value  : [labeltype]]
+{
+  // Slice materialization
+  ((?e.filter ?filterF)
+      .fold   ?FoldF (?acc1 : ?t1)
+  )
+  => ((($[lbl]_index @:{RelationName "$[|literalLabel 'relation|]",
+                       ProjectionAccExpr "$[|literalExpr 'FoldF.expr |]"}
+       ).lookup $[lookup_probe] (\_ -> $.[acc1]) (\r -> r.value)
+      ) @:{PartitionConstraint "$[|partitionConstraint 'lookup_probe 'index_probe|]"}
+     ) @MosaicLogIndex(id=lbl)
+  +> {
+    declare $[lbl]_index : mut collection {key: $[key_type], value: $::[t1]} @MapE(key:=index_key, value:=index_value)
+
+    declare $[lbl]_init_index : () -> () = \_ -> (
+      $.[e].iterate (\t -> $[lbl]_index.upsert_with $[index_probe] $[missing_fn] $[present_fn])
+    )
+  }
+}
+
+control MosaicLogIndex[id: label] {
+  ?E => $[| mosaicLogIndex 'id 'E.expr |]
+}
+
+// For use with Mosaic's fold encoding.
+control MosaicFusion {
+
+  // Filter-filter
+  ((?e).filter ?filterF1).filter ?filterF2 => ($.[e].filter (\x -> ($.[filterF1] x) and ($.[filterF2] x))) @MosaicFusion
+
+  // Fusion pushdown through flatten
+  (?e).fold (\_accext -> (\?bvi1 -> bind ?bv1 as ?bind1 in ((_accext.extend ?e2); _accext))) ?z
+  => (($.[e] @MosaicFusion).fold (\_accext -> (\$#[bvi1] ->
+        (bind $.[bv1] as $~![bind1] in ((_accext.extend ($.[e2] @MosaicFusion)); _accext)))) $.[z])
+
+  // Map-maps encoded as folds.
+  ((?e).fold (\_accmap -> (\?bvi1 -> (bind ?bv1 as ?bind1 in ((_accmap.insert ?v1); _accmap))))
+             (?acc1 : collection ?t1))
+       .fold (\_accmap -> (\?bvi2 -> (bind ?bv2 as ?bind2 in ((_accmap.insert ?v2); _accmap))))
+             (?acc2 : collection ?t2)
+  =>
+  (($.[e] @MosaicFusion)
+        .fold (\_accmap ->
+                  \$#[bvi1] -> bind $.[bv1] as $~![bind1] in
+                  (_accmap.insert ((\$#[bvi2] -> bind $.[bv2] as $~![bind2] in ($.[v2] @MosaicFusion))
+                                  ($.[v1] @MosaicFusion));
+                   _accmap))
+              $.[acc2]
+  ) @MosaicFusion
+
+  // Map-filter, with map encoded as fold.
+  ((?e).fold   (\_accmap -> (\?bvi1 -> (bind ?bv1 as ?bind1 in ((_accmap.insert ?v1); _accmap))))
+               (?acc1 : collection ?t1))
+       .filter ?filterF
+  =>
+  (($.[e] @MosaicFusion)
+        .fold (\_accmap -> \$#[bvi1] -> bind $.[bv1] as $~![bind1] in
+                let r = $.[v1] @MosaicFusion in
+                if $.[filterF] r then (_accmap.insert r; _accmap) else _accmap)
+              $.[acc1]
+  ) @MosaicFusion
+
+  // Filter-map, with map encoded as fold.
+  ((?e).filter ?filterF)
+       .fold   (\_accmap -> (\?bvi1 -> (bind ?bv1 as ?bind1 in ((_accmap.insert ?v1); _accmap))))
+               (?acc1 : collection ?t1)
+  =>
+  (($.[e] @MosaicFusion)
+       .fold (\_accmap -> \$#[bvi1] ->
+                if $.[filterF] $#[bvi1]
+                  then bind $.[bv1] as $~![bind1] in ((_accmap.insert ($.[v1] @MosaicFusion)); _accmap)
+                  else _accmap)
+             $.[acc1]
+  ) @MosaicFusion
+
+  // Map-sum encoded as folds.
+  ((?e).fold (\_accmap -> (\?bvi1 -> (bind ?bv1 as ?bind1 in ((_accmap.insert ?v1); _accmap))))
+             (?acc1 : collection ?t1))
+       .fold (\?acc2i -> (\?bvi2 -> (bind ?bv2 as ?bind2 in (?acc2v + ?v2))))
+             ?acc2
+  =>
+  (($.[e] @MosaicFusion)
+        .fold (\$#[acc2i] -> \$#[bvi1] ->
+                bind $.[bv1] as $~![bind1] in
+                $.[acc2v] + ((\$#[bvi2] -> bind $.[bv2] as $~![bind2] in ($.[v2] @MosaicFusion)) ($.[v1] @MosaicFusion)))
+              $.[acc2]
+  ) @MosaicFusion
+
+  // TODO: chained fusion rules for filter-map/map-filter and map.
+
+  // Fold search descent
+  (?e).fold ?accF ?z => (($.[e] @MosaicFusion).fold $.[accF] $.[z])
+
+  // Group-by search descent
+  (?e).group_by ?groupF ?accF ?z => ($.[e] @MosaicFusion).group_by $.[groupF] $.[accF] $.[z]
+
+  // Children descent.
+  ?E => $[| rewriteChildren 'E.expr ["MosaicFusion"] |]
+}
+
+control MosaicInferPartition {
+  ?E => ($[|propagatePartition 'E.expr|]) @MosaicDistribute
+}
+
+// An annotation that plans the distributed execution scheme by inspecting the inferred query properties.
+// This attaches the appropriate distributed execution rewrite annotation onto the expression E.
+control MosaicDistribute {
+  ?E => $[| mosaicDistributedPlanner 'E.expr |]
+}
+
+control MosaicLogStaging[id: label, op: label] {
+  ?E => $[| mosaicLogStaging 'id 'op 'E.expr |]
+}
+
+// Create stages and materialized intermediates for Mosaic warmup expressions.
+control MosaicMaterialization[lbl : label, cnt : expr, finaltrg : expr]
+{
+  // Enforce fusion before materialization.
+  ?v = ((?e.fold ?accF ?z) @MosaicFusion)
+  => ($#[v] = (($.[e].fold $.[accF] $.[z]) @MosaicFusion)) @MosaicMaterialization(lbl=lbl, cnt=cnt, finaltrg=finaltrg)
+
+  ?v = ((?e.group_by ?groupF ?accF ?z) @MosaicFusion)
+  => ($#[v] = (($.[e].group_by $.[groupF] $.[accF] $.[z]) @MosaicFusion)) @MosaicMaterialization(lbl=lbl, cnt=cnt, finaltrg=finaltrg)
+
+  // Materialization base cases with base relations
+  (?v = ((?e @:BaseRelation).fold ?accF ?z)); (?dest, me) <- ()
+  => ((($#[v] = (($.[e].fold $.[accF] $.[z]) @MosaicLogStaging(id=[# $#[v] ], op=[# foldscan])));
+       ($.[dest], me) <- ()) @MosaicInferPartition)
+
+  (?v = ((?e @:BaseRelation).group_by ?groupF ?accF ?z)); (?dest, me) <- ()
+  => ((($#[v] = (($.[e].group_by $.[groupF] $.[accF] $.[z]) @MosaicLogStaging(id=[# $#[v]], op=[# gbscan])));
+       ($.[dest], me) <- ()) @MosaicInferPartition)
+
+  // Materialization base cases with constant relations
+  (?v = ((let ?c = ?e in ?rc).fold ?accF ?z)); (?dest, me) <- ()
+  => ((($#[v] = ((((let $#[c] = $.[e] in $.[rc]) @:ConstantRelation).fold $.[accF] $.[z]) @MosaicLogStaging(id=[# $#[v] ], op=[# foldconst])));
+       ($.[dest], me) <- ()) @MosaicInferPartition)
+
+  (?v = ((let ?c = ?e in ?rc).group_by ?groupF ?accF ?z)); (?dest, me) <- ()
+  => ((($#[v] = ((((let $#[c] = $.[e] in $.[rc]) @:ConstantRelation).group_by $.[groupF] $.[accF] $.[z]) @MosaicLogStaging(id=[# $#[v]], op=[# gbconst])));
+       ($.[dest], me) <- ()) @MosaicInferPartition)
+
+  // Materialization staging
+  ?v = ((?e : ?t).fold ?accF ?z)
+  => ((($[lbl]_$[| labelExpr 'cnt |] = $.[e]);
+        ($[lbl]_stage$[| labelExpr 'cnt |], me) <- ())
+          @MosaicMaterialization(lbl=lbl, cnt=[$ $[|incrExpr 'cnt|] ], finaltrg=finaltrg))
+  +> {
+    declare $[lbl]_$[| labelExpr 'cnt |] : mut $::[t]
+
+    trigger $[lbl]_stage$[| labelExpr 'cnt|] : () = \_ -> (
+      ((($#[v] = (($[lbl]_$[| labelExpr 'cnt |] @:MaterializedRelation).fold $.[accF] $.[z]) @MosaicLogStaging(id=[# $#[v] ], op=[# fold ]));
+        ($[finaltrg], me) <- ()
+       ) @MosaicInferPartition)
+    )
+  }
+
+  (?v = ((?e : ?t).fold ?accF ?z)); (?dest, me) <- ()
+  => ((($[lbl]_$[| labelExpr 'cnt |] = $.[e]);
+        ($[lbl]_stage$[| labelExpr 'cnt |], me) <- ())
+          @MosaicMaterialization(lbl=lbl, cnt=[$ $[|incrExpr 'cnt|] ], finaltrg=finaltrg))
+  +> {
+    declare $[lbl]_$[| labelExpr 'cnt |] : mut $::[t]
+
+    trigger $[lbl]_stage$[| labelExpr 'cnt|] : () = \_ -> (
+      ((($#[v] = (($[lbl]_$[| labelExpr 'cnt |] @:MaterializedRelation).fold $.[accF] $.[z]) @MosaicLogStaging(id=[# $#[v] ], op=[# fold ]));
+        ($.[dest], me) <- ()
+      ) @MosaicInferPartition)
+    )
+  }
+
+  ?v = ((?e : ?t).group_by ?groupF ?accF ?z)
+  => ((($[lbl]_$[| labelExpr 'cnt |] = $.[e]);
+        ($[lbl]_stage$[| labelExpr 'cnt |], me) <- ())
+          @MosaicMaterialization(lbl=lbl, cnt=[$ $[|incrExpr 'cnt|] ], finaltrg=finaltrg))
+  +> {
+    declare $[lbl]_$[| labelExpr 'cnt |] : mut $::[t]
+
+    trigger $[lbl]_stage$[| labelExpr 'cnt|] : () = \_ -> (
+      ((($#[v] = (($[lbl]_$[| labelExpr 'cnt |] @:MaterializedRelation).group_by $.[groupF] $.[accF] $.[z]) @MosaicLogStaging(id=[# $#[v] ], op=[# group_by ]));
+        ($[finaltrg], me) <- ()
+      ) @MosaicInferPartition)
+    )
+  }
+
+  (?v = ((?e : ?t).group_by ?groupF ?accF ?z)); (?dest, me) <- ()
+  => ((($[lbl]_$[| labelExpr 'cnt |] = $.[e]);
+        ($[lbl]_stage$[| labelExpr 'cnt |], me) <- ())
+          @MosaicMaterialization(lbl=lbl, cnt=[$ $[|incrExpr 'cnt|] ], finaltrg=finaltrg))
+  +> {
+    declare $[lbl]_$[| labelExpr 'cnt |] : mut $::[t]
+
+    trigger $[lbl]_stage$[| labelExpr 'cnt|] : () = \_ -> (
+      ((($#[v] = (($[lbl]_$[| labelExpr 'cnt |] @:MaterializedRelation).group_by $.[groupF] $.[accF] $.[z]) @MosaicLogStaging(id=[# $#[v] ], op=[# group_by ]));
+       ($.[dest], me) <- ()
+      ) @MosaicInferPartition)
+    )
+  }
+}
+
+control MosaicMultiExchange [ lbl : label
+                            , relations : [{ i : label
+                                           , key_type  : type
+                                           , val_type  : type
+                                           , elem_type : type
+                                           , query     : expr
+                                           , clear     : expr }]
+                            , joinOrder   : [{ i                 : label
+                                             , lhs_ht_id         : label
+                                             , lhs_query         : expr
+                                             , lhs_query_clear   : expr
+                                             , rhs_query         : expr
+                                             , rhs_query_clear   : expr
+                                             , lhs_ht_ty         : type
+                                             , rhs_ht_ty         : type
+                                             , lhs_insert_with   : expr
+                                             , lhs_nonmatch_id   : label
+                                             , lhs_nonmatch_ty   : type
+                                             , lhs_nonmatch_eval : expr
+                                             , lhs_nonmatch_rels : [label]
+                                             , lhs_probe         : expr
+                                             , result_id         : label
+                                             , result_ty         : type
+                                             , lhs_ht_clear      : expr }]
+                            , next : expr ]
+{
+	() => peers.iterate (\p ->
+          $[| mosaicStartMultiExchange 'relations (EC.project "addr" (EC.variable "p")) |]
+            // Generate a send to each relation's exchange trigger
+        )
+
+  +>
+  {
+    trigger $[lbl]_global_barrier : () = \_ -> (
+      ( () @MosaicMultiwayJoin( lbl         = lbl
+                              , relations   = relations
+                              , joinOrder   = joinOrder
+                              , next        = next)
+      ) @OnCounter( id=[# $[lbl]_exchange_done], eq=[$ $[| mosaicExchangeBarrierCount 'relations |] ]
+                  , reset=[$ false], profile=[$ false] )
+    )
+
+    for R in relations:
+      declare $[R.i]_offset : mut int = peer_idx
+      declare $[R.i]_stride : mut int = peers.size ()
+      declare $[R.i]_cnt    : mut int = 0
+
+      declare $[R.i]_next_bucket : () -> int = \_ -> (
+        $[R.i]_cnt = $[R.i]_cnt + 1;
+        $[R.i]_offset + ($[R.i]_stride * $[R.i]_cnt)
+      )
+
+      declare $[R.i]_pidx  : collection {key : $[R.key_type], value: int} @Map
+      declare $[R.i]_parts : collection {key : int, value: collection $[R.val_type] @Collection} @Map
+
+      trigger $[R.i]_exchange : () = \_ -> (
+        (((ignore $[R.query])
+          @PartitionShuffleWithMissing(
+            lbl           = [# $[R.i]_exchange]
+          , dest_trg      = [$ $[R.i]_process_exchange]
+          , nodes         = [$ peers ]
+          , send_extra_fn = [$ \x -> x]
+          , send_ty       = [: $[|specializeMapTypeByKV 'R.elem_type|] ]
+          ));
+          $[R.clear]
+	) @OnCounter(id=[# $[R.i]_exchange_start], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+      )
+
+      trigger $[R.i]_process_exchange : $[|specializeMapTypeByKV 'R.elem_type|] = \vals -> (
+        (vals.iterate (\v ->
+          $[R.i]_pidx.lookup {key: v.key, value: 0}
+            (\_ -> let bucket_id = $[R.i]_next_bucket ()
+                   in (($[R.i]_pidx.insert  {key: v.key,     value: bucket_id});
+                       ($[R.i]_parts.insert {key: bucket_id, value: v.value})))
+            (\bucket_kv -> $[R.i]_parts.insert_with {key: bucket_kv.value, value: v.value} (\old -> \new -> (old.value.extend new.value; old))));
+        ( ( $[lbl]_global_barrier, master ) <- ()
+        ) @OnCounter(id=[# $[R.i]_exchange_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+        )
+      )
+  }
+}
+
+
+control MosaicMultiwayJoin [ lbl : label
+                           , relations : [{ i : label
+                                           , key_type  : type
+                                           , val_type  : type
+                                           , elem_type : type
+                                           , query     : expr
+                                           , clear     : expr }]
+                           , joinOrder : [{ i                 : label
+                                          , lhs_ht_id         : label
+                                          , lhs_query         : expr
+                                          , lhs_query_clear   : expr
+                                          , rhs_query         : expr
+                                          , rhs_query_clear   : expr
+                                          , lhs_ht_ty         : type
+                                          , rhs_ht_ty         : type
+                                          , lhs_insert_with   : expr
+                                          , lhs_nonmatch_id   : label
+                                          , lhs_nonmatch_ty   : type
+                                          , lhs_nonmatch_eval : expr
+                                          , lhs_nonmatch_rels : [label]
+                                          , lhs_probe         : expr
+                                          , result_id         : label
+                                          , result_ty         : type
+                                          , lhs_ht_clear      : expr }]
+                           , next : expr
+                           ]
+{
+  () => peers.iterate (\p -> $[| mosaicStartMultiwayJoin 'joinOrder (EC.project "addr" (EC.variable "p")) |])
+          // Generate a message to the first join's lhs_redistribute trigger
+  +>
+  {
+    trigger $[lbl]_mjoin_done : () = \_ -> (
+      () @MosaicFetchPartitions( lbl        = lbl
+                               , relations  = relations
+                               , joinOrder  = joinOrder
+                               , partitions = [$ $[| mosaicMultiwayJoinResult 'joinOrder |] ]
+                               , barrier_kt = [: $[| mosaicFetchPartitionBarrierKeyType 'relations |] ]
+                               , next       = next )
+    )
+
+    for J in joinOrder:
+      declare $[J.lhs_ht_id] : mut $[|specializeMapTypeByKV 'J.lhs_ht_ty|]
+      declare $[J.result_id] : mut $[J.result_ty]
+      declare $[J.lhs_nonmatch_id] : mut $[J.lhs_nonmatch_ty]
+
+      trigger $[J.i]_lhs_redistribute : () = \_ -> (
+        ((ignore $[J.lhs_query])
+          @PartitionShuffleWithMissing(
+            lbl           = [# $[J.i]_lhs]
+          , dest_trg      = [$ $[J.i]_lhs_process_redistribute]
+          , nodes         = [$ peers ]
+          , send_extra_fn = [$ \x -> x]
+          , send_ty       = [: $[|specializeMapTypeByKV 'J.lhs_ht_ty|] ]
+          ));
+          $[J.lhs_query_clear]
+      )
+
+      trigger $[J.i]_lhs_process_redistribute : $[|specializeMapTypeByKV 'J.lhs_ht_ty|] = (\vals ->
+      ((vals.iterate (\v -> $[J.lhs_ht_id].insert_with v $[J.lhs_insert_with]));
+        ( ($[J.lhs_nonmatch_id] = $[J.lhs_nonmatch_eval]);
+          peers.iterate (\p -> ($[J.i]_rhs_redistribute, p.addr) <- ())
+        ) @OnCounter(id=[# $[J.i]_peer_build_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false]))
+      )
+
+      trigger $[J.i]_rhs_redistribute : () = \_ -> (
+        (((ignore $[J.rhs_query])
+              @PartitionShuffleWithMissing(
+                lbl           = [# $[J.i]_rhs]
+              , dest_trg      = [$ $[J.i]_rhs_process_redistribute]
+              , nodes         = [$ peers ]
+              , send_extra_fn = [$ \x -> x]
+              , send_ty       = [: $[|specializeMapTypeByKV 'J.rhs_ht_ty|] ]
+              );
+          $[J.rhs_query_clear])
+        ) @OnCounter(id=[# $[J.i]_lhs_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+      )
+
+      trigger $[J.i]_rhs_process_redistribute : $[|specializeMapTypeByKV 'J.rhs_ht_ty|] = (\vals -> (
+        // Probe LHS hash table.
+        vals.iterate $[J.lhs_probe];
+        ( ( $[J.lhs_ht_clear] );
+          ( $[J.i]_global_barrier, master ) <- ()
+        ) @OnCounter(id=[# $[J.i]_rhs_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+        ))
+
+      trigger $[J.i]_global_barrier : () = \_ -> (
+        ( $[| mosaicGlobalNextMultiwayJoin 'lbl 'joinOrder 'J "master" |]
+            // Generate a message to the next join's lhs_redistribute trigger
+            // or the final multiway join processing trigger (_mjoin_done)
+        ) @OnCounter(id=[# $[J.i]_join_done], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+      )
+  }
+}
+
+
+control MosaicFetchPartitions [ lbl : label
+                              , relations : [{ i : label
+                                             , key_type  : type
+                                             , val_type  : type
+                                             , elem_type : type
+                                             , query     : expr
+                                             , clear     : expr }]
+                              , joinOrder : [{ i                 : label
+                                             , lhs_ht_id         : label
+                                             , lhs_query         : expr
+                                             , lhs_query_clear   : expr
+                                             , rhs_query         : expr
+                                             , rhs_query_clear   : expr
+                                             , lhs_ht_ty         : type
+                                             , rhs_ht_ty         : type
+                                             , lhs_insert_with   : expr
+                                             , lhs_nonmatch_id   : label
+                                             , lhs_nonmatch_ty   : type
+                                             , lhs_nonmatch_eval : expr
+                                             , lhs_nonmatch_rels : [label]
+                                             , lhs_probe         : expr
+                                             , result_id         : label
+                                             , result_ty         : type
+                                             , lhs_ht_clear      : expr }]
+                              , partitions   : expr
+                              , barrier_kt   : type
+                              , next         : expr
+                              ]
+{
+  () => peers.iterate (\p -> ($[lbl]_fetch_partitions, p.addr) <- ())
+  +> {
+    declare $[lbl]_fetch_barriers : mut collection {key: $[barrier_kt], value: int} @Map
+
+    trigger $[lbl]_fetch_partitions : () = \_ -> (
+      // Issue fetches for all non-matching partitions.
+      $[| mosaicNonMatchingFetchPartition 'lbl 'barrier_kt 'joinOrder |];
+
+      // Issue fetches for matching partitions in the join output.
+      $[partitions].iterate (\part_ids ->
+        part_ids.value.iterate (\pid -> (
+          $[lbl]_fetch_barriers.insert {key: pid, value: $[|mosaicFetchPartitionBarrierSize 'relations|]};
+          $[| mosaicFetchPartition 'relations "pid" |]
+        ))
+      )
+    )
+
+    trigger $[lbl]_fetches_complete : () = \_ -> (
+      ( peers.iterate (\p -> ($[lbl]_execute, p.addr) <- ())
+      ) @OnCounter(id=[# $[lbl]_fetch_done], eq=[$ peers.size() ], reset=[$ false], profile=[$ false])
+    )
+
+    trigger $[lbl]_execute : () = \_ -> (
+      ($[next]) @MosaicExecutePartitions(lbl=lbl, relations=relations, joinOrder=joinOrder, partitions=partitions)
+    )
+
+    // Declarations for matching output partitions
+    for r in relations:
+      declare $[r.i]_exec_part : mut collection $[r.val_type] @Collection
+
+      declare $[r.i]_exec_parts : collection {key : int, value: collection $[r.val_type] @Collection} @Map
+
+      trigger $[r.i]_fetch_part : {part_id: int, dest : address, barrier_key: $[barrier_kt]} = \x -> (
+        $[r.i]_parts.lookup {key: x.part_id, value: empty $[r.val_type] @Collection}
+          (\_ -> ())
+          (\partition -> ($[r.i]_recv_part, x.dest) <- {key: x.barrier_key, value: partition})
+      )
+
+      trigger $[r.i]_recv_part : {key: $[barrier_kt], value: {key: int, value: collection $[r.val_type] @Collection}} = \fetch -> (
+        ($[r.i]_exec_parts.insert fetch.value);
+        $[lbl]_fetch_barriers.lookup {key: fetch.key, value: 0} (\_ -> ())
+          (\barrier -> if barrier.value <= 1
+                         then ( $[lbl]_fetch_barriers.erase {key: barrier.key, value: 0};
+                                if $[lbl]_fetch_barriers.size() == 0
+                                  then ($[lbl]_fetches_complete, master) <- ()
+                                  else () )
+
+                         else ( $[lbl]_fetch_barriers.upsert_with {key: barrier.key, value: 0}
+                                  (\_ -> {key: barrier.key, value: 0})
+                                  (\b -> {key: b.key, value: b.value - 1}) ) )
+      )
+  }
+}
+
+
+control MosaicExecutePartitions [ lbl : label
+                                , relations : [{ i : label
+                                               , key_type  : type
+                                               , val_type  : type
+                                               , elem_type : type
+                                               , query     : expr
+                                               , clear     : expr }]
+                                , joinOrder : [{ i                 : label
+                                               , lhs_ht_id         : label
+                                               , lhs_query         : expr
+                                               , lhs_query_clear   : expr
+                                               , rhs_query         : expr
+                                               , rhs_query_clear   : expr
+                                               , lhs_ht_ty         : type
+                                               , rhs_ht_ty         : type
+                                               , lhs_insert_with   : expr
+                                               , lhs_nonmatch_id   : label
+                                               , lhs_nonmatch_ty   : type
+                                               , lhs_nonmatch_eval : expr
+                                               , lhs_nonmatch_rels : [label]
+                                               , lhs_probe         : expr
+                                               , result_id         : label
+                                               , result_ty         : type
+                                               , lhs_ht_clear      : expr }]
+                                , partitions   : expr
+                                ]
+{
+  (?V = (?E : ?T); (?dest, me) <- ())
+    =>
+      $[| mosaicExecuteNonMatchingPartitions 'V.identifier 'E.expr 'T.typ 'relations 'joinOrder (Just "_exec_part") |];
+
+      $[partitions].iterate (\part_ids ->
+        part_ids.value.iterate (\pid -> (
+          // We can skip assigning to partitions when the partition id is -1 (used to encode outer joins).
+          $[| mosaicAssignInputPartitions 'relations "pid" "_exec_parts" "_exec_part" |];
+
+          // Execute query over partitions and merge with assignment target.
+          $[| mosaicIncrAccumulatePartition 'V.identifier 'E.expr 'T.typ (Just "_exec_part") |]
+        ))
+      );
+
+      // Perform deduplication as necessary for final join result.
+      $[| mosaicFinalAccumulatePartition 'V.identifier 'T.typ |];
+
+      // Signal the next stage to execute here
+      ($.[dest], me) <- ()
+}
+
+//////////////////////////////////////
+//
+// Distributed execution rewrites.
+
+control MosaicLogExec[id: label, op: label] {
+  ?E => $[| mosaicLogExec 'id 'op 'E.expr |]
+}
+
+// TODO: inference for CollectAcc in MosaicAnalyzeAccumulator
+control MosaicExecuteStage[ lbl : label ]
+{
+  // Parallel fold transformers.
+
+  // Parallel independent fold transformers.
+  (?v = (?e.fold (?accF @:IndepAcc) ?z); (?dest, me) <- ())
+  => $#[v] = (($.[e].fold $.[accF] $.[z]) @MosaicLogExec(id=[# $#[v]], op=[# foldexec_indep]));
+     ($.[dest], me) <- ()
+
+  // Parallel collected fold transformers.
+  // Handle closure-free accumulators by collecting a materialized 'e' at the master.
+  // Remaining computation also evaluates at the master.
+  (?v = ((?E : ?T).fold (?accF @:CollectAcc) ?z); (?dest, me) <- ())
+  => (($[lbl]_collected, master) <- $.[E]) @MosaicLogExec(id=[# $#[v]], op=[# foldexec_collect])
+
+  +> {
+    declare $[lbl]_collected : mut $::[T]
+
+    trigger $[lbl]_collect_exec : $::[T] = \c -> (
+      $[| mosaicIncrAccumulatePartition (concatLabel 'lbl (SLabel "_collected")) (EC.variable "c") 'T.typ Nothing |];
+      ( $#[v] = $[lbl]_collected.fold $.[accF] $.[z];
+        ($.[dest], me) <- ()
+      ) @OnCounter(id=[# $[lbl]_collect], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+    )
+  }
+
+  (?v = ((?E : ?T).fold (?accF @:GenericAcc) ?z); (?dest, me) <- ())
+  => $[| mosaicExprError "Cannot parallelize generic accumulator" 'E.expr |]
+
+
+  (?v = (?e.fold ?AccF ?z); (?dest, me) <- ())
+  => (($#[v] = $.[e].fold ($.[AccF] @MosaicAnalyzeAccumulator) $.[z]);
+      ($.[dest], me) <- ()
+     ) @MosaicExecuteStage(lbl=lbl)
+
+
+  // Parallel group-by transformers.
+  // TODO: analysis-based accumulator rewrites.
+
+  (?v = (?e.group_by ?groupF ?AccF ?z); (?dest, me) <- ())
+  => ($#[v] = (($.[e].group_by $.[groupF] $.[AccF] $.[z]) @MosaicLogExec(id=[# $#[v]], op=[# gbexec]));
+      ($.[dest], me) <- ()
+     ) @DistributedGroupBy2(lbl=[# $#[v]_gb ], merge=[$ $[| mosaicAccumulatorMerge 'AccF.expr |] ])
+
+
+  // Default case: non-parallelized.
+
+  (?v = (?E : ?T); (?dest, me) <- ())
+  => $#[v] = (($.[E]) @MosaicLogExec(id=[# $#[v]], op=[# generic]));
+     ($.[dest], me) <- ()
+}
+
+
+control MosaicAnalyzeAccumulator {
+  \?Acc -> ?E => $[| mosaicAnalyzeAccumulatorIndependence 'Acc.identifier 'E.expr |]
+
+  ?E => $.[E] @:GenericAcc
+}
+
+
+// General distributed M3 calculus evaluation with a pilot query for partitioning.
+// This is attached by the Mosaic distributed query planner.
+control MosaicExecuteJoin[ lbl : label
+                         , relations : [{ i : label
+                                         , key_type  : type
+                                         , val_type  : type
+                                         , elem_type : type
+                                         , query     : expr
+                                         , clear     : expr }]
+                         , joinOrder : [{ i                 : label
+                                        , lhs_ht_id         : label
+                                        , lhs_query         : expr
+                                        , lhs_query_clear   : expr
+                                        , rhs_query         : expr
+                                        , rhs_query_clear   : expr
+                                        , lhs_ht_ty         : type
+                                        , rhs_ht_ty         : type
+                                        , lhs_insert_with   : expr
+                                        , lhs_nonmatch_id   : label
+                                        , lhs_nonmatch_ty   : type
+                                        , lhs_nonmatch_eval : expr
+                                        , lhs_nonmatch_rels : [label]
+                                        , lhs_probe         : expr
+                                        , result_id         : label
+                                        , result_ty         : type
+                                        , lhs_ht_clear      : expr }]]
+{
+  ?E
+  => (() @MosaicMultiExchange(
+             lbl         = lbl
+           , relations   = relations
+           , joinOrder   = joinOrder
+           , next        = [$ $.[E] ])
+     ) @OnCounter(id=[# $[lbl]_exec_join], eq=[$ peers.size()], reset=[$ false], profile=[$ false])
+          // Barrier on the completion of the previous phase (or system ready)
+}

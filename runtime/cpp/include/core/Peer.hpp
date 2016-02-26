@@ -18,6 +18,16 @@
 #include "types/Dispatcher.hpp"
 #include "types/Queue.hpp"
 
+#ifdef BSL_ALLOC
+#include <bsl_memory.h>
+#include <bsls_blockgrowth.h>
+#include <bdlma_multipoolallocator.h>
+#include <bdlma_sequentialallocator.h>
+#include <bdlma_localsequentialallocator.h>
+#include <bdlma_countingallocator.h>
+#include "collections/AllCollections.hpp"
+#endif
+
 namespace K3 {
 
 class ProgramContext;
@@ -45,6 +55,23 @@ class Peer {
   void processBatch();
   void logMessage(const Dispatcher& d);
   void logGlobals(bool final);
+
+  // BSL Allocations
+#ifdef BSL_ALLOC
+  #ifdef BSEQ
+  BloombergLP::bdlma::SequentialAllocator mpool_;
+  #elif BPOOLSEQ
+  BloombergLP::bdlma::SequentialAllocator seqpool_;
+  BloombergLP::bdlma::MultipoolAllocator mpool_;
+  #elif BLOCAL
+  BloombergLP::bdlma::LocalSequentialAllocator<lsz> mpool_;
+  #elif BCOUNT
+  BloombergLP::bdlma::MultipoolAllocator backing_pool_;
+  BloombergLP::bdlma::CountingAllocator mpool_;
+  #else
+  BloombergLP::bdlma::MultipoolAllocator mpool_;
+  #endif
+#endif
 
   // Components
   shared_ptr<ProgramContext> context_;

@@ -27,26 +27,26 @@ import qualified Language.K3.Utils.PrettyText as PT
 import Language.K3.Analysis.Provenance.Core
 
 type FPtr    = Int
-data FMatVar = FMatVar {fmvn :: Identifier, fmvloc :: UID, fmvptr :: FPtr}
+data FMatVar = FMatVar {fmvn :: !Identifier, fmvloc :: !UID, fmvptr :: !FPtr}
              deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 data Effect
-    = FFVar        Identifier
-    | FBVar        FMatVar
-    | FRead        (K3 Provenance)
-    | FWrite       (K3 Provenance)
+    = FFVar        !Identifier
+    | FBVar        !FMatVar
+    | FRead        !(K3 Provenance)
+    | FWrite       !(K3 Provenance)
     | FIO
-    | FData        (Maybe [Identifier]) -- An effect container, to support structural matching for lambda effects.
+    | FData        !(Maybe [Identifier]) -- An effect container, to support structural matching for lambda effects.
 
-    | FScope       [FMatVar]   -- Materialization point for the given FMatVars. This has four children:
+    | FScope       ![FMatVar]   -- Materialization point for the given FMatVars. This has four children:
                                -- initialization execution effects (i.e., pre-body effects), body execution effects
                                -- post-body execution effects, and result effect structure.
 
-    | FLambda      Identifier
+    | FLambda      !Identifier
                           -- Lambda effects have three effect children: closure construction effects,
                           -- deferred execution effects and deferred effect structure.
 
-    | FApply       (Maybe FMatVar)
+    | FApply       !(Maybe FMatVar)
                           -- Application effect nodes have either two, three or five children:
                           -- i. 5-child variant:
                           --    lambda effect structure, arg effect structure,
@@ -67,7 +67,7 @@ data Effect
     | FNone                    -- Null effect
     deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
-data instance Annotation Effect = FDeclared (K3 Effect)
+data instance Annotation Effect = FDeclared !(K3 Effect)
                                 deriving (Eq, Ord, Read, Show, Generic)
 
 {- SEffect instances -}

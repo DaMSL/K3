@@ -6,6 +6,7 @@ module Language.K3.Codegen.CPP.Materialization.Hints where
 
 import Control.DeepSeq
 import Data.Binary
+import Data.Hashable
 import Data.Serialize
 import Data.Typeable
 import GHC.Generics (Generic)
@@ -32,3 +33,6 @@ instance Binary Direction
 
 instance Serialize Method
 instance Serialize Direction
+
+instance Hashable Method
+instance Hashable Direction

@@ -67,11 +67,7 @@ declare printMeans: () -> () = \_ -> (
 // Initialize the means and send out the initial broadcast
 // For now_int, we use the first k data points.
 declare start: () -> () = \_ -> (
-  (range k).iterate (\i ->
-    means.insert {
-                  value: (data.at i.i ).elem
-                 }
-  );
+  (range k).iterate (\i -> means.insert {value: (data.at i.elem).elem});
 
   // Log initial means
   print "Intial Means: ";

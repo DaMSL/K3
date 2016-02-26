@@ -243,6 +243,7 @@ requiredAliases = return
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "TNativeValue"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "PackedValue"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "Options"), Nothing)
+                  , (Right (R.Qualified (R.Name "K3" )$ R.Name "TimerType"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "string_impl"), Nothing)
                   , (Right (R.Qualified (R.Name "K3" )$ R.Name "unit_t"), Nothing)
                   , (Right (R.Qualified (R.Name "std")$ R.Name "make_tuple" ), Nothing)
@@ -281,6 +282,7 @@ requiredIncludes = return
                    , "serialization/Yaml.hpp"
                    , "types/BaseString.hpp"
                    , "types/Dispatcher.hpp"
+                   , "types/Timers.hpp"
 
                    , "collections/AllCollections.hpp"
 
@@ -331,8 +333,12 @@ generateDispatchers isNative = do
                         else
                           R.Call (R.Variable $ R.Specialized [argType] (R.Name "unpack")) [R.Move $ R.Variable $ R.Name "value_"]
 
+       ir <- gets (isolateRuntimeCG . flags)
+
+       let irf = if ir then id else R.Move
+
        let call_op = R.FunctionDefn (R.Name $ "operator()") [] (Just $ R.Void) [] False
-                      ([R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "context_") (R.Name tName)) [R.Move $ R.Dereference $ casted_val]])
+                      ([R.Ignore $ R.Call (R.Project (R.Variable $ R.Name "context_") (R.Name tName)) [irf $ R.Dereference $ casted_val]])
 
        let jsonify = R.FunctionDefn (R.Name $ "jsonify") [] (Just $ R.Primitive $ R.PString) [] True
                       ([R.Return $ R.Call (R.Variable $ R.Specialized [argType] (R.Qualified (R.Name "K3") (R.Qualified (R.Name "serialization") (R.Qualified (R.Name "json") (R.Name "encode"))))) [if isNative then R.Dereference casted_val else R.Dereference $ R.Call (R.Variable $ R.Specialized [argType] (R.Name "unpack")) [R.Dereference $ R.Variable $ R.Name "value_"]]])

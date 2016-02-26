@@ -27,6 +27,8 @@ template <class R>
 class IntMap {
   using Key = typename R::KeyType;
   using CloneFn = void (*)(void*, void*, size_t);
+  using GetKeyFn = uint32_t (*)(void*);
+  using SetKeyFn = void (*)(void*, uint32_t);
   using Container = shared_ptr<mapi>;
 
  public:
@@ -84,7 +86,6 @@ class IntMap {
 
     bool operator!=(const map_iterator& other) const { return i != other.i; }
 
-   private:
     mapi* m;
     I i;
   };
@@ -132,6 +133,12 @@ class IntMap {
     return m->size == 0 ? false : (mapi_find(m, r.key) != nullptr);
   }
 
+  unit_t clear(const unit_t&) {
+    mapi* m = get_mapi();
+    mapi_clear(m);
+    return unit_t();
+  }
+
   template <class F, class G>
   auto lookup(R const& r, F f, G g) const {
     mapi* m = get_mapi();
@@ -175,13 +182,25 @@ class IntMap {
     return unit_t();
   }
 
-  unit_t update(const R& rec1, R& rec2) {
+  unit_t update(const R& rec1, const R& rec2) {
     mapi* m = get_mapi();
     if (m->size > 0) {
       auto existing = mapi_find(m, rec1.key);
       if (existing != nullptr) {
         mapi_erase(m, rec1.key);
-        mapi_insert(m, &rec2);
+        mapi_insert(m, const_cast<void*>(static_cast<const void*>(&rec2)));
+      }
+    }
+    return unit_t();
+  }
+
+  unit_t update_key(int key, const R& rec2) {
+    mapi* m = get_mapi();
+    if (m->size > 0) {
+      auto existing = mapi_find(m, key);
+      if (existing != nullptr) {
+        mapi_erase(m, key);
+        mapi_insert(m, const_cast<void*>(static_cast<const void*>(&rec2)));
       }
     }
     return unit_t();
@@ -193,6 +212,33 @@ class IntMap {
       auto existing = mapi_find(m, rec.key);
       if (existing != nullptr) {
         mapi_erase(m, rec.key);
+      }
+    }
+    return unit_t();
+  }
+
+  unit_t erase_key(int key) {
+    mapi* m = get_mapi();
+    if (m->size > 0) {
+      auto existing = mapi_find(m, key);
+      if (existing != nullptr) {
+        mapi_erase(m, key);
+      }
+    }
+    return unit_t();
+  }
+
+  template <typename F, typename G>
+  RT<G,R> erase_with(int key, F f, G g) {
+    mapi* m = get_mapi();
+    if (m->size > 0) {
+      auto existing = mapi_find(m, key);
+      if (existing != nullptr) {
+        auto t = g(std::move(*static_cast<R*>(existing)));
+	mapi_erase(m, key);
+	return t;
+      } else {
+        return f(unit_t{});
       }
     }
     return unit_t();
@@ -328,7 +374,7 @@ class IntMap {
   Acc fold(Fun f, Acc acc) const {
     mapi* m = get_mapi();
     for (auto o = mapi_begin(m); o < mapi_end(m); o = mapi_next(m, o)) {
-      acc = f(std::move(acc), *o);
+      acc = f(std::move(acc), *static_cast<R*>(o));
     }
     return acc;
   }
@@ -439,9 +485,26 @@ class IntMap {
     return result;
   }
 
+  // Mosaic-specific functionality.
+
+  template<class Other, class OtherKeyFun, class Folder, class Acc>
+  Acc equijoinkf_kv(const Collection<Other>& other, OtherKeyFun keyf, Folder f, Acc acc) const
+  {
+    mapi* m = get_mapi();
+    // Probe and accumulate.
+    for (const auto& otherelem : other.getConstContainer()) {
+      RT<OtherKeyFun, Other> key(keyf(otherelem));
+      auto e = mapi_find(m, key);
+      if (e != nullptr) {
+        acc = f(std::move(acc), *static_cast<R*>(e), otherelem);
+      }
+    }
+    return acc;
+  }
+
   bool operator==(const IntMap& other) const {
     return get_mapi() == other.get_mapi() ||
-           (size() == other.size() &&
+           (size(unit_t{}) == other.size(unit_t{}) &&
             std::is_permutation(begin(), end(), other.begin(), other.end()));
   }
 
@@ -520,14 +583,21 @@ class IntMap {
     new (dest) R(*static_cast<R*>(src));
   }
 
+  static inline uint32_t getKey(void* record) {
+    return static_cast<R*>(record)->key;
+  }
+
+  static inline void setKey(void* record, uint32_t newKey) {
+    static_cast<R*>(record)->key = newKey;
+    return;
+  }
+
   static inline void moveElem(void* dest, void* src, size_t sz) {
     new (dest) R(std::move(*static_cast<R*>(src)));
   }
 
- protected:
   shared_ptr<mapi> container;
 
- private:
   friend class boost::serialization::access;
 
   mapi* get_mapi() const {
@@ -542,6 +612,8 @@ class IntMap {
       container = Container(mapi_new(sz), [](mapi* m) { mapi_free(m); });
     }
     mapi_clone(get_mapi(), (CloneFn)&IntMap<R>::cloneElem);
+    mapi_getKey(get_mapi(), (GetKeyFn)&IntMap<R>::getKey);
+    mapi_setKey(get_mapi(), (SetKeyFn)&IntMap<R>::setKey);
   }
 
   void init_mapi(bool alloc, size_t sz) const {
@@ -550,6 +622,8 @@ class IntMap {
           Container(mapi_new(sz), [](mapi* m) { mapi_free(m); });
     }
     mapi_clone(get_mapi(), (CloneFn)&IntMap<R>::cloneElem);
+    mapi_getKey(get_mapi(), (GetKeyFn)&IntMap<R>::getKey);
+    mapi_setKey(get_mapi(), (SetKeyFn)&IntMap<R>::setKey);
   }
 
   template <class archive>

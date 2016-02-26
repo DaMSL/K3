@@ -1,6 +1,23 @@
 include "Annotation/Collection.k3"
 include "Annotation/Seq.k3"
 include "Annotation/Vector.k3"
+include "Core/CppBuiltins.k3"
+
+typedef record_meta = {a: {x: int, y: string, z: real}, b: { x: { m: int, n: real, p: real}, y: real, z: real}, c: int }
+declare empty_record_meta : record_meta
+
+declare populate_record_meta: () -> record_meta = \_ -> (
+  {a: {x: random 100, y: randomWord (), z: randomFraction ()}, b: { x: { m: random 100, n: randomFraction (), p: randomFraction ()}, y: randomFraction (), z: randomFraction ()}, c: random 100 }
+)
+
+// typedef array_meta = collection { elem: real } @ RealVector
+// declare empty_array_meta : array_meta
+
+// typedef mixed_meta = {a: {x: int, y: string, z: real}, b: { x: { m: array_meta, n: string, p: real}, y: string, z: real}, c: array_meta }
+// declare empty_mixed_meta : mixed_meta
+// declare populate_mixed_meta: () -> mixed_meta = \_ -> (
+//   {a: {x: random 100, y: randomWord (), z: randomFraction ()}, b: { x: { m: randomVector 64, n: randomWord (), p: randomFraction ()}, y: randomWord (), z: randomFraction ()}, c: randomVector 64 }
+// )
 
 typedef lineitem_r = {
       l_orderkey         : int,
@@ -182,6 +199,18 @@ typedef q1_lineitem_r = { l_quantity      : real,
 
 typedef q1_lineitem_bag = collection q1_lineitem_r @Collection
 
+typedef q1_lineitem_meta_r = { l_quantity      : real,
+                               l_extendedprice : real,
+                               l_discount      : real,
+                               l_tax           : real,
+                               l_returnflag    : string,
+                               l_linestatus    : string,
+                               l_shipdate      : int @::TPCHDate,
+                               meta            : record_meta
+                             }
+
+typedef q1_lineitem_meta_bag = collection q1_lineitem_meta_r @Collection
+
 typedef q3_lineitem_r = { l_orderkey      : int,
                           l_extendedprice : real,
                           l_discount      : real,
@@ -208,6 +237,13 @@ typedef q5_lineitem_r = { l_orderkey      : int,
                           l_extendedprice : real,
                           l_discount      : real
                         }
+
+typedef q5_lineitem_meta_r = { l_orderkey      : int,
+                               l_suppkey       : int,
+                               l_extendedprice : real,
+                               l_discount      : real,
+                               meta            : record_meta
+                             }
 
 typedef q5_customer_r = { c_custkey   : int,
                           c_nationkey : int
@@ -238,6 +274,8 @@ typedef q5_supplier_bag = collection q5_supplier_r @Collection
 typedef q5_nation_bag   = collection q5_nation_r   @Collection
 typedef q5_region_bag   = collection q5_region_r   @Collection
 
+typedef q5_lineitem_meta_bag = collection q5_lineitem_meta_r @Collection
+
 typedef q6_lineitem_r = { l_quantity         : real,
                           l_extendedprice    : real,
                           l_discount         : real,
@@ -250,8 +288,18 @@ typedef q18_lineitem_r = { l_orderkey : int,
                            l_quantity : real
                          }
 
+typedef q18_lineitem_meta_r = { l_orderkey : int,
+                           l_quantity : real,
+                           meta       : record_meta
+                         }
+
 typedef q18_customer_r = { c_custkey : int,
                            c_name    : string
+                         }
+
+typedef q18_customer_meta_r = { c_custkey : int,
+                           c_name    : string,
+                           meta      : record_meta
                          }
 
 typedef q18_orders_r   = { o_orderkey   : int,
@@ -260,9 +308,21 @@ typedef q18_orders_r   = { o_orderkey   : int,
                            o_orderdate  : int @::TPCHDate
                          }
 
+typedef q18_orders_meta_r   = { o_orderkey   : int,
+                           o_custkey    : int,
+                           o_totalprice : real,
+                           o_orderdate  : int @::TPCHDate,
+                           meta         : record_meta
+                         }
+
+
 typedef q18_lineitem_bag = collection q18_lineitem_r @Collection
 typedef q18_customer_bag = collection q18_customer_r @Collection
 typedef q18_orders_bag   = collection q18_orders_r   @Collection
+
+typedef q18_lineitem_meta_bag = collection q18_lineitem_meta_r @Collection
+typedef q18_customer_meta_bag = collection q18_customer_meta_r @Collection
+typedef q18_orders_meta_bag = collection q18_orders_meta_r @Collection
 
 typedef q22_customer_r = { c_custkey : int,
                            c_phone   : string,

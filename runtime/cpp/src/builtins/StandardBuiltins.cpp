@@ -1,3 +1,5 @@
+#include <time.h>
+#include <stdlib.h>
 #include <thread>
 #include <chrono>
 
@@ -7,8 +9,39 @@
 
 namespace K3 {
 
+Seq<R_elem<int>> StandardBuiltins::range(int i) {
+  Seq<R_elem<int>> result;
+  for (int j = 0; j < i; j++) {
+    result.insert(R_elem<int> { j });
+  }
+  return result;
+}
+
+Seq<Box<R_elem<int>>> StandardBuiltins::boxed_range(int i) {
+  Seq<Box<R_elem<int>>> result;
+  for (int j = 0; j < i; j++) {
+    result.insert(make_box<R_elem<int>>(j));
+  }
+  return result;
+}
+
 StandardBuiltins::StandardBuiltins(Engine& engine)
-    : __engine_(engine) {}
+    : __engine_(engine), __rand_generator_(76), __rand_distribution_(0.0, 1.0), __word_distribution_{1, 1, 1, 1} {
+  __seed_ = 76;
+  __words_.push_back(K3::base_string("aaaaaaaaaa"));
+  __words_.push_back(K3::base_string("bbbbbbbbbb"));
+  __words_.push_back(K3::base_string("cccccccccc"));
+  __words_.push_back(K3::base_string("dddddddddd"));
+}
+
+K3::base_string StandardBuiltins::randomWord(unit_t) {
+  int i = __word_distribution_(__rand_generator_);
+  return __words_.at(i);
+}
+
+int StandardBuiltins::random(int n) {
+  return rand_r(&__seed_) % n;
+}
 
 boost::mutex StandardBuiltins::__mutex_;
 
@@ -20,6 +53,11 @@ unit_t StandardBuiltins::print(const string_impl& message) {
 
 unit_t StandardBuiltins::sleep(int n) {
   std::this_thread::sleep_for(std::chrono::milliseconds(n));
+  return unit_t();
+}
+
+unit_t StandardBuiltins::usleep(int n) {
+  std::this_thread::sleep_for(std::chrono::microseconds(n));
   return unit_t();
 }
 
@@ -38,6 +76,15 @@ int StandardBuiltins::hash(const int& b) {
     hash ^= p[i];
   }
   return hash;
+}
+
+double StandardBuiltins::randomFraction(unit_t) {
+  return __rand_distribution_(__rand_generator_);
+}
+
+int StandardBuiltins::randomBinomial(int trials, double p) {
+  std::binomial_distribution<> d(trials, p);
+  return d(__rand_generator_);
 }
 
 }  // namespace K3

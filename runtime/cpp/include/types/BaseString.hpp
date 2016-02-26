@@ -14,6 +14,14 @@
 #include <csvpp/csv.h>
 #include "serialization/Json.hpp"
 
+#include "builtins/LifetimeBuiltins.hpp"
+
+#if defined(K3_LT_SAMPLE) || defined(K3_LT_HISTOGRAM)
+#define INIT_LT_SZ(X) , __lt_sentinel(X)
+#else
+#define INIT_LT_SZ(X)
+#endif
+
 namespace K3 {
 
 char* dupstr(const char*) throw();
@@ -22,16 +30,61 @@ char* dupbuf(const base_string& b) throw();
 class base_string {
  public:
   // Constructors/Destructors/Assignment.
-  base_string();
-  base_string(const base_string& other);
-  base_string(base_string&& other) noexcept;
-  base_string(const char* b);
-  base_string(const std::string& s);
-  base_string(const char* from, std::size_t count);
-  ~base_string();
+  base_string() : buffer_(nullptr) {}
 
-  void steal(char *p);
-  void unowned(char* p) { buffer_ = p; }
+  base_string(const base_string& other) : buffer_(dupbuf(other)) INIT_LT_SZ(other.__lt_sentinel) {
+    set_header(other.has_header());
+    set_advance(other.has_advance());
+  }
+
+  base_string(base_string&& other) noexcept : buffer_(nullptr) INIT_LT_SZ(std::move(other.__lt_sentinel)) {
+    // If the other string has ownership, move, else copy and set our ownership
+    if (!other.is_borrowing()) {
+      swap(*this, other);
+    } else {
+      buffer_ = dupbuf(other);
+      set_header(other.has_header());
+      set_advance(other.has_advance());
+    }
+  }
+
+  base_string(const char* b) : buffer_(dupstr(b)) {}
+
+  base_string(const std::string& s) : buffer_(dupstr(s.c_str())) { }
+
+  base_string(const char* from, std::size_t count) : base_string() {
+    if (from && count) {
+      buffer_ = new char[count + 1];
+      strncpy(buffer_, from, count);
+      buffer_[count] = 0;
+    }
+  }
+
+  ~base_string() {
+#if defined(K3_LT_SAMPLE) || defined(K3_LT_HISTOGRAM)
+    __lt_sentinel.object_size = length() + sizeof(buffer_);
+#endif
+    if (!is_borrowing()) {
+      delete[] bufferp_();
+    }
+    buffer_ = nullptr;
+  }
+
+  // take a buffer with ownership
+  void steal(char *p) {
+    if (!is_borrowing()) {
+      delete[] bufferp_();
+    }
+    buffer_ = p;
+    set_borrowing(false);
+  }
+
+  // take a buffer without taking ownership
+  void unowned(char* p) {
+    if (!is_borrowing()) { delete[] bufferp_(); }
+    buffer_ = p;
+    set_borrowing(true);
+  }
 
   base_string& operator+=(const base_string& other);
   base_string& operator+=(const char* other);
@@ -42,11 +95,24 @@ class base_string {
   friend size_t cmp(const base_string& b1, const char* other);
   friend void swap(base_string& first, base_string& second);
 
-  // Tag management
-  bool has_header() const;
-  void set_header(const bool& on);
-  bool has_advance() const;
-  void set_advance(const bool& on);
+  // Tag getters
+  bool has_header() const { return (as_bits & header_flag) != 0; }
+  bool has_advance() const { return (as_bits & advance_flag) != 0; }
+  bool is_borrowing() const { return (as_bits & borrow_flag) != 0; }
+
+  // tag setters
+  void set_header(const bool& on) {
+    if (on) { as_bits |= header_flag; }
+    else { as_bits &= ~header_flag; }
+  }
+  void set_advance(const bool& on) {
+    if (on) { as_bits |= advance_flag; }
+    else { as_bits &= ~advance_flag; }
+  }
+  void set_borrowing(const bool& on) {
+    if (on) { as_bits |= borrow_flag; }
+    else { as_bits &= ~borrow_flag; }
+  }
 
   // Conversions
   operator bool() const;
@@ -86,6 +152,12 @@ class base_string {
 
   template <class archive>
   void serialize(archive& a, const unsigned int) {
+    bool header = has_header();
+    a & header;
+    if (archive::is_loading::value) {
+      set_header(header);
+    }
+
     uint64_t len;
     if (archive::is_saving::value) {
       len = raw_length();
@@ -111,6 +183,7 @@ class base_string {
 
   template <class archive>
   void serialize(archive& a) const {
+    a& has_header();
     uint64_t len = raw_length();
     a& len;
     if (bufferp_()) {
@@ -120,6 +193,8 @@ class base_string {
 
   template <class archive>
   void serialize(archive& a) {
+    bool has_header;
+    a& has_header;
     uint64_t len;
     a& len;
     if (bufferp_()) {
@@ -136,22 +211,29 @@ class base_string {
     if (bufferp_()) {
       a.read(bufferp_(), len);
     }
-  }
 
- private:
-  union {
-    char* buffer_;
-    intptr_t as_bits;
-  };
+    set_header(has_header);
+  }
 
   __attribute__((always_inline)) char* bufferp_() const {
     return reinterpret_cast<char*>(as_bits & ~header_mask);
   }
 
+ private:
+#if defined(K3_LT_SAMPLE) || defined(K3_LT_HISTOGRAM)
+  lifetime::sentinel __lt_sentinel;
+#endif
+  union {
+    char* buffer_;
+    intptr_t as_bits;
+  };
+
   constexpr static size_t header_size = sizeof(size_t);
   constexpr static intptr_t header_mask = alignof(char*) - 1;
-  constexpr static int header_flag = 0b1;
+  constexpr static int header_flag  = 0b1;
   constexpr static int advance_flag = 0b10;
+  // bit signifying the fact that we don't own our own pointer
+  constexpr static int borrow_flag  = 0b100;
 };
 
 inline bool operator==(char const* s, base_string const& b) { return b == s; }

@@ -25,6 +25,7 @@ type role SpliceResult nominal
 data SpliceResult (m :: * -> *)
 
 data MPDeclaration
+data MPRewriteDecl
 data MPAnnMemDecl
 
 type SpliceEnv     = Map Identifier SpliceValue

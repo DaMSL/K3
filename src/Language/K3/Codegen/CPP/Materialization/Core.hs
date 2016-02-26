@@ -1,9 +1,19 @@
+{-# LANGUAGE DeriveDataTypeable #-}
+{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE EmptyDataDecls #-}
 {-# LANGUAGE StandaloneDeriving #-}
 
 module Language.K3.Codegen.CPP.Materialization.Core where
 
+import Control.DeepSeq
+
+import Data.Binary
+import Data.Serialize
+
+import Data.Hashable
 import Data.Tree
+
+import GHC.Generics (Generic)
 
 import Text.Printf
 
@@ -15,16 +25,21 @@ import Language.K3.Utils.Pretty
 import Language.K3.Codegen.CPP.Materialization.Hints (Method(..), Direction(..))
 
 data MExpr
-  = MVar Juncture Direction
-  | MAtom Method
-  | MIfThenElse (K3 MPred)
- deriving (Eq, Read, Show)
+  = MVar !Juncture !Direction
+  | MAtom !Method
+  | MIfThenElse !(K3 MPred)
+ deriving (Eq, Read, Show, Generic)
 
-data instance Annotation MExpr = MEReason String
+data instance Annotation MExpr = MEReason !String
+  deriving (Eq, Ord, Read, Show, Generic)
 
-deriving instance Eq (Annotation MExpr)
-deriving instance Read (Annotation MExpr)
-deriving instance Show (Annotation MExpr)
+instance NFData    MExpr
+instance Binary    MExpr
+instance Serialize MExpr
+
+instance NFData    (Annotation MExpr)
+instance Binary    (Annotation MExpr)
+instance Serialize (Annotation MExpr)
 
 isMEReason :: Annotation MExpr -> Bool
 isMEReason (MEReason _) = True
@@ -32,7 +47,7 @@ isMEReason _ = False
 
 instance Pretty (K3 MExpr) where
   prettyLines (Node (t :@: as) cs) = case t of
-    MVar (Juncture u i) d -> [printf "MVar %d/%s/%s%s" (gUID u) i (show d) reason]
+    MVar (Juncture u i) d -> [printf "MVar %d/%d/%s%s" (gUID u) i (show d) reason]
     MAtom m -> [printf "MAtom %s%s" (show m) reason]
     MIfThenElse p -> [printf "MIfThenElse%s" reason] ++ ["|"] ++ (shift "+- " "|  " $ prettyLines p) ++ drawSubTrees cs
    where
@@ -40,7 +55,7 @@ instance Pretty (K3 MExpr) where
 
 ppShortE :: K3 MExpr -> String
 ppShortE m = case tag m of
-  MVar (Juncture u i) d -> printf "%d/%s/%s" (gUID u) i (show d)
+  MVar (Juncture u i) d -> printf "%d/%d/%s" (gUID u) i (show d)
   MAtom t -> show t
   MIfThenElse p ->
     let [t, e] = children m
@@ -50,15 +65,20 @@ data MPred
   = MNot
   | MAnd
   | MOr
-  | MOneOf (K3 MExpr) [Method]
-  | MBool Bool
- deriving (Eq, Read, Show)
+  | MOneOf !(K3 MExpr) ![Method]
+  | MBool !Bool
+ deriving (Eq, Read, Show, Generic)
 
-data instance Annotation MPred = MPReason String
+data instance Annotation MPred = MPReason !String
+  deriving (Eq, Ord, Read, Show, Generic)
 
-deriving instance Eq (Annotation MPred)
-deriving instance Read (Annotation MPred)
-deriving instance Show (Annotation MPred)
+instance NFData    MPred
+instance Binary    MPred
+instance Serialize MPred
+
+instance NFData    (Annotation MPred)
+instance Binary    (Annotation MPred)
+instance Serialize (Annotation MPred)
 
 isMPReason :: Annotation MPred -> Bool
 isMPReason (MPReason _) = True
@@ -80,7 +100,12 @@ ppShortP p = case (tag p, children p) of
   (MOneOf m ms, _) -> printf "%s ∈ %s" (ppShortE m) (show ms)
   (MBool b, _) -> show b
 
-data Juncture = Juncture UID Identifier deriving (Eq, Ord, Read, Show)
+data Juncture = Juncture !UID !Int deriving (Eq, Ord, Read, Show, Generic)
+
+instance NFData    Juncture
+instance Binary    Juncture
+instance Serialize Juncture
+instance Hashable  Juncture
 
 class Explainable a where
   (-??-) :: a -> String -> a

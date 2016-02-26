@@ -6,10 +6,10 @@ module Language.K3.Metaprogram.DataTypes where
 import Control.Monad.State
 import Control.Monad.Trans.Either
 
-import Data.Map ( Map )
-import Data.Set ( Set )
-import qualified Data.Map as Map
-import qualified Data.Set as Set
+import Data.Map.Strict ( Map )
+import Data.Set        ( Set )
+import qualified Data.Map.Strict as Map
+import qualified Data.Set        as Set
 
 import Language.Haskell.Interpreter ( Interpreter )
 import qualified Language.Haskell.Interpreter as HI
@@ -34,29 +34,30 @@ data K3Generator = Splicer      (SpliceEnv -> SpliceResult GeneratorM)
                  | ExprRewriter (K3 Expression -> SpliceEnv -> SpliceResult GeneratorM)
                  | DeclRewriter (K3 Declaration -> SpliceEnv -> SpliceResult GeneratorM)
 
-data GeneratorEnv = GeneratorEnv { dataAGEnv :: Map Identifier K3Generator
-                                 , ctrlAGEnv :: Map Identifier K3Generator }
+data GeneratorEnv = GeneratorEnv { dataAGEnv :: !(Map Identifier K3Generator)
+                                 , ctrlAGEnv :: !(Map Identifier K3Generator) }
 
-data GeneratorDecls = GeneratorDecls { dataADecls :: Map Identifier [K3 Declaration]
-                                     , ctrlADecls :: Map Identifier (Set (K3 Declaration)) }
+data GeneratorDecls = GeneratorDecls { dataADecls :: !(Map Identifier [K3 Declaration])
+                                     , ctrlADecls :: !(Map Identifier (Set (K3 Declaration))) }
 
 -- | Haskell-K3 metaprogramming bridge options.
-data MPEvalOptions = MPEvalOptions { mpInterpArgs   :: [String]
-                                   , mpSearchPaths  :: [String]
-                                   , mpLoadPaths    :: [String]
-                                   , mpImportPaths  :: [String]
-                                   , mpQImportPaths :: [(String, Maybe String)] }
+data MPEvalOptions = MPEvalOptions { mpInterpArgs   :: ![String]
+                                   , mpSearchPaths  :: ![String]
+                                   , mpLoadPaths    :: ![String]
+                                   , mpImportPaths  :: ![String]
+                                   , mpQImportPaths :: ![(String, Maybe String)]
+                                   , mpSerial       :: !Bool }
 
 -- | Annotation generation is performed per name-parameter combination.
 type MPGeneratorKey = (Identifier, SpliceEnv, Maybe (K3 Type))
 type MPGensymS = Map MPGeneratorKey Int
 
 -- | Metaprogramming state.
-data GeneratorState = GeneratorState { mpGensymS       :: MPGensymS
-                                     , generatorEnv    :: GeneratorEnv
-                                     , spliceCtxt      :: SpliceContext
-                                     , generatorDecls  :: GeneratorDecls
-                                     , mpEvalOpts      :: MPEvalOptions }
+data GeneratorState = GeneratorState { mpGensymS       :: !MPGensymS
+                                     , generatorEnv    :: !GeneratorEnv
+                                     , spliceCtxt      :: !SpliceContext
+                                     , generatorDecls  :: !GeneratorDecls
+                                     , mpEvalOpts      :: !MPEvalOptions }
 
 type GeneratorM = EitherT String (StateT GeneratorState Interpreter)
 
@@ -77,11 +78,11 @@ runGeneratorM st action = do
   actE <- HIU.unsafeRunInterpreterWithArgs (mpInterpArgs $ mpEvalOpts st) $
             flip runStateT st $ runEitherT
               ( (initializeInterpreter $ mpEvalOpts st) >> action )
-  return $ either (Left . show) fst actE
+  return $! either (Left . show) fst actE
 
 -- | Run a parser and return its result in the generator monad.
 liftParser :: (Show a) => String -> K3Parser a -> GeneratorM a
-liftParser s p = either throwG return $ stringifyError $ runK3Parser Nothing p s
+liftParser s p = either throwG return $! stringifyError $ runK3Parser Nothing p s
 
 -- | Lift a Haskell interpreter action into the generator monad.
 liftHI :: Interpreter a -> GeneratorM a
@@ -259,7 +260,7 @@ generatorDeclsToList (GeneratorDecls dd cd) =
 {- Haskell-K3 metaprogram evaluation options -}
 
 defaultMPEvalOptions :: MPEvalOptions
-defaultMPEvalOptions = MPEvalOptions dInterpArgs dSearchPaths dLoadPaths dImportPaths dQImportPaths
+defaultMPEvalOptions = MPEvalOptions dInterpArgs dSearchPaths dLoadPaths dImportPaths dQImportPaths False
   where
     dInterpArgs   = ["-package-db", ".cabal-sandbox/x86_64-windows-ghc-7.8.3-packages.conf.d"]
     dSearchPaths  = [".", "../K3/src"]
@@ -275,12 +276,14 @@ defaultMPEvalOptions = MPEvalOptions dInterpArgs dSearchPaths dLoadPaths dImport
                     , "Data.Maybe"
                     , "Data.Tree"
                     , "Language.K3.Core.Annotation"
+                    , "Language.K3.Core.Annotation.Syntax"
                     , "Language.K3.Core.Common"
                     , "Language.K3.Core.Type"
                     , "Language.K3.Core.Expression"
                     , "Language.K3.Core.Declaration"
                     , "Language.K3.Core.Literal"
                     , "Language.K3.Core.Metaprogram"
+                    , "Language.K3.Core.Utils"
                     , "Language.K3.Metaprogram.Primitives.Values"
                     , "Language.K3.Metaprogram.Primitives.Distributed" ]
     dQImportPaths = [ ("Language.K3.Core.Constructor.Type",        Just "TC")

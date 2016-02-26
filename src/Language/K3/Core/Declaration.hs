@@ -70,35 +70,35 @@ import {-# SOURCE #-} Language.K3.Core.Metaprogram
 
 -- | Top-Level Declarations
 data Declaration
-    = DGlobal         Identifier (K3 Type) (Maybe (K3 Expression))
+    = DGlobal         !Identifier !(K3 Type) !(Maybe (K3 Expression))
 
-    | DTrigger        Identifier (K3 Type) (K3 Expression)
+    | DTrigger        !Identifier !(K3 Type) !(K3 Expression)
         -- ^ Trigger declaration.  Type is argument type of trigger.  Expression
         --   must be a function taking that argument type and returning unit.
 
-    | DDataAnnotation Identifier [TypeVarDecl] [AnnMemDecl]
+    | DDataAnnotation !Identifier ![TypeVarDecl] ![AnnMemDecl]
         -- ^ Name, annotation type parameters, and members
 
-    | DGenerator      MPDeclaration
+    | DGenerator      !MPDeclaration
         -- ^ Metaprogramming declarations, maintained in the tree for lineage.
 
-    | DRole           Identifier
+    | DRole           !Identifier
         -- ^ Roles, as lightweight modules. These are deprecated.
 
-    | DTypeDef        Identifier (K3 Type)
+    | DTypeDef        !Identifier !(K3 Type)
         -- ^ Type synonym declaration.
 
   deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 -- | Annotation declaration members
 data AnnMemDecl
-    = Lifted      Polarity Identifier
-                  (K3 Type) (Maybe (K3 Expression))
-                  [Annotation Declaration]
+    = Lifted      !Polarity !Identifier
+                  !(K3 Type) !(Maybe (K3 Expression))
+                  ![Annotation Declaration]
 
-    | Attribute   Polarity Identifier
-                  (K3 Type) (Maybe (K3 Expression))
-                  [Annotation Declaration]
+    | Attribute   !Polarity !Identifier
+                  !(K3 Type) !(Maybe (K3 Expression))
+                  ![Annotation Declaration]
 
     | MAnnotation Polarity Identifier [Annotation Declaration]
   deriving (Eq, Ord, Read, Show, Typeable, Generic)
@@ -109,20 +109,20 @@ data Polarity = Provides | Requires deriving (Eq, Ord, Read, Show, Typeable, Gen
 -- | A pattern-based rewrite rule, as used in control annotations.
 --   This includes a pattern matching expression, a rewritten expression,
 --   and any declarations used in the rewrite.
-type PatternRewriteRule = (K3 Expression, K3 Expression, [K3 Declaration])
+type PatternRewriteRule = (K3 Expression, K3 Expression, [Either MPRewriteDecl (K3 Declaration)])
 
 
 -- | Annotations on Declarations.
 data instance Annotation Declaration
-    = DSpan       Span
-    | DUID        UID
-    | DProperty   PropertyD
-    | DSyntax     SyntaxAnnotation
-    | DConflict   UnorderedConflict  -- TODO: organize into categories.
+    = DSpan       !Span
+    | DUID        !UID
+    | DProperty   !PropertyD
+    | DSyntax     !SyntaxAnnotation
+    | DConflict   !UnorderedConflict  -- TODO: organize into categories.
 
     -- Provenance and effects may be user-defined (lefts) or inferred (rights)
-    | DProvenance (Either (K3 Provenance) (K3 Provenance))
-    | DEffect     (Either (K3 S.Effect) (K3 S.Effect))
+    | DProvenance !(Either (K3 Provenance) (K3 Provenance))
+    | DEffect     !(Either (K3 S.Effect) (K3 S.Effect))
   deriving (Eq, Ord, Read, Show, Generic)
 
 -- | Unordered Data Conflicts (between triggers)

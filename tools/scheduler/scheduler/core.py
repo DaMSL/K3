@@ -2,6 +2,7 @@
 import os, re, yaml
 import tarfile
 import logging
+from random import shuffle
 from common import *
 
 class K3JobError(Exception):
@@ -43,6 +44,8 @@ class Role:
     self.volumes    = kwargs.get("volumes", [])
     self.envars     = kwargs.get("envars", [])
     self.inputs     = kwargs.get("inputs", [])
+    self.seq_files  = kwargs.get("seq_files", [])
+    self.outpaths   = kwargs.get("outpaths", [])
 
   def to_string(self):
     print ("  ROLE ")
@@ -79,22 +82,26 @@ class Task:
 
 class Job:
   def __init__(self, **kwargs):
-    # self.archive    = kwargs.get("archive", None)
-    self.binary_url  = kwargs.get("binary", None)
-    self.appName     = kwargs.get("appName", 'None')
-    self.appUID      = kwargs.get("appUID", 'None')
-    self.jobId       = kwargs.get("jobId", '1000')
-    roleFile         = kwargs.get("rolefile", None)
-    self.logging     = kwargs.get("logging", False)
-    self.jsonlog     = kwargs.get("jsonlog", False)
-    self.jsonfinal   = kwargs.get("jsonfinal", False)
-    self.perfprofile = kwargs.get("perfprofile", False)
-    self.stdout      = kwargs.get("stdout", False)
-    self.roles       = {}
-    self.tasks       = []
-    self.status      = None
-    self.all_peers   = None
-    self.master      = None
+    # self.archive      = kwargs.get("archive", None)
+    self.binary_url     = kwargs.get("binary", None)
+    self.appName        = kwargs.get("appName", 'None')
+    self.appUID         = kwargs.get("appUID", 'None')
+    self.jobId          = kwargs.get("jobId", '1000')
+    roleFile            = kwargs.get("rolefile", None)
+    self.logging        = kwargs.get("logging", False)
+    self.jsonlog        = kwargs.get("jsonlog", False)
+    self.jsonfinal      = kwargs.get("jsonfinal", False)
+    self.perf_profile   = kwargs.get("perf_profile", False)
+    self.core_dump      = kwargs.get("core_dump", False)
+    self.perf_frequency = kwargs.get("perf_frequency", '10')
+    self.stdout         = kwargs.get("stdout", False)
+    self.roles          = {}
+    self.tasks          = []
+    self.status         = None
+    self.all_peers      = None
+    self.master         = None
+    self.start_ts       = None
+    self.time_limit     = kwargs.get("timelimit", 20 * 60)
 
     if self.binary_url == None:
       logging.error("[FLASKWEB] Error. No binary provided to Job")
@@ -128,9 +135,11 @@ class Job:
       self.privileged = False if 'privileged' not in doc else doc['privileged']
 
       mask = r".*" if "hostmask" not in doc else doc['hostmask']
-      volumes = doc.get('volumes', []) 
-      envars = doc.get('envars', []) 
+      volumes = doc.get('volumes', [])
+      envars = doc.get('envars', [])
       inputs = doc.get('k3_data', [])
+      seq_files = doc.get('k3_seq_files', [])
+      outpaths = doc.get('k3_outpaths', [])
 
       # Parameters:  Just add additional parameters here to receive them
       #  from YAML -- the dispather will need to handle them
@@ -138,7 +147,7 @@ class Job:
 
       for p in roleParameters:
         if p in doc:
-          params[p] = doc[p]        
+          params[p] = doc[p]
 
       # if 'peers_per_host' in doc:
       #   params['peers_per_host'] = doc['peers_per_host']
@@ -152,16 +161,22 @@ class Job:
       # self.inputs.extend(inputs)
 
       r = Role(peers=peers, variables=globalVars, peerVars=peerVars, hostmask=mask,
-               volumes=volumes, params=params, envars=envars, inputs=inputs)
+               volumes=volumes, params=params, envars=envars, inputs=inputs, seq_files=seq_files, outpaths=outpaths)
       self.roles[name] = r
 
 
 class PortList():
-   def __init__(self, ranges=[]):
+   def __init__(self, ranges=[], dir=1):
        self.index = 0
        self.offset = 0
+       self.dir = dir
        self.ports = [] if ranges == 0 else ranges
-       
+
+   def randomize(self):
+       print("Before: %s" % (self.ports, ))
+       shuffle(self.ports)
+       print("After: %s" % (self.ports, ))
+
    def addRange(self, r):
        ports.append(r)
 
@@ -180,8 +195,8 @@ class PortList():
    def getNext(self):
      if len(self.ports) == 0 or self.index >= len(self.ports):
        return None
-     result = self.ports[self.index][0] + self.offset
-     if result == self.ports[self.index][1]:
+     result = self.ports[self.index][0 if self.dir == 1 else 1] + self.dir * self.offset
+     if result == self.ports[self.index][1 if self.dir == 1 else 0]:
          self.index += 1
          self.offset = 0
      else:

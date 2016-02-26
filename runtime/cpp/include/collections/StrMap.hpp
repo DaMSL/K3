@@ -259,11 +259,13 @@ class StrMap {
     if (m->size == 0) {
       insert(f(unit_t{}));
     } else {
-      auto* existing = map_str_find(m, key.begin());
+      auto existing = map_str_find(m, key.begin());
       if (existing == map_str_end(m)) {
         insert(f(unit_t{}));
       } else {
-        *existing = g(std::move(*existing));
+        auto* v = static_cast<R*>(map_str_get(m, existing));
+        *v = g(std::move(*v));
+        map_str_stabilize_key(m, existing, v->key.begin());
       }
     }
     return unit_t{};
@@ -350,9 +352,8 @@ class StrMap {
   template <typename Fun, typename Acc>
   Acc fold(Fun f, Acc acc) const {
     map_str* m = get_map_str();
-    for (auto o = map_str_begin(m); o < map_str_end(m);
-         o = map_str_next(m, o)) {
-      acc = f(std::move(acc), *map_str_get(m, o));
+    for (auto o = map_str_begin(m); o < map_str_end(m); o = map_str_next(m, o)) {
+      acc = f(std::move(acc), *static_cast<R*>(map_str_get(m, o)));
     }
     return acc;
   }
@@ -446,7 +447,7 @@ class StrMap {
 
   bool operator==(const StrMap& other) const {
     return get_map_str() == other.get_map_str() ||
-           (size() == other.size() &&
+           (size(unit_t{}) == other.size(unit_t{}) &&
             std::is_permutation(begin(), end(), other.begin(), other.end()));
   }
 

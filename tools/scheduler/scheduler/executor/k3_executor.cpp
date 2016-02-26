@@ -22,6 +22,7 @@
 #include <unistd.h>
 #include <dirent.h>
 #include <stdio.h>
+#include <sstream>
 
 #include <mesos/executor.hpp>
 // #include <boost/thread.hpp>
@@ -39,7 +40,19 @@ class DataFile {
     string policy;
 };
 
+// Mosaic sequence files
+struct SeqFile {
+  int num_switches;
+  string data_dir;
+  std::list<int> switch_indexes;
+  std::list<string> tables;;
+};
 
+struct Outpath {
+  string var;
+  string prefix;
+  string suffix;
+};
 
 // exec -- exec system command, pipe to stdout, return exit code
 int exec (const char * cmd)  {
@@ -79,14 +92,13 @@ void packageSandbox(string host_name, string app_name, string job_id, string web
 
 
 
-
-void runK3Job (TaskInfo task, 
-            string k3_cmd, 
-            ExecutorDriver* driver, 
-            bool isMaster, 
-            string webaddr, 
-            string app_name, 
-            string job_id, 
+void runK3Job (TaskInfo task,
+            string k3_cmd,
+            ExecutorDriver* driver,
+            bool isMaster,
+            string webaddr,
+            string app_name,
+            string job_id,
             string host_name)  {
 
     TaskStatus status;
@@ -134,16 +146,15 @@ class KDExecutor : public Executor
 protected:
   std::thread *thread;
   vector<DataFile> dataFiles;
-
-
-
+  SeqFile seqFile;
+  bool seqFileEnabled = false;
 
 public:
   KDExecutor() : dataFiles() { thread=0; }
   virtual ~KDExecutor() { delete thread; }
 
 
- 
+
   virtual void registered(ExecutorDriver* driver,
                           const ExecutorInfo& executorInfo,
                           const FrameworkInfo& frameworkInfo,
@@ -165,7 +176,7 @@ public:
 
 
   virtual void launchTask(ExecutorDriver* driver, const TaskInfo& task)    {
-    
+
     job_id   = task.task_id().value();
 
     TaskStatus status;
@@ -193,9 +204,9 @@ public:
 
 
     // Build the K3 Command which will run inside this container
-    k3_cmd = "cd $MESOS_SANDBOX && ";
-    if (hostParams["perfprofile"]) {
-            k3_cmd += "perf record -F 10 -a --call-graph dwarf -- ";
+    if (hostParams["perf_profile"]) {
+      string frequency = hostParams["perf_frequency"] ? hostParams["perf_frequency"].as<string>() : "10";
+      k3_cmd += "perf record -F " + frequency + " -a --call-graph dwarf -- ";
     }
 
     k3_cmd += "./" + hostParams["binary"].as<string>();
@@ -213,10 +224,12 @@ public:
       k3_cmd += " --result_path $MESOS_SANDBOX --result_var " + hostParams["resultVar"].as<string>();
     }
 
+    vector<Outpath> outpaths;
     string datavar, datapath;
     string datapolicy = "default";
     int peerStart = 0;
     int peerEnd = 0;
+    bool ulimit = false;
 
     // Create host-specific set of parameters (e.g. peers, local data files, etc...
     for (const_iterator param=hostParams.begin(); param!=hostParams.end(); param++)  {
@@ -228,7 +241,9 @@ public:
         if (key == "roles") {
           continue;
         }
-
+        else if (key == "core_dump") {
+            ulimit = true;
+        }
         else if (key == "peers") {
             peerParams["peers"] = hostParams["peers"];
         }
@@ -250,6 +265,36 @@ public:
               f.policy = d["policy"].as<string>();
               dataFiles.push_back(f);
             }
+        }
+        else if (key == "outpaths") {
+          Node n = param->second;
+          string var = n["var"].as<string>();
+          string prefix = n["prefix"].as<string>();
+          string suffix = n["suffix"].as<string>();
+          outpaths.push_back(Outpath{var, prefix, suffix});
+        }
+        else if (key == "seq_files") {
+          std::cout << "The Seq Files:\n" << YAML::Dump(param->second) << std::endl;
+	  seqFileEnabled = true;
+          Node seqNode = param->second;
+          seqFile.num_switches = seqNode["num_switches"].as<int>();
+          seqFile.data_dir = seqNode["data_dir"].as<string>();
+          for (auto it2 : seqNode["switch_indexes"]) {
+            seqFile.switch_indexes.push_back(it2.as<int>());
+          }
+
+          for (auto it2 : seqNode["tables"]) {
+            seqFile.tables.push_back(it2.as<string>());
+          }
+	  if (seqFile.switch_indexes.size() != peers.size()) {
+            cout << "Invalid deployment: number of switch indexes does not match number of peers" << endl;
+            cout << "Switch indexes size: " << seqFile.switch_indexes.size() << endl;
+            cout << "Peers size:" << peers.size() << endl;
+            status.set_state(TaskState::TASK_FAILED);
+            driver->sendStatusUpdate(status);
+            return;
+	  }
+          std::cout << "Built seq file" << std::endl;
         }
 
         else if (key == "totalPeers")  {
@@ -323,6 +368,13 @@ public:
             }
           }
         }
+        else if (dataFile.policy == "local") {
+          int localPeers = peers.size();
+          for (int i = 0; i < numfiles; i++) {
+            int peer = i % localPeers;
+            peerFiles[peer][dataFile.varName].push_back(filePaths[i]);
+          }
+        }
         else if (dataFile.policy == "replicate") {
           for (unsigned int p = 0; p < peers.size(); p++) {
             for (int i =0; i < numfiles; i++) {
@@ -335,11 +387,97 @@ public:
         else if (dataFile.policy == "pinned") {
           for(int filenum = 0; filenum < numfiles; filenum++) {
             peerFiles[0][dataFile.varName].push_back(filePaths[filenum]);
+            myfiles++;
           }
 
         }
         cout << "my files: " << myfiles << endl;
     }
+
+    // Mosaic seq files
+    list<string> all_tables;
+    all_tables.push_back("sentinel");
+    all_tables.push_back("customer");
+    all_tables.push_back("lineitem");
+    all_tables.push_back("orders");
+    all_tables.push_back("part");
+    all_tables.push_back("partsupp");
+    all_tables.push_back("supplier");
+    vector<YAML::Node> seqFileYamlByPeer(peers.size());
+    vector<YAML::Node> inorderVarByPeer(peers.size());
+    if (seqFileEnabled) {
+      std::cout << "Assigning seqfile data files" << std::endl;
+      int idx = 0;
+      // Map from switch index to local peer index
+      std::map<int, int> switchToPeer;
+
+      std::cout << "Initializing..." << std::endl;
+      for (auto& it : seqFile.switch_indexes) {
+	seqFileYamlByPeer[idx] = YAML::Node();
+	seqFileYamlByPeer[idx] = YAML::Node();
+	string filename = seqFile.data_dir + "/mux/" + std::to_string(seqFile.num_switches) + "/mux_" + std::to_string(it) + "_" + std::to_string(seqFile.num_switches);
+	for (auto& tbl : seqFile.tables) {
+          filename += "_" + tbl;
+	}
+	filename += ".csv";
+
+	std::cout << "Switch " << it << " mux file: " << filename << std::endl;
+	inorderVarByPeer[idx] = filename;
+	switchToPeer[it] = idx;
+	idx++;
+      }
+      for (auto& table: all_tables) {
+        map<int, YAML::Node> currSeq;
+	string path = seqFile.data_dir + "/" + table + "/";
+        // Check that directory exists, or exit
+        DIR *datadir = NULL;
+        datadir = opendir(path.c_str());
+        if (!datadir) {
+          cout << "Failed to open seq_file dir: " << path << endl;
+          TaskStatus status;
+          status.mutable_task_id()->MergeFrom(task.task_id());
+          status.set_state(TASK_FAILED);
+          driver->sendStatusUpdate(status);
+          return;
+        }
+
+        // Populate a vector with all files in the directory
+        vector<string> filePaths;
+        struct dirent *srcfile = NULL;
+        while (true) {
+          srcfile = readdir(datadir);
+            if (srcfile == NULL) { break; }
+            if (strncmp (srcfile->d_name, ".", 1) != 0) {
+              filePaths.push_back(path + "/" + srcfile->d_name);
+            }
+          }
+          closedir(datadir);
+
+          // Sort and assign based on switch_index
+          sort (filePaths.begin(), filePaths.end());
+          for (size_t i = 0; i < filePaths.size(); i++) {
+            for (int sw_index : seqFile.switch_indexes) {
+              if (table == "sentinel" || ((i % seqFile.num_switches) == sw_index)) {
+		YAML::Node n;
+		n["path"] = filePaths[i];
+                currSeq[sw_index].push_back(n);
+		std::cout << "Switch " << sw_index << " => " << filePaths[i] << std::endl;
+              }
+            }
+          }
+	  for (auto& it : currSeq) {
+            YAML::Node n;
+	    n["seq"] = it.second;
+	    seqFileYamlByPeer[switchToPeer[it.first]].push_back(n);
+	  }
+      }
+      std::cout << "Seq file yaml per peer: " << std::endl;
+      for (auto& it : switchToPeer) {
+        std::cout << "----------------" << std::endl;
+        std::cout << "Switch " << it.first << ": " << YAML::Dump(seqFileYamlByPeer[it.second]) << std::endl;
+      }
+      std::cout << "Seq File construction complete" << std::endl;
+   }
 
     // Build Parameters for All peers (on this host)
     int pph = 0;
@@ -368,6 +506,7 @@ public:
       peerParams["peer_masters"] = YAML::Load(YAML::Dump(peer_masters));
       peerParams["masters"] = YAML::Load(YAML::Dump(masters));
       std::cout << "Masters: " << YAML::Dump(masters) << endl;
+
     }
 
     // Create one YAML file for each peer on this host
@@ -376,6 +515,20 @@ public:
     for (std::size_t i=0; i<peers.size(); i++)  {
         oss << "---" << std::endl;
         YAML::Node thispeer = peerParams;
+        // Mosaic seqfile stuff
+        thispeer["seqfiles"] = seqFileYamlByPeer[i];
+        thispeer["inorder"] = inorderVarByPeer[i];
+
+        // Mosaic warmup stuff
+        thispeer["peer_idx"] = i;
+        for (const auto& op : outpaths) {
+          thispeer[op.var] = op.prefix + std::to_string(i) + op.suffix;
+        }
+
+        // Mosaic specific logging hack
+        peerParams["eventlog"] = "eventlog_" + std::to_string(i) + ".csv";
+        peerParams["msgcountlog"] = "msgcountlog_" + std::to_string(i) + ".csv";
+        peerParams["routelog"] = "routelog_" + std::to_string(i) + ".csv";
         YAML::Node globals = hostParams["globals"][i];
         for (const_iterator p=globals.begin(); p!=globals.end(); p++)  {
           thispeer[p->first.as<string>()] = p->second;
@@ -393,7 +546,7 @@ public:
         for (auto it : peerFiles[i])  {
                 auto datavar = it.first;
                 if (thispeer[datavar]) {
-                  thispeer.remove(datavar);
+                  thispeer[datavar] = YAML::Node();
                 }
                 for (auto &f : it.second) {
                         Node src;
@@ -401,6 +554,8 @@ public:
                         thispeer[datavar].push_back(src);
                 }
         }
+
+
         // ADD DATA SOURCE DIR HERE
         YAML::Emitter emit;
         emit << YAML::Flow << thispeer;
@@ -418,7 +573,7 @@ public:
         for (auto it : peerFiles[i])  {
                 auto datavar = it.first;
                 if (thispeer[datavar]) {
-                  thispeer.remove(datavar);
+                  thispeer[datavar] = YAML::Node();
                 }
         }
     }
@@ -428,7 +583,20 @@ public:
     // Redirect Program's output
     k3_cmd += " > stdout_" + host_name + " 2>&1";
 
-    cout << "FINAL COMMAND: " << k3_cmd << endl;
+    string final_cmd;
+
+    if (ulimit) {
+        // Wrap the k3_cmd with a call to ulimit
+        std::ostringstream ul;
+        ul << "cd $MESOS_SANDBOX && bash -c 'ulimit -c unlimited && " << k3_cmd << "'";
+        std::string ulimit_cmd = ul.str();
+        final_cmd = ulimit_cmd;
+    } else {
+        final_cmd = "cd $MESOS_SANDBOX && " + k3_cmd;
+    }
+
+
+    cout << "FINAL COMMAND: " << final_cmd << endl;
 
     bool isMaster = false;
     cout << "Checking master" << endl;
@@ -437,9 +605,7 @@ public:
             cout << "I am master" << endl;
     }
     cout << "Launching K3: " << endl;
-    thread = new std::thread(runK3Job, task, k3_cmd, driver, isMaster, webaddr, app_name, job_id, host_name);
-    
-
+    thread = new std::thread(runK3Job, task, final_cmd, driver, isMaster, webaddr, app_name, job_id, host_name);
   }
 
 
@@ -463,7 +629,7 @@ public:
       driver->sendFrameworkMessage("Executor at " + host_name + " ERROR");
       driver->stop();
   }
-  
+
 private:
     int state;
     int totalPeerCount;

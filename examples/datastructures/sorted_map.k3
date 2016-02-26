@@ -5,7 +5,7 @@ declare c :     collection {key:int, value:int} @SortedMap
 declare d : mut collection {key:int, value:int} @SortedMap
 
 trigger t : () = \_ -> (
-  ((range 10).iterate (\r -> c.insert {key: r.i, value: r.i + 100 }));
+  ((range 10).iterate (\r -> c.insert {key: r.elem, value: r.elem + 100 }));
 
   // Print total size.
   (print ("SortedMap size: " ++ (itos (c.size ())) ++ "\\n"));

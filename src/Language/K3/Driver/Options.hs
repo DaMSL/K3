@@ -16,6 +16,7 @@ import Data.Char
 import Data.Map ( Map )
 import qualified Data.Map as Map
 import Data.List.Split
+import qualified Data.List as L
 import Data.Maybe
 
 import GHC.Generics ( Generic )
@@ -23,19 +24,21 @@ import GHC.Generics ( Generic )
 import System.FilePath
 import System.Log
 
-import Language.K3.Stages ( CompilerSpec(..), StageSpec(..), cs0 )
+import Language.K3.Stages ( CompilerSpec(..), StageSpec(..), cs0, mz0)
 import Language.K3.Runtime.Common ( SystemEnvironment )
 import Language.K3.Runtime.Options
 import Language.K3.Utils.Logger.Config
 
 import Language.K3.Driver.Common
 
-import Language.K3.Codegen.CPP.Types (CPPCGFlags(..))
+import Language.K3.Codegen.CPP.Types (CPPCGFlags(..), defaultCPPCGFlags)
 
 import Language.K3.Utils.Pretty (
     Pretty(..), PrintConfig(..),
     indent, defaultPrintConfig, tersePrintConfig, simplePrintConfig
   )
+
+import Language.K3.Codegen.CPP.Materialization.Inference
 
 -- | Program Options.
 data Options = Options {
@@ -75,8 +78,9 @@ data ParseOptions = ParseOptions { parsePrintMode :: PrintMode
 
 -- | Metaprogramming options
 data MetaprogramOptions
-    = MetaprogramOptions { interpreterArgs  :: [(String, String)]
-                         , moduleSearchPath :: [String] }
+    = MetaprogramOptions { interpreterArgs   :: [(String, String)]
+                         , moduleSearchPath  :: [String]
+                         , serialMetaprogram :: Bool}
     deriving (Eq, Read, Show)
 
 -- | Typechecking options
@@ -138,9 +142,9 @@ data PathOptions = PathOptions { includes :: [FilePath] }
                  deriving (Eq, Read, Show)
 
 -- | K3 compiler service options
-data ServiceOperation = RunMaster    ServiceOptions ServiceMasterOptions
+data ServiceOperation = RunMaster    ServiceOptions
                       | RunWorker    ServiceOptions
-                      | SubmitJob    ServiceOptions RemoteJobOptions
+                      | SubmitJob    ServiceOptions DistributedCompileOptions
                       | Shutdown     ServiceOptions
                       | QueryService ServiceOptions QueryOptions
                       deriving (Eq, Read, Show, Generic)
@@ -155,15 +159,32 @@ data ServiceOptions = ServiceOptions { serviceId       :: String
                                      , scompileOpts    :: CompileOptions }
                     deriving (Eq, Read, Show, Generic)
 
-data ServiceMasterOptions
-        = ServiceMasterOptions { sfinalStages  :: CompileStages }
-        deriving (Eq, Read, Show)
 
-data RemoteJobOptions = RemoteJobOptions { workerFactor     :: Map String Int
-                                         , workerBlockSize  :: Map String Int
-                                         , defaultBlockSize :: Int
-                                         , reportSize       :: Int
-                                         , rcStages         :: CompileStages }
+-- | Distributed compilation
+data DistributedCompileMode
+  = DCOptOnly
+  | DCOptRound1
+  | DCMatRound2
+  deriving (Eq, Read, Show, Generic)
+
+data DistributedCompileRound
+  = DistributedCompileRound
+      { dcWorkerPrepStages   :: CompileStages
+      , dcWorkerExecStages   :: CompileStages
+      , dcMasterFinalStages  :: CompileStages }
+  deriving (Eq, Read, Show, Generic)
+
+data DistributedCompileSpec
+  = DistributedOpt    DistributedCompileRound
+  | DistributedOptMat DistributedCompileRound DistributedCompileRound
+  deriving (Eq, Read, Show, Generic)
+
+data DistributedCompileOptions
+  = DistributedCompileOptions { workerFactor     :: Map String Int
+                              , workerBlockSize  :: Map String Int
+                              , defaultBlockSize :: Int
+                              , reportSize       :: Int
+                              , dcompileSpec     :: DistributedCompileSpec }
                       deriving (Eq, Read, Show, Generic)
 
 data QueryOptions = QueryOptions { qsargs :: Either [String] [Int] }
@@ -186,7 +207,6 @@ data Verbosity
   deriving (Enum, Eq, Read, Show)
 
 -- | Automatically generated serialization instances.
-instance Binary RemoteJobOptions
 instance Binary CompileOptions
 instance Binary CPPOptions
 instance Binary CompileStage
@@ -194,13 +214,21 @@ instance Binary CPPCompiler
 instance Binary CPPStages
 instance Binary PrintMode
 
-instance Serialize RemoteJobOptions
+instance Binary DistributedCompileRound
+instance Binary DistributedCompileSpec
+instance Binary DistributedCompileOptions
+
 instance Serialize CompileOptions
 instance Serialize CPPOptions
 instance Serialize CompileStage
 instance Serialize CPPCompiler
 instance Serialize CPPStages
 instance Serialize PrintMode
+
+instance Serialize DistributedCompileRound
+instance Serialize DistributedCompileSpec
+instance Serialize DistributedCompileOptions
+
 
 {- Option parsing utilities -}
 
@@ -346,12 +374,15 @@ compileOpts ct = CompileOptions <$> outLanguageOpt
                                 <*> optimizationOpt
                                 <*> printModeOpt "noeffects=True:notypes=True:noproperties=True"
 
-defaultCompileStages :: CompilerType -> CompilerSpec -> CompileStages
-defaultCompileStages ct cSpec = case ct of
-    LocalCompiler       -> [SDeclPrepare, SDeclOpt cSpec, SCodegen]
+defaultCompileStages :: MZFlags -> CompilerType -> CompilerSpec -> CompileStages
+defaultCompileStages mzfs ct cSpec = case ct of
+    LocalCompiler       -> [SDeclPrepare, SDeclOpt cSpec, SCodegen mzfs]
     ServicePrepare      -> [SDeclPrepare]
-    ServiceParallel     -> [SDeclOpt cSpec]
-    ServiceFinal        -> [SDeclPrepare, SCodegen]
+    ServiceParallel1    -> [SDeclOpt cSpec]
+    ServiceParallel2    -> [SMaterialization False]
+    ServiceRound1       -> [SDeclPrepare, SCGPrepare]
+    ServiceFinal1       -> [SDeclPrepare, SCodegen mzfs]
+    ServiceFinal2       -> []
     ServiceClient       -> []
     ServiceClientRemote -> [SDeclOpt cSpec]
 
@@ -365,41 +396,55 @@ compileStagesOpt ct = extractStageAndSpec . keyValList "" <$> strOption (
    where
     flagName = case ct of
                   LocalCompiler       -> "fstage"
-                  ServicePrepare      -> "sprepstage"
-                  ServiceParallel     -> "sparstage"
-                  ServiceFinal        -> "sfinstage"
+                  ServicePrepare      -> "spreparestage"
+                  ServiceParallel1    -> "sparallel1stage"
+                  ServiceParallel2    -> "sparallel2stage"
+                  ServiceRound1       -> "sround1stage"
+                  ServiceFinal1       -> "sfinal1stage"
+                  ServiceFinal2       -> "sfinal2stage"
                   ServiceClient       -> "scstage"
                   ServiceClientRemote -> "srstage"
 
-    extractStageAndSpec kvl = case kvl of
-      []  -> defaultCompileStages ct cs0
-      [x] -> stageOf cs0 x
-      h:t -> stageOf (specOf t) h
+    extractStageAndSpec kvl = let (mzfs, kvl') = extractMZFlags kvl in case kvl' of
+      []  -> defaultCompileStages mzfs ct cs0
+      [x] -> stageOf mzfs cs0 x
+      h:t -> stageOf mzfs (specOf t) h
+     where
+      extractMZFlags :: [(String, String)] -> (MZFlags, [(String, String)])
+      extractMZFlags kvs = let (mzfs, rest) = L.partition (\(key, val) -> key `elem` ["isolateRuntime", "isolateApplication", "isolateQuery"]) kvs in
+        (MZFlags { isolateRuntimeMZ = fromMaybe (isolateRuntimeMZ mz0) (read <$> lookup "isolateRuntime" mzfs)
+                 , isolateApplicationMZ = fromMaybe (isolateApplicationMZ mz0) (read <$> lookup "isolateApplication" mzfs)
+                 , isolateQueryMZ = fromMaybe (isolateQueryMZ mz0) (read <$> lookup "isolateQuery" mzfs)}
+        , rest)
 
     -- | Local compilation stages definitions.
-    stageOf _     ("none",      read -> True) = []
-    stageOf cSpec ("declopt",   read -> True) = [SDeclPrepare, SDeclOpt cSpec]
-    stageOf cSpec ("cg",        read -> True) = [SDeclPrepare, SDeclOpt cSpec, SCodegen]
+    stageOf _ _     ("none",      read -> True) = []
+    stageOf _ cSpec ("declopt",   read -> True) = [SDeclPrepare, SDeclOpt cSpec]
+    stageOf mzfs cSpec ("cg",        read -> True) = [SDeclPrepare, SDeclOpt cSpec, SCodegen mzfs]
 
     -- | Compiler service stages definitions.
-    stageOf _     ("sprepare",  read -> True) = [SDeclPrepare]
-    stageOf cSpec ("sparallel", read -> True) = [SDeclOpt cSpec]
-    stageOf _     ("sfinal",    read -> True) = [SDeclPrepare, SCodegen]
+    stageOf _ _     ("sprepare",         read -> True) = [SDeclPrepare]
+    stageOf _ cSpec ("sparallel1",       read -> True) = [SDeclOpt cSpec]
+    stageOf _ _     ("sparallel2",       read -> True) = [SMaterialization False]
+    stageOf _ _    ("sparallel2-debug", read -> True) = [SMaterialization True]
+    stageOf _ _     ("sround1",          read -> True) = [SDeclPrepare, SCGPrepare]
+    stageOf mzfs _  ("sfinal1",          read -> True) = [SDeclPrepare, SCodegen mzfs]
+    stageOf _   _   ("sfinal2",          read -> True) = []
 
     -- | Optimizer stage specification.
-    stageOf cSpec ("oinclude", (splitOn "," ->  psl)) = [SDeclPrepare] ++ include cSpec psl
-    stageOf cSpec ("oexclude", (splitOn "," -> npsl)) = [SDeclPrepare] ++ exclude cSpec npsl
+    stageOf _ cSpec ("oinclude", (splitOn "," ->  psl)) = [SDeclPrepare] ++ include cSpec psl
+    stageOf _ cSpec ("oexclude", (splitOn "," -> npsl)) = [SDeclPrepare] ++ exclude cSpec npsl
 
     -- | Optimizer stage specification with final compilation.
-    stageOf cSpec ("cinclude", (splitOn "," ->  psl)) = [SDeclPrepare] ++ include cSpec psl  ++ [SCodegen]
-    stageOf cSpec ("cexclude", (splitOn "," -> npsl)) = [SDeclPrepare] ++ exclude cSpec npsl ++ [SCodegen]
+    stageOf mzfs cSpec ("cinclude", (splitOn "," ->  psl)) = [SDeclPrepare] ++ include cSpec psl  ++ [SCodegen mzfs]
+    stageOf mzfs cSpec ("cexclude", (splitOn "," -> npsl)) = [SDeclPrepare] ++ exclude cSpec npsl ++ [SCodegen mzfs]
 
     -- | Service worker optimization stage specification.
-    stageOf cSpec ("sinclude", (splitOn "," ->  psl)) = include cSpec psl
-    stageOf cSpec ("sexclude", (splitOn "," -> npsl)) = exclude cSpec npsl
+    stageOf _ cSpec ("sinclude", (splitOn "," ->  psl)) = include cSpec psl
+    stageOf _ cSpec ("sexclude", (splitOn "," -> npsl)) = exclude cSpec npsl
 
     -- | Default handler.
-    stageOf cSpec _ = defaultCompileStages ct cSpec
+    stageOf mzfs cSpec _ = defaultCompileStages mzfs ct cSpec
 
     include cSpec psl =
       let ss = stageSpec cSpec
@@ -490,12 +535,21 @@ allStagesFlag = flag' AllStages (long "allstages" <> help "Compile all stages")
 
 cppOpt :: Parser CPPOptions
 cppOpt = CPPOptions <$> strOption (long "cpp-flags" <> help "Specify CPP Flags" <> metavar "CPPFLAGS" <> value "")
-                    <*> (CPPCGFlags <$> (fromMaybe False . fmap read . lookup "isolateLoopIndex" . keyValList ""
-                                           <$> strOption (
-                                               long "cg-options"
-                                            <> value ""
-                                            <> help "Code Generation Options"
-                                            <> metavar "CGOptions")))
+                    <*> (extractCPPCGFlags <$> strOption (
+                               long "cg-options"
+                               <> value ""
+                               <> help "Code Generation Options"
+                               <> metavar "CGOptions"))
+ where
+   extractCPPCGFlags stropt = CPPCGFlags ili elp ilr ila ilq wbr
+    where
+      ili = fromMaybe False $ fmap read $ lookup "isolateLoopIndex" kvs
+      elp = fromMaybe False $ fmap read $ lookup "enableLifetimeProfiling" kvs
+      ilr = fromMaybe (isolateRuntimeCG defaultCPPCGFlags) $ fmap read $ lookup "isolateRuntime" kvs
+      ila = fromMaybe (isolateApplicationCG defaultCPPCGFlags) $ fmap read $ lookup "isolateApplication" kvs
+      ilq = fromMaybe (isolateQueryCG defaultCPPCGFlags) $ fmap read $ lookup "isolateQuery" kvs
+      wbr = fromMaybe (boxRecords defaultCPPCGFlags) $ fmap read $ lookup "boxRecords" kvs
+      kvs = keyValList "" stropt
 
 ktraceOpt :: Parser [(String, String)]
 ktraceOpt = keyValList "" <$> strOption (
@@ -640,9 +694,9 @@ serviceOperOpt = helper <*> subparser (
       <> command "query"  (info squeryOpt   $ progDesc squeryDesc)
       <> command "halt"   (info shaltOpt    $ progDesc shaltDesc)
     )
-  where smasterOpt = RunMaster    <$> serviceOpts ServicePrepare <*> serviceMasterOpts
-        sworkerOpt = RunWorker    <$> serviceOpts ServiceParallel
-        sjobOpt    = SubmitJob    <$> serviceOpts ServiceClient <*> remoteJobOpt
+  where smasterOpt = RunMaster    <$> serviceOpts ServicePrepare
+        sworkerOpt = RunWorker    <$> serviceOpts ServiceParallel1
+        sjobOpt    = SubmitJob    <$> serviceOpts ServiceClient <*> distrCompileOpt
         squeryOpt  = QueryService <$> serviceOpts ServiceClient <*> querySOpt
         shaltOpt   = Shutdown     <$> serviceOpts ServiceClient
 
@@ -661,9 +715,6 @@ serviceOpts ct = ServiceOptions <$> serviceIdOpt
                                 <*> serviceLogLevelOpt
                                 <*> serviceHeartbeatOpt
                                 <*> compileOpts ct
-
-serviceMasterOpts :: Parser ServiceMasterOptions
-serviceMasterOpts = ServiceMasterOptions <$> compileStagesOpt ServiceFinal
 
 serviceIdOpt :: Parser String
 serviceIdOpt = strOption (   long    "svid"
@@ -711,12 +762,40 @@ serviceHeartbeatOpt = option auto (   long    "heartbeat"
                                    <> help    "Service heartbeat period"
                                    <> metavar "PERIOD" )
 
-remoteJobOpt :: Parser RemoteJobOptions
-remoteJobOpt = RemoteJobOptions <$> workerFactorOpt
-                                <*> workerBlockSizeOpt
-                                <*> jobBlockSizeOpt
-                                <*> reportSizeOpt
-                                <*> compileStagesOpt ServiceClientRemote
+distrCompileRound :: DistributedCompileMode -> Parser DistributedCompileRound
+distrCompileRound compileMode =
+  case compileMode of
+    DCOptOnly   -> DistributedCompileRound
+                      <$> compileStagesOpt ServicePrepare
+                      <*> compileStagesOpt ServiceParallel1
+                      <*> compileStagesOpt ServiceFinal1
+
+    DCOptRound1 -> DistributedCompileRound
+                      <$> compileStagesOpt ServicePrepare
+                      <*> compileStagesOpt ServiceParallel1
+                      <*> compileStagesOpt ServiceRound1
+
+    DCMatRound2 -> DistributedCompileRound
+                      <$> compileStagesOpt ServicePrepare
+                      <*> compileStagesOpt ServiceParallel2
+                      <*> compileStagesOpt ServiceFinal2
+
+distrOptSpec :: Parser DistributedCompileSpec
+distrOptSpec = DistributedOpt <$> distrCompileRound DCOptOnly
+
+distrOptMatSpec :: Parser DistributedCompileSpec
+distrOptMatSpec = DistributedOptMat <$> distrCompileRound DCOptRound1 <*> distrCompileRound DCMatRound2
+
+distrCompileSpec :: Parser DistributedCompileSpec
+distrCompileSpec = distrOptSpec <|> distrOptMatSpec
+
+distrCompileOpt :: Parser DistributedCompileOptions
+distrCompileOpt = DistributedCompileOptions
+                    <$> workerFactorOpt
+                    <*> workerBlockSizeOpt
+                    <*> jobBlockSizeOpt
+                    <*> reportSizeOpt
+                    <*> distrCompileSpec
 
 jobBlockSizeOpt :: Parser Int
 jobBlockSizeOpt = option auto (
@@ -840,7 +919,7 @@ verbosityOptions = toEnum . roundVerbosity <$> option auto (
 
 -- | Metaprogram option parsing.
 metaprogramOptions :: Parser (Maybe MetaprogramOptions)
-metaprogramOptions = optional (MetaprogramOptions <$> mpinterpretArgOpt <*> mpModuleSearchPathOpt)
+metaprogramOptions = optional (MetaprogramOptions <$> mpinterpretArgOpt <*> mpModuleSearchPathOpt <*> mpSerialOpt)
 
 mpinterpretArgOpt :: Parser [(String, String)]
 mpinterpretArgOpt = keyValList "-" <$> strOption (   long    "mpargs"
@@ -853,6 +932,10 @@ mpModuleSearchPathOpt = pathList <$> strOption (   long    "mpsearch"
                                                 <> value   ""
                                                 <> help    "Metaprogram module search path"
                                                 <> metavar "MPSEARCHPATH" )
+
+mpSerialOpt :: Parser Bool
+mpSerialOpt = switch (   long "serialmp"
+                      <> help "Use serial metaprogramming." )
 
 -- | Program Options Parsing.
 programOptions :: Parser Options

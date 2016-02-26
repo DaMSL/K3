@@ -74,7 +74,7 @@ injectSpliceValue v = case parseExp $ show v of
 spliceQuotesDecl :: SpliceContext -> Decl -> Decl
 spliceQuotesDecl sctxt decl = case decl of
     FunBind matchL -> FunBind $ map rcrm matchL
-    PatBind l p rhs binds -> PatBind l (rcrp p) (rcrr rhs) $ rcrb binds
+    PatBind l p rhs binds -> PatBind l (rcrp p) (rcrr rhs) $ maybe Nothing (Just . rcrb) binds
     _ -> decl
   where rcrm = spliceQuotesMatch sctxt
         rcrp = spliceQuotesPat   sctxt
@@ -112,7 +112,7 @@ spliceQuotesDecl sctxt decl = case decl of
 
 spliceQuotesMatch :: SpliceContext -> Match -> Match
 spliceQuotesMatch sctxt (Match l n patL tOpt rhs binds) =
-    Match l n (map rcrp patL) tOpt (rcrr rhs) $ rcrb binds
+    Match l n (map rcrp patL) tOpt (rcrr rhs) $ maybe Nothing (Just . rcrb) binds
   where rcrp = spliceQuotesPat   sctxt
         rcrr = spliceQuotesRhs   sctxt
         rcrb = spliceQuotesBinds sctxt
@@ -217,7 +217,7 @@ spliceQuotesIPBind sctxt (IPBind l ipn e) = IPBind l ipn $ rcre e
   where rcre = spliceQuotesExp sctxt
 
 spliceQuotesAlt :: SpliceContext -> Alt -> Alt
-spliceQuotesAlt sctxt (Alt l pat rhs binds) = Alt l (rcrp pat) (rcrr rhs) $ rcrb binds
+spliceQuotesAlt sctxt (Alt l pat rhs binds) = Alt l (rcrp pat) (rcrr rhs) $ maybe Nothing (Just . rcrb) binds
   where rcrp = spliceQuotesPat sctxt
         rcrr = spliceQuotesRhs sctxt
         rcrb = spliceQuotesBinds sctxt

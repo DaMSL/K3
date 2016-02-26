@@ -1,0 +1,34 @@
+name: role 1
+peers: 128
+hostmask: ".*hm.*"
+privileged: True
+k3_globals:
+  role: [{i: rows}]
+  master: auto
+  # Primary
+  q1_selectivity_shipdate_ubound: 19920103
+  q3_selectivity_mktsegments: []
+  q5_selectivity_regions: []
+  q6_selectivity_shipdate_lbound: 19981203
+  q18_selectivity_sum_quantity_lbound: 329
+  q22_selectivity_valid_phones: []
+
+  # Secondary
+  q3_selectivity_shipdate_lbound: 19920101
+  q3_selectivity_orderdate_ubound: 19980803
+  q5_selectivity_orderdate_lbound: 19920101
+  q5_selectivity_orderdate_ubound: 19980803
+  q6_selectivity_shipdate_ubound: 19981202
+
+volumes:
+  - {host: /local, container: /local}
+k3_data:
+  - {var: dataFiles, path: /local/data/tpch10g/lineitem, policy: global}
+  - {var: lineitemFiles, path: /local/data/tpch10g/lineitem, policy: global}
+  - {var: customerFiles, path: /local/data/tpch10g/customer, policy: global}  
+  - {var: ordersFiles, path: /local/data/tpch10g/orders, policy: global}  
+  - {var: supplierFiles, path: /local/data/tpch10g/supplier, policy: global}  
+  - {var: partsuppFiles, path: /local/data/tpch10g/partsupp, policy: global}  
+  - {var: partFiles, path: /local/data/tpch10g/part, policy: global}  
+  - {var: regionFiles, path: /local/data/tpch10g/region, policy: replicate}
+  - {var: nationFiles, path: /local/data/tpch10g/nation, policy: replicate}

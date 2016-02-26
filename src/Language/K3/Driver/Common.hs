@@ -16,13 +16,18 @@ import Language.K3.Stages ( CompilerSpec(..) )
 import Language.K3.Utils.Pretty
 import Language.K3.Utils.Pretty.Syntax
 
+import Language.K3.Codegen.CPP.Materialization.Inference (MZFlags(..))
+
 {- Common data types used throughout the driver. -}
 
 -- | Variant type used to define compilation stages.
 data CompilerType = LocalCompiler
                   | ServicePrepare
-                  | ServiceParallel
-                  | ServiceFinal
+                  | ServiceParallel1
+                  | ServiceParallel2
+                  | ServiceRound1
+                  | ServiceFinal1
+                  | ServiceFinal2
                   | ServiceClient
                   | ServiceClientRemote
                   deriving (Eq, Read, Show, Generic)
@@ -30,7 +35,9 @@ data CompilerType = LocalCompiler
 -- | Coarse-grained compilation stages.
 data CompileStage = SDeclPrepare
                   | SDeclOpt CompilerSpec
-                  | SCodegen
+                  | SCGPrepare
+                  | SMaterialization Bool
+                  | SCodegen MZFlags
                   deriving (Eq, Ord, Read, Show, Generic)
 
 type CompileStages = [CompileStage]

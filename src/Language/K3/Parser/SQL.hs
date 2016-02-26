@@ -24,7 +24,7 @@ import Data.Functor.Identity
 import Data.Maybe ( catMaybes )
 import Data.Either ( partitionEithers )
 import Data.Monoid
-import Data.List ( (\\), intersect, nub, isInfixOf, isPrefixOf, sortBy, unzip4 )
+import Data.List ( (\\), find, intersect, nub, isInfixOf, isPrefixOf, sortBy, unzip4 )
 
 import Data.Map ( Map )
 import Data.Set ( Set )
@@ -511,7 +511,7 @@ sqgextExprM sid (Just n) exprs = do
 sqgextExprM _ _ _ = throwE "Invalid expr arguments when extending attribute graph"
 
 
-{- Relation type and name construciton. -}
+{- Relation type and name construction. -}
 
 sqltabletype :: AttributeDefList -> SQLParseM (K3 Type)
 sqltabletype attrs = sqlrectype attrs >>= tcolM
@@ -520,16 +520,27 @@ sqlrectype :: AttributeDefList -> SQLParseM (K3 Type)
 sqlrectype attrs = mapM sqlattr attrs >>= \ts -> return (recT ts)
 
 sqlattr :: AttributeDef -> SQLParseM (Identifier, K3 Type)
-sqlattr (AttributeDef _ nm t _ _) = sqltypename t >>= sqltype >>= return . (sqlnmcomponent nm,)
+sqlattr (AttributeDef _ nm t _ _) = sqlnamedtype t >>= return . (sqlnmcomponent nm,)
 
-sqltype :: String -> SQLParseM (K3 Type)
-sqltype s = case s of
-  "int"              -> return TC.int
-  "integer"          -> return TC.int
-  "real"             -> return TC.real
-  "double precision" -> return TC.real
-  "text"             -> return TC.string
+-- TODO: timestamp, interval, size limits for numbers
+sqltype :: String -> Maybe Int -> Maybe Int -> SQLParseM (K3 Type)
+sqltype s lpOpt uOpt = case s of
+  "int"               -> return TC.int
+  "integer"           -> return TC.int
+  "real"              -> return TC.real
+  "double precision"  -> return TC.real
+  "text"              -> return TC.string
+  "varchar"           -> return $ maybe TC.string (\i -> TC.string @+ TProperty (Left $ "TPCHVarchar_" ++ show i)) lpOpt
+  "date"              -> return $ TC.int @+ TProperty (Left "TPCHDate")
   _ -> throwE $ "Invalid K3-SQL type: " ++ s
+
+sqlnamedtype :: TypeName -> SQLParseM (K3 Type)
+sqlnamedtype tn = case tn of
+  ArrayTypeName _ ctn   -> sqlnamedtype ctn >>= \t -> return $ (TC.collection t) @+ TAnnotation "Vector"
+  Prec2TypeName _ s l u -> sqltype s (Just $ fromInteger l) (Just $ fromInteger u)
+  PrecTypeName _ s p    -> sqltype s (Just $ fromInteger p) Nothing
+  SetOfTypeName _ ctn   -> sqlnamedtype ctn >>= \t -> return $ (TC.collection t) @+ TAnnotation "Set"
+  SimpleTypeName _ s    -> sqltype s Nothing Nothing
 
 sqlnm :: Name -> String
 sqlnm (Name _ comps) = concatMap sqlnmcomponent comps
@@ -540,10 +551,6 @@ sqlnmcomponent (QNmc s) = s
 
 sqlnmpath :: [NameComponent] -> [String]
 sqlnmpath nmcl = map sqlnmcomponent nmcl
-
-sqltypename :: TypeName -> SQLParseM String
-sqltypename (SimpleTypeName _ t) = return t
-sqltypename t = throwE $ "Invalid sql typename " ++ show t
 
 sqltablealias :: Identifier -> TableAlias -> Maybe Identifier
 sqltablealias def alias = case alias of
@@ -912,11 +919,16 @@ k3PlanType bm p = do
     _ -> k3ScopeType sid bm
 
 
--- TODO: case, function types
+-- TODO:
+-- i. builtin function types
+-- ii. AST: AggregateFn, Extract, Interval, LiftOperator, NullLit, Placeholder, PositionalArg, WindowFn
 scalarexprType :: Maybe ScopeId -> ScalarExpr -> SQLParseM (K3 Type)
 scalarexprType _ (BooleanLit _ _) = return TC.bool
 scalarexprType _ (StringLit _ _) = return TC.string
 scalarexprType _ (NumberLit _ i) = return $ if "." `isInfixOf` i then TC.real else TC.int
+scalarexprType _ (TypedStringLit _ tn _) = sqlnamedtype tn
+
+scalarexprType _ (Cast _ _ tn) = sqlnamedtype tn
 
 scalarexprType sidOpt (Identifier _ (sqlnmcomponent -> i)) = do
   sf <- maybe (return Nothing) (\i -> sqclkupM i >>= return . Just) sidOpt
@@ -925,6 +937,9 @@ scalarexprType sidOpt (Identifier _ (sqlnmcomponent -> i)) = do
 scalarexprType sidOpt (QIdentifier _ (sqlnmpath -> path)) = do
   sf <- maybe (return Nothing) (\i -> sqclkupM i >>= return . Just) sidOpt
   trypath sidOpt (trace (unwords ["bottom", show path, show sidOpt, show sf]) $ return TC.bottom) (\ptr -> sqglkupM ptr >>= return . adnt) path
+
+scalarexprType sidOpt (Case _ whens elseexpr) = maybe (caselistType sidOpt whens) (scalarexprType sidOpt) elseexpr
+scalarexprType sidOpt (CaseSimple _ expr whens elseexpr) = maybe (caselistType sidOpt whens) (scalarexprType sidOpt) elseexpr
 
 scalarexprType sidOpt (FunCall _ nm args) = do
   let fn = sqlnm nm
@@ -940,7 +955,9 @@ scalarexprType sidOpt (FunCall _ nm args) = do
     _ -> do
       case (fn, args) of
         ("!between", [_,_,_]) -> return TC.bool
-        (_, _) -> trace (unwords ["bottom", fn]) $ return TC.bottom -- TODO: type?
+        ("!like", [_,_])      -> return TC.bool
+        ("!notlike", [_,_])   -> return TC.bool
+        (_, _) -> throwE $ "Unsupported function in scalarexprType: " ++ fn
 
 scalarexprType (Just sid) (Star _) = scopeType sid >>= telemM
 scalarexprType (Just sid) (QStar _ (sqlnmcomponent -> n)) = do
@@ -949,12 +966,15 @@ scalarexprType (Just sid) (QStar _ (sqlnmcomponent -> n)) = do
   idt <- mapM (\p -> sqglkupM p >>= return . (adnn &&& adnt)) ptrs
   return $ recT idt
 
-scalarexprType _ (ScalarSubQuery _ _) = return TC.bool
+scalarexprType _ (ScalarSubQuery _ _) = return TC.bool -- TODO: return subquery type, not bool!
 scalarexprType _ (Exists _ _) = return TC.bool
 scalarexprType _ (InPredicate _ _ _ _) = return TC.bool
 
 scalarexprType _ e = throwE $ "Type inference unsupported for: " ++ show e
 
+caselistType :: Maybe ScopeId -> [([ScalarExpr], ScalarExpr)] -> SQLParseM (K3 Type)
+caselistType _ [] = throwE $ "Invalid empty case-list in caselistType"
+caselistType sidOpt ((_,e):_) = scalarexprType sidOpt e
 
 aggregateType :: Maybe ScopeId -> ScalarExpr -> SQLParseM (K3 Type)
 aggregateType sidOpt agg@(FunCall _ nm args) = do
@@ -1169,11 +1189,13 @@ sqloptimize l = mapM stmt l
             then return $ QueryClosure fvs $ QueryPlan (Just nt) [] Nothing
             else do
               (gnt, naggs) <- if null gbL then return (nt, aggs) else groupByPushdown nt sid (map mkprojection gbL) aggs
-              (efvs, subqs) <- trace (boxToString $ ["GB pushdown result"] %$ prettyLines gnt)
+              (efvs, subqs) <- debugGBPushdown gnt
                                  $ varsAndQueries (Just sid) $ remconjuncts ++ gbL ++ (projectionexprs $ prjs ++ naggs)
               (hfvs, hsubqs) <- maybe (return ([], [])) (\e -> varsAndQueries (Just gsid) [e]) havingE
               let chains = [PlanCPath gsid remconjuncts gbL prjs naggs havingE $ subqs ++ hsubqs]
               return $ QueryClosure (nub $ fvs ++ efvs ++ hfvs) $ QueryPlan (Just gnt) chains Nothing
+
+    debugGBPushdown x y = if False then y else trace (boxToString $ ["GB pushdown result"] %$ prettyLines x) y
 
     joinTree [] = return Nothing
     joinTree (h:t) = do
@@ -1279,12 +1301,15 @@ sqloptimize l = mapM stmt l
     classifySelectItem si@(SelExp _ e) = isAggregate e >>= \agg -> return $ if agg then Right si else Left si
     classifySelectItem si@(SelectItem _ e _) = isAggregate e >>= \agg -> return $ if agg then Right si else Left si
 
-    -- TODO: case, qstar
+    -- TODO: AggregateFn, Interval, LiftOperator, WindowFn
     varsAndQueries :: Maybe ScopeId -> ScalarExprList -> SQLParseM ([AttrPath], SubqueryBindings)
     varsAndQueries sidOpt exprs = processMany exprs
       where process (FunCall _ _ args) = processMany args
             process (Identifier _ (sqlnmcomponent -> i)) = trypath sidOpt (return ([[i]], [])) (const $ return ([], [])) [i]
             process (QIdentifier _ (sqlnmpath -> path)) = trypath sidOpt (return ([path], [])) (const $ return ([], [])) path
+
+            process (Case _ whens elseexpr) = caseList (maybe [] (:[]) elseexpr) whens
+            process (CaseSimple _ expr whens elseexpr) = caseList ([expr] ++ maybe [] (:[]) elseexpr) whens
 
             process e@(Exists _ q) = bindSubquery e q
             process e@(ScalarSubQuery _ q) = bindSubquery e q
@@ -1296,18 +1321,25 @@ sqloptimize l = mapM stmt l
               (qvs, qbs) <- bindSubquery e q
               return (invs ++ qvs, inbs ++ qbs)
 
+            process (Cast _ e _) = process e
+            process (Extract _ _ e) = process e
+
             process _ = return ([], [])
 
-            processMany el = do
-              rl <- mapM process el
-              let (vs, qs) = unzip rl
-              return (nub $ concat vs, concat qs)
+            concatR (a,b) (c,d) = (nub $ a++c, b++d)
+            concatMany l = return $ (nub . concat) *** concat $ unzip l
+
+            processMany el = mapM process el >>= concatMany
 
             bindSubquery e q = do
               sym <- ssqsextM
               qcl <- query q
               vbl <- mapM (\path -> trypath sidOpt (return ([path], [])) (const $ return ([], [])) path) $ qcfree qcl
               return (concat $ map fst vbl, [(e, ("__subquery" ++ show sym, qcl))])
+
+            caseList extra whens = do
+              rl <- (\a b -> a ++ [b]) <$> mapM (\(l,e) -> processMany $ l++[e]) whens <*> processMany extra
+              concatMany rl
 
 
     predicatePushdown :: Maybe ScopeId -> ScalarExprList -> PlanTree -> SQLParseM (PlanTree, ScalarExprList)
@@ -1540,7 +1572,7 @@ sqlstage stmts = mapM stage stmts >>= return . (concat *** concat) . unzip
 sqlcodegen :: Bool -> ([SQLDecl], StageGraph) -> SQLParseM (K3 Declaration)
 sqlcodegen distributed (stmts, stgg) = do
     (decls, inits) <- foldM cgstmt ([], []) stmts
-    initDecl <- mkInit
+    initDecl <- mkInit decls
     return $ DC.role "__global" $ [master] ++ decls ++ mkPeerInit inits ++ initDecl
 
   where
@@ -1565,7 +1597,7 @@ sqlcodegen distributed (stmts, stgg) = do
                                   Nothing -> do
                                     s  <- stgsextM >>= return . show
                                     let i = materializeId s
-                                    return (i, stageId s, [DC.global i t Nothing])
+                                    return (i, stageId s, [DC.global i (mutT t) Nothing])
 
       let execStageF i e = case lookup i edges of
                              Nothing -> return e
@@ -1767,7 +1799,8 @@ sqlcodegen distributed (stmts, stgg) = do
             mergeagg op = EC.lambda "a" $ EC.lambda "b" $ EC.binop op (EC.variable "a") $ EC.variable "b"
             mergeapp f  = EC.lambda "a" $ EC.lambda "b" $ EC.applyMany (EC.variable f) [EC.variable "a", EC.variable "b"]
 
-    -- TODO: case, correlated subqueries.
+    -- TODO: case, correlated subqueries, more type constructors
+    -- TODO: Cast, Interval, LiftOperator, NullLit, Placeholder, PositionalArg, WindowFn
     cgexpr _ _ _ (BooleanLit _ b) = return $ EC.constant $ CBool b
     cgexpr _ _ _ (NumberLit _ i) = return $ if "." `isInfixOf` i
                                      then EC.constant $ CReal $ read i
@@ -1775,11 +1808,20 @@ sqlcodegen distributed (stmts, stgg) = do
 
     cgexpr _ _ _ (StringLit _ s) = return $ EC.constant $ CString s
 
+    cgexpr _ _ _ (TypedStringLit _ tn s) = do
+        t <- sqlnamedtype tn
+        case (tag t, find isTProperty $ annotations t) of
+          (TInt, Just (TProperty (tPropertyName -> "TPCHDate"))) -> return $ EC.constant $ CInt $ read $ filter (/= '-') s
+          (_, _) -> throwE $ boxToString $ ["Unsupported constructor for"] %$ prettyLines t
+
     cgexpr _ _ _ (Identifier _ (sqlnmcomponent -> i)) = return $ EC.variable i
 
     cgexpr _ _ sid (QIdentifier _ nmcl) = do
       ptr <- sqcflkupM sid $ sqlnmpath nmcl
       EC.variable . adnn <$> sqglkupM ptr
+
+    cgexpr subqbs f sid (Case _ whens elseexpr) = cgcase subqbs f sid elseexpr whens
+    cgexpr subqbs f sid (CaseSimple _ expr whens elseexpr) = cgcasesimple subqbs f sid expr elseexpr whens
 
     cgexpr subqbs f sid e@(FunCall _ nm args) = do
       isAgg <- isAggregate e
@@ -1798,6 +1840,10 @@ sqlcodegen distributed (stmts, stgg) = do
                 let cg a b c = EC.binop OAnd (EC.binop OLeq b a) $ EC.binop OLeq a c
                 in cg <$> cgexpr subqbs f sid x <*> cgexpr subqbs f sid y <*> cgexpr subqbs f sid z
 
+              -- TODO
+              ("!like", [_,_])      -> throwE $ "LIKE operator not yet implemented"
+              ("!notlike", [_,_])   -> throwE $ "NOTLIKE operator not yet implemented"
+
               (_, _) -> EC.applyMany (EC.variable fn) <$> mapM (cgexpr subqbs f sid) args
 
       where err = throwE "Invalid aggregate expression in cgexpr"
@@ -1811,34 +1857,63 @@ sqlcodegen distributed (stmts, stgg) = do
       recE <$> mapM (\j -> return (j, EC.variable j)) qattrs
 
     cgexpr subqbs _ _ e@(Exists _ _) = do
-      subexpr <- cgsubquery subqbs e
-      return $ emptyE False subexpr
+      (subexpr, _, _) <- cgsubquery subqbs e
+      emptyE False subexpr
 
-    cgexpr subqbs _ _ e@(ScalarSubQuery _ _) = cgsubquery subqbs e
+    cgexpr subqbs _ _ e@(ScalarSubQuery _ _) = cgsubquery subqbs e >>= \(r,_,_) -> return r
 
     cgexpr subqbs f sid (InPredicate _ ine isIn (InList _ el)) = do
       testexpr <- cgexpr subqbs f sid ine
       valexprs <- mapM (cgexpr subqbs f sid) el
 
-      return $ case valexprs of
-        [] -> EC.constant $ CBool $ not isIn
+      case valexprs of
+        [] -> return $ EC.constant $ CBool $ not isIn
         (h:t) -> memoE (immutE $ testexpr) $
-                   \vare -> foldl (\accE vale -> mergeE accE $ testE vare vale) (testE vare h) t
+                   \vare -> return $ foldl (\accE vale -> mergeE accE $ testE vare vale) (testE vare h) t
 
       where testE vare vale = EC.binop (if isIn then OEqu else ONeq) vare vale
             mergeE acce nexte = EC.binop (if isIn then OOr else OAnd) acce nexte
 
     cgexpr subqbs f sid e@(InPredicate _ ine isIn (InQueryExpr _ _)) = do
       testexpr <- cgexpr subqbs f sid ine
-      subexpr <- cgsubquery subqbs e
-      return $ memberE isIn testexpr subexpr
+      (subexpr, osid, bm) <- cgsubquery subqbs e
+      memberE isIn osid bm testexpr subexpr
 
     cgexpr _ _ _ e = throwE $ "Unhandled expression in codegen: " ++ show e
 
+    -- Case-statement generation.
+    cgcase _ _ _ _ [] = throwE $ "Invalid empty case-list in cgcase"
+    cgcase subqbs f sid elseexpr whens@((_,e):_) = do
+      elseE <- maybe (zeroSQLE (Just sid) e) (cgexpr subqbs f sid) elseexpr
+      foldM (cgcasebranch subqbs f sid) elseE whens
+
+    cgcasesimple _ _ _ _ _ [] = throwE $ "Invalid empty case-list in cgcasesimple"
+    cgcasesimple subqbs f sid expr elseexpr whens@((_, e):_) = do
+      valE  <- cgexpr subqbs f sid expr
+      elseE <- maybe (zeroSQLE (Just sid) e) (cgexpr subqbs f sid) elseexpr
+      foldM (cgcasebrancheq subqbs f sid valE) elseE whens
+
+    cgcasebranch subqbs f sid elseE (l,e) = do
+      predE <- case l of
+                  [] -> throwE "Invalid case-branch-list"
+                  [x] -> cgexpr subqbs Nothing sid x
+                  h:t -> cgexpr subqbs Nothing sid h >>= \hE -> foldM (cgconjunct subqbs sid) hE t
+
+      thenE <- cgexpr subqbs f sid e
+      return $ EC.ifThenElse predE thenE elseE
+
+    cgcasebrancheq subqbs f sid valE elseE (l,e) = do
+      testValE <- case l of
+                    [x] -> cgexpr subqbs Nothing sid x
+                    _ -> throwE "Invalid case-branch-eq-list"
+      thenE <- cgexpr subqbs f sid e
+      return $ EC.ifThenElse (EC.binop OEqu valE testValE) thenE elseE
+
+    -- Subqueries
     cgsubquery subqbs e =
       case lookup e subqbs of
         Nothing -> throwE $ "Found a subquery without a binding: " ++ show e
-        Just (_, qcl) -> cgclosure qcl >>= \(r,_,_,_) -> return r
+        Just (_, qcl) -> cgclosure qcl >>= \(r, osid, bm, _) -> return (r, osid, bm)
 
     bindingMap l = foldM qualifyBindings (BMTVPartition Map.empty) l
 
@@ -1917,20 +1992,22 @@ sqlcodegen distributed (stmts, stgg) = do
 
     mkPeerInit exprs =
         [DC.trigger "startPeer" TC.unit $ EC.lambda "_" $
-          EC.block $ exprs ++ [EC.send (EC.variable "start") (EC.variable "master") EC.unit]]
+          EC.block $ exprs ++ [EC.send (EC.variable "start") (EC.variable $ if distributed then "master" else "me") EC.unit]]
 
-    mkInit = do
+    mkInit decls = do
       sendsE <- if distributed then
                   let startE = EC.block $ flip map stageinits $ \i ->
                                  EC.applyMany (EC.project "iterate" $ EC.variable "peers")
                                    [EC.lambda "p" $ EC.send (EC.variable $ trig i) (EC.project "addr" $ EC.variable "p") EC.unit]
 
                   in mkCountBarrier startE $ EC.applyMany (EC.project "size" $ EC.variable "peers") [EC.unit]
-                else return $ EC.block $ map (\i -> EC.send (EC.variable $ trig i) (EC.variable "me") EC.unit) stageinits
+                else return $ EC.block $ map (\i -> EC.send (EC.variable i) (EC.variable "me") EC.unit) $ foldl declTriggers [] decls
 
       return $ [DC.trigger "start" TC.unit $ EC.lambda "_" $
                   EC.block $ [EC.unit @+ EApplyGen True "SQL" Map.empty, sendsE]]
 
+    declTriggers acc (tag -> DTrigger i _ _) = acc ++ [i]
+    declTriggers acc _ = acc
 
 sqlstringify :: [SQLDecl] -> SQLParseM [String]
 sqlstringify stmts = mapM prettystmt stmts
@@ -2000,7 +2077,7 @@ concatE sid bm iOpt = do
     (Just i, BMTPrefix j) -> return $ EC.project j $ EC.variable i
     (Just i, BMTFieldMap fb) -> namedRecordE i fb ids
     (_, BMTVPartition pb) -> compositeRecordE pb ids
-    _ -> throwE "Invalid binding variable in bindE"
+    _ -> throwE "Invalid binding variable in concatE"
 
 aggE :: Identifier -> (Identifier, K3 Expression) -> (Identifier, K3 Expression)
 aggE i (f, e) = (f, EC.applyMany e [EC.project f $ EC.variable i])
@@ -2018,24 +2095,36 @@ zeroT [] = return TC.unit
 zeroT [(_,t)] = return t
 zeroT l = return $ recT l
 
+zeroSQLE :: Maybe ScopeId -> ScalarExpr -> SQLParseM (K3 Expression)
+zeroSQLE sidOpt e = scalarexprType sidOpt e >>= \t -> either throwE return $ defaultExpression t
+
 -- TODO: gensym
-memoE :: K3 Expression -> (K3 Expression -> K3 Expression) -> K3 Expression
+memoE :: K3 Expression -> (K3 Expression -> SQLParseM (K3 Expression)) -> SQLParseM (K3 Expression)
 memoE srcE bodyF = case tag srcE of
   EConstant _ -> bodyF srcE
   EVariable _ -> bodyF srcE
-  _ -> EC.letIn "__memo" (immutE srcE) $ bodyF $ EC.variable "__memo"
+  _ -> do { be <- bodyF $ EC.variable "__memo";
+            return $ EC.letIn "__memo" (immutE srcE) $ be }
 
-matchE :: K3 Expression -> K3 Expression -> K3 Expression
-matchE elemexpr colexpr =
-  memoE (immutE elemexpr) $ \e -> EC.applyMany (EC.project "filter" $ colexpr) [matchF e]
-  where matchF e = EC.lambda "__x" $ EC.binop OEqu (EC.variable "__x") e
+matchE :: ScopeId -> BindingMap -> K3 Expression -> K3 Expression -> SQLParseM (K3 Expression)
+matchE sid bm elemexpr colexpr = do
+  ids <- sqclkupM sid >>= unqualifiedAttrs
+  targetE <- matchTargetE ids
+  memoE (immutE elemexpr) $ \e -> do
+      bodyE <- bindE sid bm (Just "__x") $ EC.binop OEqu targetE e
+      return $ EC.applyMany (EC.project "filter" $ colexpr) [EC.lambda "__x" bodyE]
 
-memberE :: Bool -> K3 Expression -> K3 Expression -> K3 Expression
-memberE asMem elemexpr colexpr  = emptyE (not asMem) $ matchE elemexpr colexpr
+  where matchTargetE [x] = return $ EC.variable x
+        matchTargetE l = throwE $ "Invalid match targets: " ++ show l
 
-emptyE :: Bool -> K3 Expression -> K3 Expression
-emptyE asEmpty colexpr = EC.binop (if asEmpty then OEqu else ONeq)
-  (EC.applyMany (EC.project "size" colexpr) [EC.unit]) $ EC.constant $ CInt 0
+
+memberE :: Bool -> ScopeId -> BindingMap -> K3 Expression -> K3 Expression -> SQLParseM (K3 Expression)
+memberE asMem sid bm elemexpr colexpr = matchE sid bm elemexpr colexpr >>= emptyE (not asMem)
+
+emptyE :: Bool -> K3 Expression -> SQLParseM (K3 Expression)
+emptyE asEmpty colexpr = return $
+  EC.binop (if asEmpty then OEqu else ONeq)
+    (EC.applyMany (EC.project "size" colexpr) [EC.unit]) $ EC.constant $ CInt 0
 
 
 -- | Property construction helper

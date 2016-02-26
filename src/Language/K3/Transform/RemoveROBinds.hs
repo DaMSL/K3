@@ -67,6 +67,7 @@ annotateROBinds e = snd $ runIdentity $ foldMapRebuildTree accumWrite Set.empty 
                                  BRecord idsMap -> map snd idsMap
                                  BTuple  ids'   -> ids'
                                  BIndirection _ -> error "unexpected"
+                                 BSplice _ -> error "Incomplete splice binder"
       -- transmit the set of written ids, and annotate with the ones that aren't written to
           node = Node (t :@: annos @+ (EAnalysis $ ReadOnlyBind $ Set.toList $ Set.difference ids $ accs!!1)) ch
       in return (Set.difference (accs!!1) ids, node)
@@ -128,6 +129,7 @@ transformExpr e = evalState computation 1
           acc'     = (acc `Map.difference` bindIds) `Map.union` roIds'
       return (acc', replicateCh chs acc') -- send to all the other children
 
+    ch1SendProjection acc _ _ (tag -> EBindAs (BSplice ids)) = error "Incomplete splice binder"
     ch1SendProjection acc _ _ (Node _ ch) = return (acc, replicateCh ch acc)
 
     -- Tranform variable accesses -> projections

@@ -17,6 +17,7 @@ module Language.K3.Codegen.CPP.Representation (
   pattern Unit,
   pattern Tuple,
   pattern Void,
+  pattern Box,
 
   Literal(..),
   Capture(..),
@@ -25,6 +26,8 @@ module Language.K3.Codegen.CPP.Representation (
   pattern WRef,
   pattern CRef,
   pattern Move,
+  pattern SCast,
+  pattern CCast,
   pattern TGet,
   pattern Throw,
   pattern ThrowRuntimeErr,
@@ -33,6 +36,7 @@ module Language.K3.Codegen.CPP.Representation (
 
   bind,
   flattenFnType,
+  nameConcat,
 
   Declaration(..),
   Statement(..),
@@ -99,9 +103,9 @@ unaryParens e@(Call _ _) = stringify e
 unaryParens e = parens $ stringify e
 
 data Name
-    = Name Identifier
-    | Qualified Name Name
-    | Specialized [Type] Name
+    = Name !Identifier
+    | Qualified !Name !Name
+    | Specialized ![Type] !Name
   deriving (Eq, Ord, Read, Show)
 
 instance Stringifiable Name where
@@ -123,27 +127,28 @@ instance Stringifiable Primitive where
     stringify PString = stringify (Qualified (Name "K3") $ Name "base_string")
 
 data Type
-    = Const Type
-    | Function [Type] Type
+    = Const           !Type
+    | Function        ![Type] !Type
     | Inferred
-    | Named Name
-    | Parameter Identifier
-    | Pointer Type
-    | Primitive Primitive
-    | Reference Type
-    | RValueReference Type
-    | Static Type
-    | TypeLit Literal
-    | ConstExpr Expression
+    | Named           !Name
+    | Parameter       !Identifier
+    | Pointer         !Type
+    | Primitive       !Primitive
+    | Reference       !Type
+    | RValueReference !Type
+    | Static          !Type
+    | TypeLit         !Literal
+    | ConstExpr       !Expression
   deriving (Eq, Ord, Read, Show)
 
 pattern Address = Named (Name "Address")
-pattern Collection c t = Named (Specialized [t] (Name c))
+pattern Box t = Named (Specialized [t] (Qualified (Name "K3") (Name "Box")))
 pattern Byte = Named (Name "unsigned char")
+pattern Collection c t = Named (Specialized [t] (Name c))
 pattern SharedPointer t = Named (Specialized [t] (Name "shared_ptr"))
+pattern Tuple ts = Named (Specialized ts (Qualified (Name "std") (Name "tuple")))
 pattern UniquePointer t = Named (Specialized [t] (Name "unique_ptr"))
 pattern Unit = Named (Name "unit_t")
-pattern Tuple ts = Named (Specialized ts (Qualified (Name "std") (Name "tuple")))
 pattern Void = Named (Name "void")
 
 flattenFnType :: Type -> Type
@@ -168,11 +173,11 @@ instance Stringifiable Type where
     stringify (ConstExpr e) = stringify e
 
 data Literal
-    = LBool Bool
-    | LChar String
-    | LInt Int
-    | LDouble Double
-    | LString String
+    = LBool   !Bool
+    | LChar   !String
+    | LInt    !Int
+    | LDouble !Double
+    | LString !String
     | LNullptr
   deriving (Eq, Ord, Read, Show)
 
@@ -185,8 +190,8 @@ instance Stringifiable Literal where
     stringify (LNullptr) = "nullptr"
 
 data Capture
-    = ValueCapture (Maybe (Identifier, Maybe Expression))
-    | RefCapture (Maybe (Identifier, Maybe Expression))
+    = ValueCapture !(Maybe (Identifier, Maybe Expression))
+    | RefCapture   !(Maybe (Identifier, Maybe Expression))
     | ThisCapture
   deriving (Eq, Ord, Read, Show)
 
@@ -202,19 +207,19 @@ instance Stringifiable Capture where
 type IsMutable = Bool
 
 data Expression
-    = Binary Identifier Expression Expression
-    | Bind Expression [Expression] Int
-    | Call Expression [Expression]
-    | Dereference Expression
-    | TakeReference Expression
-    | Initialization Type [Expression]
-    | Lambda [Capture] [(Maybe Identifier, Type)] IsMutable (Maybe Type) [Statement]
-    | Literal Literal
-    | Project Expression Name
-    | Subscript Expression Expression
-    | Unary Identifier Expression
-    | Variable Name
-    | ExprOnType Type
+    = Binary         !Identifier !Expression !Expression
+    | Bind           !Expression ![Expression] !Int
+    | Call           !Expression ![Expression]
+    | Dereference    !Expression
+    | TakeReference  !Expression
+    | Initialization !Type ![Expression]
+    | Lambda         ![Capture] ![(Maybe Identifier, Type)] !IsMutable !(Maybe Type) ![Statement]
+    | Literal        !Literal
+    | Project        !Expression !Name
+    | Subscript      !Expression !Expression
+    | Unary          !Identifier !Expression
+    | Variable       !Name
+    | ExprOnType     !Type
   deriving (Eq, Ord, Read, Show)
 
 instance Stringifiable Expression where
@@ -229,7 +234,10 @@ instance Stringifiable Expression where
     stringify (Call e as) = stringify e <> parens (commaSep $ map stringify as)
     stringify (Dereference e) = fromString "*" <> unaryParens e
     stringify (TakeReference e) = fromString "&" <> unaryParens e
-    stringify (Initialization t es) = stringify t <+> braces (commaSep $ map stringify es)
+    stringify (Initialization t es) =
+      case t of
+        Box bt -> stringify $ Call (Variable $ Specialized [bt] $ Qualified (Name "K3") (Name "make_box")) es
+        _ -> stringify t <+> braces (commaSep $ map stringify es)
     stringify (Lambda cs as mut rt bd) = cs' <+> as' <+> mut' <> rt' <> bd'
       where
         cs'  = brackets $ commaSep (map stringify cs)
@@ -251,6 +259,8 @@ instance Stringifiable Expression where
 pattern WRef e = Call (Variable (Qualified (Name "std") (Name "ref"))) [e]
 pattern CRef e = Call (Variable (Qualified (Name "std") (Name "cref"))) [e]
 pattern Move e = Call (Variable (Qualified (Name "std") (Name "move"))) [e]
+pattern SCast t e = Call (Variable (Specialized [t] (Name "static_cast"))) [e]
+pattern CCast t e = Call (Variable (Specialized [t] (Name "const_cast"))) [e]
 pattern TGet e n = Call (Variable (Qualified (Name "std") (Specialized [TypeLit (LInt n)] (Name "get")))) [e]
 pattern Throw e  = Call (Variable (Name "throw")) [e]
 pattern ThrowRuntimeErr s = Call (Variable (Name "throw"))
@@ -267,11 +277,11 @@ bind f a n = Call (Variable (Qualified (Name "std") (Name "bind")))
                       ])
 
 data Declaration
-    = ClassDecl Name
-    | FunctionDecl Name [Type] Type
-    | ScalarDecl Name Type (Maybe Expression)
-    | TemplateDecl [(Identifier, Maybe Type)] Declaration
-    | UsingDecl (Either Name Name) (Maybe Name)
+    = ClassDecl    !Name
+    | FunctionDecl !Name ![Type] !Type
+    | ScalarDecl   !Name !Type !(Maybe Expression)
+    | TemplateDecl ![(Identifier, Maybe Type)] !Declaration
+    | UsingDecl    !(Either Name Name) !(Maybe Name)
   deriving (Eq, Ord, Read, Show)
 
 instance Stringifiable Declaration where
@@ -290,15 +300,15 @@ instance Stringifiable Declaration where
         rightAlias = maybe empty (\i -> space <> equals <+> stringify i) mn
 
 data Statement
-    = Assignment Expression Expression
-    | Block [Statement]
-    | Comment String
-    | ForEach Identifier Type Expression Statement
-    | Forward Declaration
-    | IfThenElse Expression [Statement] [Statement]
-    | Ignore Expression
-    | Pragma String
-    | Return Expression
+    = Assignment !Expression !Expression
+    | Block      ![Statement]
+    | Comment    !String
+    | ForEach    !Identifier !Type !Expression !Statement
+    | Forward    !Declaration
+    | IfThenElse !Expression ![Statement] ![Statement]
+    | Ignore     !Expression
+    | Pragma     !String
+    | Return     !Expression
   deriving (Eq, Ord, Read, Show)
 
 instance Stringifiable Statement where
@@ -319,14 +329,14 @@ instance Stringifiable Statement where
 type IsConst = Bool
 
 data Definition
-    = ClassDefn Name [Type] [Type] [Definition] [Definition] [Definition]
-    | FunctionDefn Name [(Maybe Identifier, Type)] (Maybe Type) [Expression] IsConst [Statement]
-    | GlobalDefn Statement
-    | GuardedDefn Identifier Definition
-    | IncludeDefn Identifier
-    | NamespaceDefn Identifier [Definition]
-    | TemplateDefn [(Identifier, Maybe Type)] Definition
-    | TypeDefn Type Identifier
+    = ClassDefn     !Name ![Type] ![Type] ![Definition] ![Definition] ![Definition]
+    | FunctionDefn  !Name ![(Maybe Identifier, Type)] !(Maybe Type) ![Expression] !IsConst ![Statement]
+    | GlobalDefn    !Statement
+    | GuardedDefn   !Identifier !Definition
+    | IncludeDefn   !Identifier
+    | NamespaceDefn !Identifier ![Definition]
+    | TemplateDefn  ![(Identifier, Maybe Type)] !Definition
+    | TypeDefn      !Type !Identifier
   deriving (Eq, Read, Show)
 
 instance Stringifiable Definition where
@@ -454,3 +464,9 @@ instance Substitutable Declaration where
     ScalarDecl n t me -> ScalarDecl (subst new old n) (subst new old t) (subst new old <$> me)
     TemplateDecl imts d -> TemplateDecl [(i, subst new old <$> mt) | (i, mt) <- imts] (subst new old d)
     UsingDecl enn mn -> UsingDecl (subst new old <$> enn) (subst new old <$> mn)
+
+nameConcat :: String -> Name -> Name
+nameConcat p s = case s of
+  Name k -> Name (p ++ k)
+  Qualified q k -> Qualified q (nameConcat p k)
+  Specialized ts k -> Specialized ts (nameConcat p k)

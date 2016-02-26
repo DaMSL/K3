@@ -2,7 +2,9 @@
 #define K3_MULTIINDEX
 
 #include <math.h>
+#include <memory>
 #include <random>
+#include <scoped_allocator>
 
 #include <boost/serialization/base_object.hpp>
 #include <boost/multi_index_container.hpp>
@@ -25,6 +27,17 @@
 #include <yas/binary_oarchive.hpp>
 #include <yas/serializers/std_types_serializers.hpp>
 #include <yas/serializers/boost_types_serializers.hpp>
+
+#include "types/BaseString.hpp"
+
+#ifdef BSL_ALLOC
+#include <bsl_memory.h>
+#include <bsls_blockgrowth.h>
+#include <bdlma_multipoolallocator.h>
+#include <bdlma_sequentialallocator.h>
+#include <bdlma_localsequentialallocator.h>
+#include <bdlma_countingallocator.h>
+#endif
 
 namespace K3 {
 template <class F, typename... Args> using RT = typename std::result_of<F(Args...)>::type;
@@ -137,7 +150,7 @@ class MultiIndexDS {
   }
 
   // Split the ds at its midpoint
-  tuple<Derived<Elem, Indexes...>, Derived<Elem, Indexes...>> split(const unit_t&) const {
+  std::tuple<Derived<Elem, Indexes...>, Derived<Elem, Indexes...>> split(const unit_t&) const {
     // Find midpoint
     const size_t size = container.size();
     const size_t half = size / 2;
@@ -193,7 +206,7 @@ class MultiIndexDS {
   Derived<R_key_value<RT<F1, Elem>,Z>> group_by(F1 grouper, F2 folder, const Z& init) const {
     // Create a map to hold partial results
     typedef RT<F1, Elem> K;
-    unordered_map<K, Z> accs;
+    std::unordered_map<K, Z> accs;
 
     for (const auto& elem : container) {
        K key = grouper(elem);
@@ -497,8 +510,26 @@ class MultiIndexMap : public MultiIndexDS<K3::MultiIndexMap, R, HashUniqueIndex<
 };
 
 
+#ifdef BSL_ALLOC
+  template <typename... T>
+  using s_alloc = std::scoped_allocator_adaptor<bsl::allocator<T>...>;
+#else
+  template <typename... T>
+  using s_alloc = std::scoped_allocator_adaptor<std::allocator<T>...>;
+#endif
+
+template <typename Version, typename V>
+using vmap_alloc = s_alloc<std::pair<Version, V>>;
+
+template<typename Version, typename V>
+using VMContainer = std::map<Version, V, std::greater<Version>, vmap_alloc<Version, V>>;
+
 template<typename R, typename Version> using VElem
-  = std::tuple<typename R::KeyType, std::map<Version, R, std::greater<Version>>>;
+  = std::tuple<typename R::KeyType, VMContainer<Version, R>>;
+
+template<typename R, typename Version>
+using midx_alloc = s_alloc<VElem<R, Version>, vmap_alloc<Version, R>>;
+
 
 // MultiIndexVMap tags and extractors.
 struct vmapkey {};
@@ -507,7 +538,7 @@ template<typename R, typename Version>
 struct VKeyExtractor
 {
 public:
-  typedef typename R::KeyType result_type;
+  typedef const typename R::KeyType& result_type;
 
   VKeyExtractor() {}
 
@@ -516,6 +547,23 @@ public:
   }
 };
 
+// Allocators.
+#ifdef BSL_ALLOC
+  #ifdef BSEQ
+  extern thread_local BloombergLP::bdlma::SequentialAllocator* mpool;
+  #elif BPOOLSEQ
+  extern thread_local BloombergLP::bdlma::SequentialAllocator* seqpool;
+  extern thread_local BloombergLP::bdlma::MultipoolAllocator* mpool;
+  #elif BLOCAL
+  constexpr size_t lsz = 2<<14;
+  extern thread_local BloombergLP::bdlma::LocalSequentialAllocator<lsz>* mpool;
+  #elif BCOUNT
+  extern thread_local BloombergLP::bdlma::CountingAllocator* mpool;
+  #else
+  extern thread_local BloombergLP::bdlma::MultipoolAllocator* mpool;
+  #endif
+#endif
+
 template <typename R, typename... Indexes>
 class MultiIndexVMap
 {
@@ -523,11 +571,11 @@ class MultiIndexVMap
   using Version = int;
 
  protected:
-  using Key     = typename R::KeyType;
-  using Elem    = VElem<R, Version>;
+  using Key  = typename R::KeyType;
+  using Elem = VElem<R, Version>;
 
   template<typename E>
-  using VContainer = std::map<Version, E, std::greater<Version>>;
+  using VContainer = VMContainer<Version, E>;
   using VMap = VContainer<R>;
 
   using HashUniqueVKeyIndex =
@@ -536,23 +584,45 @@ class MultiIndexVMap
 
   typedef boost::multi_index_container<
     Elem,
-    boost::multi_index::indexed_by<
-      HashUniqueVKeyIndex,
-      Indexes...>
+    boost::multi_index::indexed_by<HashUniqueVKeyIndex, Indexes...>,
+    midx_alloc<R, Version>
   > Container;
 
   typedef typename Container::iterator iterator;
 
+  // Allocators.
+  #ifdef BSL_ALLOC
+    using IAlloc = bsl::allocator<std::pair<Version, R>>;
+    using OAlloc = bsl::allocator<VElem<R, Version>>;
+    IAlloc ialloc;
+    OAlloc oalloc;
+  #else
+    std::allocator<std::pair<Version, R>> ialloc;
+    std::allocator<VElem<R, Version>> oalloc;
+  #endif
+
+  vmap_alloc<Version, R> scialloc;
+  midx_alloc<R, Version> scoalloc;
+
   Container container;
 
  public:
-  MultiIndexVMap(): container() {}
+  MultiIndexVMap() :
+    #ifdef BSL_ALLOC
+      ialloc(mpool),
+      oalloc(mpool),
+    #endif
+    scialloc(ialloc),
+    scoalloc(oalloc, scialloc),
+    container(scoalloc)
+  {}
+
   MultiIndexVMap(const Container& con): container(con) {}
   MultiIndexVMap(Container&& con): container(std::move(con)) {}
 
   // Construct from (container) iterators
   template<typename Iterator>
-  MultiIndexVMap(Iterator begin, Iterator end): container(begin,end) {}
+  MultiIndexVMap(Iterator begin, Iterator end): container(begin,end,scoalloc) {}
 
   R elemToRecord(const Elem& e) const {
     auto& vmap = std::get<1>(e);
@@ -620,7 +690,8 @@ class MultiIndexVMap
     auto existing = container.find(q.key);
     if ( existing == container.end() ) {
       Key k = q.key;
-      VMap vmap; vmap[v] = std::forward<Q>(q);
+      VMap vmap(scialloc);
+      vmap[v] = std::forward<Q>(q);
       container.emplace(std::move(std::make_tuple(std::move(k), std::move(vmap))));
     } else {
       container.modify(existing, [&](auto& elem){
@@ -641,7 +712,6 @@ class MultiIndexVMap
         if ( vit != vmap.end() ) {
           vmap.erase(vit);
           do_insert = true;
-        } else {
         }
       });
       if ( do_insert ) {
@@ -673,16 +743,17 @@ class MultiIndexVMap
     auto existing = container.find(rec.key);
     if ( existing == container.end() ) {
       Key k = rec.key;
-      VMap vmap; vmap[v] = rec;
+      VMap vmap(scialloc);
+      vmap[v] = rec;
       container.emplace(std::move(std::make_tuple(std::move(k), std::move(vmap))));
     } else {
       container.modify(existing, [&](auto& elem){
         auto& vmap = std::get<1>(elem);
         auto vexisting = vmap.find(v);
         if ( vexisting == vmap.end() ) {
-          vmap[v] = rec;
+	        vmap.insert(vexisting, std::make_pair(v, rec));
         } else {
-          vmap[v] = f(std::move(vexisting->second), rec);
+	        vexisting->second = f(std::move(vexisting->second), rec);
         }
       });
     }
@@ -694,16 +765,17 @@ class MultiIndexVMap
     auto existing = container.find(rec.key);
     if ( existing == container.end() ) {
       Key k = rec.key;
-      VMap vmap; vmap[v] = f(unit_t {});
+      VMap vmap(scialloc);
+      vmap[v] = f(unit_t {});
       container.emplace(std::move(std::make_tuple(std::move(k), std::move(vmap))));
     } else {
       container.modify(existing, [&](auto& elem){
         auto& vmap = std::get<1>(elem);
         auto vexisting = vmap.find(v);
         if ( vexisting == vmap.end() ) {
-          vmap[v] = f(unit_t {});
+	        vmap.insert(vexisting, std::make_pair(v, f(unit_t{})));
         } else {
-          vmap[v] = g(std::move(vexisting->second));
+          vexisting->second = g(std::move(vexisting->second));
         }
       });
     }
@@ -757,16 +829,17 @@ class MultiIndexVMap
     auto existing = container.find(rec.key);
     if ( existing == container.end() ) {
       Key k = rec.key;
-      VMap vmap; vmap[v] = f(unit_t {});
+      VMap vmap(scialloc);
+      vmap[v] = f(unit_t {});
       container.emplace(std::move(std::make_tuple(std::move(k), std::move(vmap))));
     } else {
       container.modify(existing, [&](auto& elem){
         auto& vmap = std::get<1>(elem);
         auto vit = vmap.upper_bound(v);
         if ( vit == vmap.end() ) {
-          vmap[v] = f(unit_t {});
+	        vmap.insert(vit, std::make_pair(v, f(unit_t{})));
         } else {
-          vmap[v] = g(std::move(vit->second));
+          vit->second = g(std::move(vit->second));
         }
       });
     }
@@ -809,7 +882,7 @@ class MultiIndexVMap
     return unit_t();
   }
 
-  // Inclusive update greater than a given version.
+  // Update (strictly) greater than a given version.
   template <class F>
   unit_t update_after(const Version& v, const R& rec, F f) {
     auto it = container.find(rec.key);
@@ -819,7 +892,7 @@ class MultiIndexVMap
         auto vstart = vmap.begin();
         auto vlteq  = vmap.lower_bound(v);
         for (; vstart != vlteq; vstart++) {
-          vmap[vstart->first] = f(vstart->first, std::move(vstart->second));
+          vstart->second = f(vstart->first, std::move(vstart->second));
         }
       });
     }
@@ -830,17 +903,16 @@ class MultiIndexVMap
   //////////////////////////////////
   // Most-recent version methods.
 
-  shared_ptr<R> peek_now(const unit_t&) const {
-    shared_ptr<R> res(nullptr);
+  template<typename F, typename G>
+  auto peek_now(F f, G g) const {
     for (const auto& elem : container) {
       auto& vmap = std::get<1>(elem);
       auto vit = vmap.begin();
       if ( vit != vmap.end() ) {
-        res = std::make_shared<R>(vit->second);
-        break;
+        return g(vit->second);
       }
     }
-    return res;
+    return f(unit_t {});
   }
 
 
@@ -912,7 +984,7 @@ class MultiIndexVMap
     return result;
   }
 
-  tuple<MultiIndexVMap, MultiIndexVMap> split(const unit_t&) const {
+  std::tuple<MultiIndexVMap, MultiIndexVMap> split(const unit_t&) const {
     // Find midpoint
     const size_t size = container.size();
     const size_t half = size / 2;
@@ -981,7 +1053,7 @@ class MultiIndexVMap
   {
     // Create a map to hold partial results
     using K = RT<F1, R>;
-    unordered_map<K, VContainer<Z>> accs;
+    std::unordered_map<K, VContainer<Z>> accs;
 
     for (const auto& elem : container) {
       auto& vmap = std::get<1>(elem);
@@ -1170,20 +1242,45 @@ class MultiIndexVMap
   template<class Archive>
   void serialize(Archive &ar) const {
     ar.write(container.size());
-    for (const auto& elem : container) {
-      ar & elem;
+    for (const auto& tup: container) {
+      // Write the key
+      const Key& k = std::get<0>(tup);
+      ar & k;
+
+      // Write the inner map: a size, then individual keys and values
+      const auto& map = std::get<1>(tup);
+      ar.write(map.size());
+      for (const auto& elem : map) {
+        ar & elem.first;
+	ar & elem.second;
+      }
     }
   }
 
   template<class Archive>
   void serialize(Archive &ar) {
-    size_t sz = 0;
-    ar.read(sz);
-    while ( sz > 0 ) {
-      Elem elem;
-      ar & elem;
-      container.emplace(elem);
-      sz--;
+    size_t out_sz = 0;
+    ar.read(out_sz);
+    while ( out_sz > 0 ) {
+      // Read the key
+      Key k;
+      ar & k;
+
+      // Read the Inner Map
+      size_t in_sz = 0;
+      ar.read(in_sz);
+      VMap inner;
+      while (in_sz > 0) {
+        typename VMap::key_type k;
+        typename VMap::mapped_type v;
+	ar & k;
+	ar & v;
+	auto pair = std::make_pair(std::move(k), std::move(v));
+	inner.insert(std::move(pair));
+	in_sz--;
+      }
+      container.emplace(std::make_tuple<Key, VMap>(std::move(k), std::move(inner)));
+      out_sz--;
     }
   }
 

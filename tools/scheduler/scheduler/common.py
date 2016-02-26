@@ -1,11 +1,11 @@
 import logging
 import datetime
 import uuid
-from enum import enum, Enum
+import enum
 
 
 heartbeat_delay = 60  # secs. move to common
-gc_delay = 15
+gc_delay = 300
 offer_wait = 5
 
 
@@ -28,20 +28,13 @@ def getUID():
 
 roleParameters = ['peers_per_host', 'mem', 'cpu']
 
-
-
-
-
 CompileServiceState = enum.Enum('Service', 'DOWN INIT DISPATCH MASTER_WAIT WORKER_WAIT UP')
 
 CompileState = enum.Enum('CompileState', 'INIT DISPATCH CLIENT_WAIT SUBMIT COMPILE UPLOAD COMPLETE FAILED KILLED')
 compileTerminatedStates = ['COMPLETE', 'FAILED', 'KILLED']
 
-
-
-
 compileStageValues = ['both', 'cpp', 'bin']
-class CompileStage(Enum):
+class CompileStage(enum.Enum):
   FIRST = '-1'
   SECOND = '-2'
   BOTH = ''

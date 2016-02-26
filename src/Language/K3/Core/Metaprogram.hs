@@ -14,8 +14,8 @@ import Data.Serialize
 
 import Data.Either
 import Data.List
-import qualified Data.Map as Map
-import Data.Map ( Map )
+import qualified Data.Map.Strict as Map
+import Data.Map.Strict ( Map )
 import Data.Typeable
 
 import GHC.Generics (Generic)
@@ -38,44 +38,49 @@ import Language.K3.Utils.Pretty
 -}
 
 data SpliceType = STLabel
+                | STBinder
                 | STType
                 | STExpr
                 | STDecl
                 | STLiteral
-                | STRecord NamedSpliceTypes
-                | STList   SpliceType
+                | STRecord !NamedSpliceTypes
+                | STList   !SpliceType
                 deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
-data SpliceValue = SVar     Identifier
-                 | SLabel   Identifier
-                 | SType    (K3 Type)
-                 | SExpr    (K3 Expression)
-                 | SDecl    (K3 Declaration)
-                 | SLiteral (K3 Literal)
-                 | SRecord  NamedSpliceValues
-                 | SList    [SpliceValue]
+data SpliceValue = SVar     !Identifier
+                 | SLabel   !Identifier
+                 | SBinder  !Binder
+                 | SType    !(K3 Type)
+                 | SExpr    !(K3 Expression)
+                 | SDecl    !(K3 Declaration)
+                 | SLiteral !(K3 Literal)
+                 | SRecord  !NamedSpliceValues
+                 | SList    ![SpliceValue]
                  deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 type NamedSpliceValues = Map Identifier SpliceValue
 type NamedSpliceTypes  = Map Identifier SpliceType
 type TypedSpliceVar    = (SpliceType, Identifier)
 
-data SpliceDeclGenerator m = SGNamed            Identifier
-                           | SGDecl             (K3 Declaration)
+data SpliceDeclGenerator m = SGNamed            !Identifier
+                           | SGDecl             !(K3 Declaration)
                            | SGContentDependent (K3 Type -> m (SpliceDeclGenerator m))
 
-data SpliceResult m = SRType    (m (K3 Type))
-                    | SRExpr    (m (K3 Expression))
-                    | SRDecl    (m (K3 Declaration))
-                    | SRGenDecl (m (SpliceDeclGenerator m))
-                    | SRLiteral (m (K3 Literal))
-                    | SRRewrite (m (K3 Expression, [K3 Declaration]), SpliceEnv)
+data SpliceResult m = SRType    !(m (K3 Type))
+                    | SRExpr    !(m (K3 Expression))
+                    | SRDecl    !(m (K3 Declaration))
+                    | SRGenDecl !(m (SpliceDeclGenerator m))
+                    | SRLiteral !(m (K3 Literal))
+                    | SRRewrite !(m (K3 Expression, [K3 Declaration]), SpliceEnv)
 
-data MPDeclaration = MPDataAnnotation Identifier [TypedSpliceVar] [TypeVarDecl] [Either MPAnnMemDecl AnnMemDecl]
-                   | MPCtrlAnnotation Identifier [TypedSpliceVar] [PatternRewriteRule] [K3 Declaration]
+data MPDeclaration = MPDataAnnotation !Identifier ![TypedSpliceVar] ![TypeVarDecl] ![Either MPAnnMemDecl AnnMemDecl]
+                   | MPCtrlAnnotation !Identifier ![TypedSpliceVar] ![PatternRewriteRule] ![Either MPRewriteDecl (K3 Declaration)]
                    deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
-data MPAnnMemDecl = MPAnnMemDecl Identifier SpliceValue [AnnMemDecl]
+data MPRewriteDecl = MPRewriteDecl !Identifier !SpliceValue ![K3 Declaration]
+                   deriving (Eq, Ord, Read, Show, Typeable, Generic)
+
+data MPAnnMemDecl = MPAnnMemDecl !Identifier !SpliceValue ![AnnMemDecl]
                   deriving (Eq, Ord, Read, Show, Typeable, Generic)
 
 type SpliceEnv     = Map Identifier SpliceValue
@@ -85,16 +90,19 @@ type SpliceContext = [SpliceEnv]
 instance NFData SpliceType
 instance NFData SpliceValue
 instance NFData MPDeclaration
+instance NFData MPRewriteDecl
 instance NFData MPAnnMemDecl
 
 instance Binary SpliceType
 instance Binary SpliceValue
 instance Binary MPDeclaration
+instance Binary MPRewriteDecl
 instance Binary MPAnnMemDecl
 
 instance Serialize SpliceType
 instance Serialize SpliceValue
 instance Serialize MPDeclaration
+instance Serialize MPRewriteDecl
 instance Serialize MPAnnMemDecl
 
 instance Pretty MPDeclaration where
@@ -129,8 +137,13 @@ instance Pretty MPDeclaration where
 
       extensionPrefix tagStr = "+> " ++ (if null tagStr then "" else "(" ++ tagStr ++ ")")
 
-      nonTermExt tagStr d = shift (extensionPrefix tagStr) "|  " $ prettyLines d
-      termExt    tagStr d = shift (extensionPrefix tagStr) "   " $ prettyLines d
+      nonTermExt tagStr d = shift (extensionPrefix tagStr) "|  " $ either prettyLines prettyLines d
+      termExt    tagStr d = shift (extensionPrefix tagStr) "   " $ either prettyLines prettyLines d
+
+instance Pretty MPRewriteDecl where
+  prettyLines (MPRewriteDecl i c decls) =
+    ["MPRewriteDecl " ++ i] ++ ["|"] ++ nonTerminalShift c
+      ++ (if null decls then [] else drawSubTrees decls)
 
 instance Pretty MPAnnMemDecl where
   prettyLines (MPAnnMemDecl i c mems) =
@@ -193,8 +206,11 @@ recordElemsAsList = Map.toList
 mpDataAnnotation :: Identifier -> [TypedSpliceVar] -> [TypeVarDecl] -> [Either MPAnnMemDecl AnnMemDecl] -> MPDeclaration
 mpDataAnnotation n svars tvars mems = MPDataAnnotation n svars tvars mems
 
-mpCtrlAnnotation :: Identifier -> [TypedSpliceVar] -> [PatternRewriteRule] -> [K3 Declaration] -> MPDeclaration
+mpCtrlAnnotation :: Identifier -> [TypedSpliceVar] -> [PatternRewriteRule] -> [Either MPRewriteDecl (K3 Declaration)] -> MPDeclaration
 mpCtrlAnnotation n svars rules extensions = MPCtrlAnnotation n svars rules extensions
+
+mpRewriteDecl :: Identifier -> SpliceValue -> [K3 Declaration] -> MPRewriteDecl
+mpRewriteDecl i c decls = MPRewriteDecl i c decls
 
 mpAnnMemDecl :: Identifier -> SpliceValue -> [AnnMemDecl] -> MPAnnMemDecl
 mpAnnMemDecl i c mems = MPAnnMemDecl i c mems
@@ -243,6 +259,9 @@ spliceVESym  = "expr"
 
 spliceVLSym :: Identifier
 spliceVLSym  = "lit"
+
+spliceVBSym :: Identifier
+spliceVBSym  = "binder"
 
 lookupSpliceE :: Identifier -> SpliceEnv -> Maybe SpliceValue
 lookupSpliceE n senv = Map.lookup n senv
