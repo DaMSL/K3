@@ -86,7 +86,6 @@ class IntMap {
 
     bool operator!=(const map_iterator& other) const { return i != other.i; }
 
-   private:
     mapi* m;
     I i;
   };
@@ -597,10 +596,8 @@ class IntMap {
     new (dest) R(std::move(*static_cast<R*>(src)));
   }
 
- protected:
   shared_ptr<mapi> container;
 
- private:
   friend class boost::serialization::access;
 
   mapi* get_mapi() const {

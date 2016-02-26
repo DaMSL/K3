@@ -26,6 +26,8 @@ module Language.K3.Codegen.CPP.Representation (
   pattern WRef,
   pattern CRef,
   pattern Move,
+  pattern SCast,
+  pattern CCast,
   pattern TGet,
   pattern Throw,
   pattern ThrowRuntimeErr,
@@ -257,6 +259,8 @@ instance Stringifiable Expression where
 pattern WRef e = Call (Variable (Qualified (Name "std") (Name "ref"))) [e]
 pattern CRef e = Call (Variable (Qualified (Name "std") (Name "cref"))) [e]
 pattern Move e = Call (Variable (Qualified (Name "std") (Name "move"))) [e]
+pattern SCast t e = Call (Variable (Specialized [t] (Name "static_cast"))) [e]
+pattern CCast t e = Call (Variable (Specialized [t] (Name "const_cast"))) [e]
 pattern TGet e n = Call (Variable (Qualified (Name "std") (Specialized [TypeLit (LInt n)] (Name "get")))) [e]
 pattern Throw e  = Call (Variable (Name "throw")) [e]
 pattern ThrowRuntimeErr s = Call (Variable (Name "throw"))

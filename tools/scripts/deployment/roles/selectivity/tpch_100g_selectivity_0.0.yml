@@ -7,17 +7,22 @@ privileged: True
 k3_globals:
   role: [{i: rows}]
   master: auto
-  q1_selectivity_date_threshold: 19920102
+
+  # Primary
+  q1_selectivity_shipdate_ubound: 19920103
   q3_selectivity_mktsegments: []
-
   q5_selectivity_regions: []
-  q5_selectivity_date_lbound: 19920102
-  q5_selectivity_date_ubound: 19981201
-
-  q6_selectivity_date_lbound: 19920102
-  q6_selectivity_date_ubound: 19920102
-  q18_selectivity_sum_quantity_threshold: 0
+  q6_selectivity_shipdate_lbound: 19981203
+  q18_selectivity_sum_quantity_lbound: 329
   q22_selectivity_valid_phones: []
+
+  # Secondary
+  q3_selectivity_shipdate_lbound: 19920101
+  q3_selectivity_orderdate_ubound: 19980803
+  q5_selectivity_orderdate_lbound: 19920101
+  q5_selectivity_orderdate_ubound: 19980803
+  q6_selectivity_shipdate_ubound: 19981202
+
 k3_data:
   - {var: dataFiles, path: /local/data/tpch100g/lineitem, policy: global}
   - {var: lineitemFiles, path: /local/data/tpch100g/lineitem, policy: global}

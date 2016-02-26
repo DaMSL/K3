@@ -7,26 +7,23 @@ privileged: True
 k3_globals:
   role: [{i: rows}]
   master: auto
-  q1_selectivity_date_threshold: 19981201
-  q3_selectivity_mktsegments: [ {key: AUTOMOBILE, value: []},
-                                {key: BUILDING, value: []},
-                                {key: FURNITURE, value: []},
-                                {key: HOUSEHOLD, value: []},
-                                {key: MACHINERY, value: []}
-                              ]
 
+  # Primary
+  q1_selectivity_shipdate_ubound: 19981203
+  q3_selectivity_mktsegments: [ {key: AUTOMOBILE, value: []},
+                                {key: BUILDING,   value: []},
+                                {key: FURNITURE,  value: []},
+                                {key: HOUSEHOLD,  value: []},
+                                {key: MACHINERY,  value: []}
+                              ]
   q5_selectivity_regions: [ {key: ASIA, value: []},
                             {key: AMERICA, value: []},
                             {key: EUROPE, value: []},
                             {key: AFRICA, value: []},
                             {key: 'MIDDLE EAST', value: []}
                           ]
-  q5_selectivity_date_lbound: 19920102
-  q5_selectivity_date_ubound: 19981201
-
-  q6_selectivity_date_lbound: 19920102
-  q6_selectivity_date_lbound: 19981201
-  q18_selectivity_sum_quantity_threshold: 0
+  q6_selectivity_shipdate_lbound: 19920101
+  q18_selectivity_sum_quantity_lbound: 255
   q22_selectivity_valid_phones: [ {key: "10", value: ()}, {key: "11", value: ()}, {key: "12", value: ()}, {key: "13", value: ()},
                                   {key: "14", value: ()}, {key: "15", value: ()}, {key: "16", value: ()}, {key: "17", value: ()},
                                   {key: "18", value: ()}, {key: "19", value: ()}, {key: "20", value: ()}, {key: "21", value: ()},
@@ -51,13 +48,21 @@ k3_globals:
                                   {key: "95", value: ()}, {key: "96", value: ()}, {key: "97", value: ()}, {key: "98", value: ()},
                                   {key: "99", value: ()}
                                 ]
+
+  # Secondary
+  q3_selectivity_shipdate_lbound: 19920101
+  q3_selectivity_orderdate_ubound: 19980803
+  q5_selectivity_orderdate_lbound: 19920101
+  q5_selectivity_orderdate_ubound: 19980803
+  q6_selectivity_shipdate_ubound: 19981202
+
 k3_data:
   - {var: dataFiles, path: /local/data/tpch100g/lineitem, policy: global}
   - {var: lineitemFiles, path: /local/data/tpch100g/lineitem, policy: global}
-  - {var: customerFiles, path: /local/data/tpch100g/customer, policy: global}  
-  - {var: ordersFiles, path: /local/data/tpch100g/orders, policy: global}  
-  - {var: supplierFiles, path: /local/data/tpch100g/supplier, policy: global}  
-  - {var: partsuppFiles, path: /local/data/tpch100g/partsupp, policy: global}  
-  - {var: partFiles, path: /local/data/tpch100g/part, policy: global}  
+  - {var: customerFiles, path: /local/data/tpch100g/customer, policy: global}
+  - {var: ordersFiles, path: /local/data/tpch100g/orders, policy: global}
+  - {var: supplierFiles, path: /local/data/tpch100g/supplier, policy: global}
+  - {var: partsuppFiles, path: /local/data/tpch100g/partsupp, policy: global}
+  - {var: partFiles, path: /local/data/tpch100g/part, policy: global}
   - {var: regionFiles, path: /local/data/tpch100g/region, policy: replicate}
   - {var: nationFiles, path: /local/data/tpch100g/nation, policy: replicate}

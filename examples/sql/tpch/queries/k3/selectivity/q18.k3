@@ -44,7 +44,7 @@ order by
 *          (filter . group lineitem)
 ****************************/
 
-declare q18_selectivity_sum_quantity_threshold: int = 300
+declare q18_selectivity_sum_quantity_lbound: int = 300
 
 declare lineitem_r : lineitem_r
 declare customer_r : customer_r
@@ -94,7 +94,7 @@ trigger lineitem_having : () = \_ -> (
       clear_expr  = [$ lineitem = empty q18_lineitem_r @Collection ],
       peer_next   = [$ (\result -> (
                           print "LI shuffle done." ;
-                          li_having_result = result.filter (\okq -> okq.value > q18_selectivity_sum_quantity_threshold)
+                          li_having_result = result.filter (\okq -> okq.value > q18_selectivity_sum_quantity_lbound)
                         )) ],
       next        = [$ (print "LI shuffle all nodes finished"; (lineitem_orders, me) <- ()) ],
       merge       = [$ (\a -> \b -> a + b)],
@@ -261,18 +261,7 @@ trigger loc_aggregate : loc_q_by_ncodt_map = \vals -> (
 )
 
 typedef q18_result = collection {name: string, custkey: int, orderkey: int, orderdate:string, totalprice: real, sum: real} @Collection
-declare finalize : collection {key: address, value: q18_result} @Map -> () = \x -> (
-  (x.iterate (\t ->
-    t.value.iterate (\v ->
-      (results_sink, me) <- (v.name,
-                             v.custkey,
-                             v.orderkey,
-                             v.orderdate,
-                             v.totalprice,
-                             v.sum)
-    )
-   ))
-)
+declare finalize : collection {key: address, value: q18_result} @Map -> () = \x -> ()
 
 trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   nodes                = [$ peers ],
@@ -288,12 +277,8 @@ trigger start : () = \_ -> (() @:Start) @TPCHBenchmarkWithoutMaster(
   preFinishExpr        = [$ (q18_peer_result.iterate(\r ->
                               results.insert { name: r.key.nm, custkey: r.key.ck, orderkey: r.key.ok
                                              , orderdate: tpch_date_to_string r.key.od, totalprice: r.key.tp, sum: r.value} )
-                            ); (
-                            (ignore results) @GatherCollection(
-                                   lbl       = [# result]
-                                  , nodes    = [$ peers]
-                                  , next     = [$ (\a -> (finalize a; peers.iterate (\p -> (shutdown, p.addr) <- ()))) ])
-                            )
+                            );
+                            (peers.iterate (\p -> (shutdown, p.addr) <- ()))
                          ],
   preShutdownExpr      = [$ () ],
   finishAsShutdownExpr = [$ false]

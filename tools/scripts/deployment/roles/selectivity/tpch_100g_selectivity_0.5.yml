@@ -7,16 +7,14 @@ privileged: True
 k3_globals:
   role: [{i: rows}]
   master: auto
-  q1_selectivity_date_threshold: 19950618
+
+  # Primary
+  q1_selectivity_shipdate_ubound: 19950618
   q3_selectivity_mktsegments: [{key: AUTOMOBILE, value: []}, {key: BUILDING, value: []}, {key: FURNITURE, value: []}]
 
   q5_selectivity_regions: [{key: ASIA, value: []}, {key: AMERICA, value: []}, {key: EUROPE, value: []}]
-  q5_selectivity_date_lbound: 19920102
-  q5_selectivity_date_ubound: 19981201
-
-  q6_selectivity_date_lbound: 19920102
-  q6_selectivity_date_lbound: 19950618
-  q18_selectivity_sum_quantity_threshold: 0
+  q6_selectivity_shipdate_lbound: 19950618
+  q18_selectivity_sum_quantity_lbound: 291
   q22_selectivity_valid_phones: [ {key: "10", value: ()}, {key: "11", value: ()}, {key: "12", value: ()}, {key: "13", value: ()},
                                   {key: "14", value: ()}, {key: "15", value: ()}, {key: "16", value: ()}, {key: "17", value: ()},
                                   {key: "18", value: ()}, {key: "19", value: ()}, {key: "20", value: ()}, {key: "21", value: ()},
@@ -28,6 +26,14 @@ k3_globals:
                                   {key: "42", value: ()}, {key: "43", value: ()}, {key: "44", value: ()}, {key: "45", value: ()},
                                   {key: "46", value: ()}, {key: "47", value: ()}, {key: "48", value: ()}, {key: "49", value: ()},
                                 ]
+
+  # Secondary
+  q3_selectivity_shipdate_lbound: 19920101
+  q3_selectivity_orderdate_ubound: 19980803
+  q5_selectivity_orderdate_lbound: 19920101
+  q5_selectivity_orderdate_ubound: 19980803
+  q6_selectivity_date_ubound: 19981202
+
 k3_data:
   - {var: dataFiles, path: /local/data/tpch100g/lineitem, policy: global}
   - {var: lineitemFiles, path: /local/data/tpch100g/lineitem, policy: global}

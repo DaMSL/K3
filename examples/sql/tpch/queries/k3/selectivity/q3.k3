@@ -31,6 +31,9 @@ order by
 declare q3_selectivity_mktsegments: collection { key: string, value: () } @ StrMap
   = {| key: string, value: () | {key: "BUILDING", value: ()} |} @ StrMap
 
+declare q3_selectivity_shipdate_lbound: int = 19950315
+declare q3_selectivity_orderdate_ubound: int = 19950315
+
 declare master : address
 
 declare lineitem_r : lineitem_r
@@ -75,7 +78,7 @@ trigger lineitem_orders : () = \_ -> (
       , rhs_ht_id            = [# lo_rhs_ht ]
 
       , lhs_sample_query     = [$ lineitem.sample (\acc -> \l ->
-                                                    if l.l_shipdate > 19950315 then
+                                                    if l.l_shipdate > q3_selectivity_shipdate_lbound then
                                                       ((acc.insert_with
                                                         {key: l.l_orderkey.b, value: 1}
                                                         (\old -> \new -> {key: old.key, value: old.value + new.value}));
@@ -87,7 +90,7 @@ trigger lineitem_orders : () = \_ -> (
                                ]
 
       , rhs_sample_query     = [$ orders.sample (\acc -> \o ->
-                                                  if o.o_orderdate < 19950315 then
+                                                  if o.o_orderdate < q3_selectivity_orderdate_ubound then
                                                     ((acc.insert_with
                                                       {key: o.o_orderkey, value: 1}
                                                       (\old -> \new -> {key: old.key, value: old.value + new.value}));
@@ -100,7 +103,7 @@ trigger lineitem_orders : () = \_ -> (
 
       , frequency_threshold  = [$ 1000.0 ]
 
-      , lhs_query = [$  ((lineitem.filter  (\l -> l.l_shipdate > 19950315 ))
+      , lhs_query = [$  ((lineitem.filter  (\l -> l.l_shipdate > q3_selectivity_shipdate_lbound ))
                                   .group_by (\l -> l.l_orderkey)
                                             (\acc -> \l -> acc + (l.l_extendedprice * (1 - l.l_discount)))
                                             0.0)
@@ -109,7 +112,7 @@ trigger lineitem_orders : () = \_ -> (
                     ]
       , lhs_query_clear = [$ lineitem = empty q3_lineitem_r @Collection ]
 
-      , rhs_query = [$ ((orders.filter  (\o -> o.o_orderdate < 19950315 ))
+      , rhs_query = [$ ((orders.filter  (\o -> o.o_orderdate < q3_selectivity_orderdate_ubound ))
                                .group_by (\o -> o.o_orderkey)
                                          (\_ -> \o -> { od : o.o_orderdate
                                                       , ck : o.o_custkey
@@ -222,12 +225,7 @@ declare finalizeResult: () -> () = \_ -> (
 )
 
 typedef q3_result = collection {orderkey: int, revenue: real, orderdate: string, shippriority: int} @Collection
-declare finalize : collection {key: address, value: q3_result} @Map -> () = \x -> (
-  (x.iterate (\t ->
-    t.value.iterate (\v ->
-      (results_sink, me) <- (v.orderkey, v.revenue, v.orderdate, v.shippriority)
-   )))
-)
+declare finalize : collection {key: address, value: q3_result} @Map -> () = \x -> ()
 
 // For ktrace:
 declare results: q3_result

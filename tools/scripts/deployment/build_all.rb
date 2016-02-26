@@ -1,12 +1,12 @@
 #!/usr/bin/env ruby
-require 'rest-client'
-require 'optparse'
+require 'csv'
 require 'json'
+require 'optparse'
 require 'pathname'
+require 'rest-client'
 
 RC = RestClient
 
-XP = Pathname.new(Dir.pwd).realpath
 K3 = "/k3/K3"
 
 QUERIES = {
@@ -112,7 +112,8 @@ end
 
 def setup_build_profile(profile)
   profile.fetch("patches", []).each do |p|
-    `git apply #{p}`
+    puts "Applying #{p}..."
+    `git apply #{$options.fetch(:patch_dir, ".")}/#{p}`
   end
 
   if profile.has_key? "build_opts"
@@ -126,12 +127,12 @@ end
 
 def teardown_build_profile(profile)
   profile.fetch("patches", []).each do |p|
-    `git apply -R #{p}`
+    puts "Reverting #{p}..."
+    `git apply -R #{$options.fetch(:patch_dir, ".")}/#{p}`
   end
 end
 
-def build(name)
-  target = "#{XP}/#{name}"
+def build(target)
   if $options.has_key?(:build_profile_set) && $options.has_key?(:build_profile)
     profile = JSON.parse(File.read($options[:build_profile_set]))[$options[:build_profile]]
   else
@@ -140,6 +141,9 @@ def build(name)
 
   setup_build_profile(profile)
 
+  puts "Removing Build Directory"
+  system "rm -rf __build"
+
   for (experiment, description) in QUERIES do
     for query, path in description[:queries] do
       if !select?(experiment, query)
@@ -147,14 +151,14 @@ def build(name)
       end
       Dir.chdir(K3) do
         puts "Cleaning build directory..."
-        `tools/scripts/run/clean.sh`
+        system "tools/scripts/run/clean.sh"
         puts "Compiling K3 -> C++ with options: #{ENV["K3_BUILDOPTS"]}"
-        `tools/scripts/run/compile.sh #{ENV["K3_BUILDOPTS"]} #{path}`
+        system "mkdir -p #{target}"
+        system "tools/scripts/run/compile.sh #{ENV["K3_BUILDOPTS"]} #{path} 2>&1 | tee #{target}/#{slugify(experiment, query)}_build.log"
         puts "Copying artifacts..."
-        `mkdir -p #{target}`
-        `mv __build/#{File.basename(path, ".k3")}.cpp #{target}/#{slugify(experiment, query)}.cpp`
-        `mv __build/A #{target}/#{slugify(experiment, query)}`
-        `cp #{path} #{target}/#{slugify(experiment, query)}.k3`
+        system "mv __build/#{File.basename(path, ".k3")}.cpp #{target}/#{slugify(experiment, query)}.cpp"
+        system "mv __build/A #{target}/#{slugify(experiment, query)}"
+        system "cp #{path} #{target}/#{slugify(experiment, query)}.k3"
       end
     end
   end
@@ -171,7 +175,7 @@ def submit(name)
       end
       puts "Submitting #{name}/#{slugify(experiment, query)}"
       response = RC.post(
-        "http://qp2:5000/apps",
+        "http://mddb2:5000/apps",
         {:file => File.new("#{name}/#{slugify(experiment, query)}", 'rb')},
         :accept => :json
       )
@@ -200,7 +204,7 @@ def run(name)
         for i in 1..($options[:trials]) do
           puts "\tSubmitting #{role} for #{experiment}/#{query} trial #{i}"
           response = RC.post(
-            "http://qp2:5000/jobs/#{slugify(experiment, query)}/#{apps[slugify(experiment, query)]}",
+            "http://mddb2:5000/jobs/#{slugify(experiment, query)}/#{apps[slugify(experiment, query)]}",
             {:file => File.new("#{role_prefix}/roles/#{yml}")},
             :accept => :json
           )
@@ -219,7 +223,7 @@ def statusAll(jobs)
   results = {}
   for (job_id, info) in jobs do
     response = RC.get(
-      "http://qp2:5000/job/#{job_id}",
+      "http://mddb2:5000/job/#{job_id}",
       :accept => :json
     )
     json = JSON.parse response
@@ -267,42 +271,48 @@ end
 def harvest(statuses, out_folder)
   puts("Harvesting results")
   results = {}
-  for job_id, info in statuses
-    if info['status'] == "FINISHED"
+  `mkdir -p #{out_folder}/#{$options[:job_set]}`
+  CSV.open("#{out_folder}/#{$options[:job_set]}/raw.csv", "wb") do |rawf|
+    for job_id, info in statuses
       run_folder = "#{out_folder}/#{$options[:job_set]}/#{info["role"]}_#{info["name"]}"
       `mkdir -p #{run_folder}`
 
-      # GET tar from each node
-      tars = info['sandbox'].select { |x| x =~ /.*.tar/}
-      for tar in tars
-        url = "http://qp2:5000/fs/jobs/#{info["name"]}/#{job_id}/#{tar}"
-        name = File.basename(tar, ".tar")
-        `mkdir -p #{run_folder}/#{job_id}/#{name}`
-        response = RC.get(url)
-        file = File.new("#{run_folder}/#{job_id}/#{name}/sandbox.tar", 'w')
-        file.write response
-        file.close
-        `tar -xvf #{run_folder}/#{job_id}/#{name}/sandbox.tar -C #{run_folder}/#{job_id}/#{name}`
-      end
-      # Find the master tar, for results.csv
-      master_tar = tars.select { |x| x =~ /.*\.0_.*/}[0]
-      name = File.basename(master_tar, ".tar")
-      master_folder = "#{run_folder}/#{job_id}/#{name}/"
-      results[job_id] = info
-      results[job_id].merge!({"status" => "RAN", "output" => master_folder})
-      time_file = "#{master_folder}/time.csv"
-      file = File.open(time_file, "rb")
-      time_ms = file.read.strip.to_i
-      puts "\t#{info} Ran in #{time_ms} ms."
-      group_key = {:role => info["role"], :name => info["name"]}
-      if not $stats.has_key?(group_key)
-        $stats[group_key] = [time_ms]
+      if info['status'] == "FINISHED"
+        # GET tar from each node
+        tars = info['sandbox'].select { |x| x =~ /.*.tar/}
+        for tar in tars
+          url = "http://mddb2:5000/fs/jobs/#{info["name"]}/#{job_id}/#{tar}"
+          name = File.basename(tar, ".tar")
+          `mkdir -p #{run_folder}/#{job_id}/#{name}`
+          response = RC.get(url)
+          file = File.new("#{run_folder}/#{job_id}/#{name}/sandbox.tar", 'w')
+          file.write response
+          file.close
+          `tar -xvf #{run_folder}/#{job_id}/#{name}/sandbox.tar -C #{run_folder}/#{job_id}/#{name}`
+        end
+        # Find the master tar, for results.csv
+        master_tar = tars.select { |x| x =~ /.*\.0_.*/}[0]
+        name = File.basename(master_tar, ".tar")
+        master_folder = "#{run_folder}/#{job_id}/#{name}/"
+        results[job_id] = info
+        results[job_id].merge!({"status" => "RAN", "output" => master_folder})
+        time_file = "#{master_folder}/time.csv"
+        file = File.open(time_file, "rb")
+        time_ms = file.read.strip.to_i
+        puts "\t#{info} Ran in #{time_ms} ms."
+        group_key = {:role => info["role"], :name => info["name"]}
+        if not $stats.has_key?(group_key)
+          $stats[group_key] = [time_ms]
+        else
+          $stats[group_key] << time_ms
+        end
+        _, run_date, variant = out_folder.split("/")
+        job_set = $options[:job_set]
+        rawf << [job_id, run_date, variant, job_set, info["role"], info["name"], time_ms]
       else
-        $stats[group_key] << time_ms
+        results[job_id] = { "status" =>  "FAILED" }
+        puts "\t#{job_id} FAILED."
       end
-    else
-      results[job_id] = { "status" =>  "FAILED" }
-      puts "\t#{job_id} FAILED."
     end
   end
 
@@ -338,7 +348,7 @@ def postprocess(dir)
   if File.exists?(stats_file)
     $stats = JSON.parse(File.read(stats_file))
   end
-  CSV.open("#{out_folder}/#{$options[:job_set]}/stats.csv", "wb") do |outf|
+  CSV.open("#{dir}/#{$options[:job_set]}/stats.csv", "wb") do |outf|
     outf << ["variant", "query", "role", "trials", "average", "stddev"]
     puts "Summary"
     for key, val in $stats
@@ -348,7 +358,7 @@ def postprocess(dir)
       var = val.map{|x| (x - avg) * (x - avg)}.reduce(:+) / (1.0 * cnt)
       dev = Math.sqrt(var)
       puts "\t#{key} => Successful Trials: #{cnt}/#{$options[:trials]}. Avg: #{avg}. StdDev: #{dev}"
-      outf << [dir, key[:name], key[:role], cnt, avg, dev]
+      outf << [dir, key[:name], key[:role], cnt, avg.round(2), dev.round(2)]
     end
   end
 end
@@ -377,6 +387,7 @@ def main()
 
     opts.on("-x", "--build-profile-set [PATH]", String, "Set of Build Profiles") { |x| $options[:build_profile_set] = x }
     opts.on("-y", "--build-profile [KEY]", String, "Build Profile to use.") { |y| $options[:build_profile] = y }
+    opts.on("-z", "--patch-dir [KEY]", String, "Directory to look for patches") { |z| $options[:patch_dir] = z }
 
     opts.on("-c", "--check", "Check correctness") { $options[:check] = true }
     opts.on("-s", "--submit", "Submit binary") { $options[:submit] = true }

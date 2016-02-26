@@ -630,7 +630,11 @@ betaReductionDelta !penv !fenv !restChanged !expr = do
 
     onSub ch = (catMaybes *** any id) $! unzip ch
 
-    skipBetaReduce n = any isENoBetaReduce $! filter isEUserProperty $! annotations n
+    skipBetaReduce n =
+      let viableAs = case n of
+            PAppLam _ _ _ lamAs appAs -> lamAs ++ appAs
+            _ -> annotations n
+      in any isENoBetaReduce $! filter isEUserProperty viableAs
 
     cleanExpr e = stripExprAnnotations cleanAnns (const False) e
     cleanAnns a = isEUID a || isESpan a || isAnyETypeOrEffectAnn a
@@ -1156,7 +1160,7 @@ encodeTransformers noBR restChanged expr = do
         bodyF aVar eVar $! PSeq (EC.applyMany (EC.project "insert" aVar) [elemF aVar eVar]) aVar []
 
     mkCondAccF elemF condF = mkAccF elemF $! \aVar eVar accumE ->
-      EC.ifThenElse (attachBoth $! EC.applyMany (attachFusionSource condF) [eVar]) accumE aVar
+      EC.ifThenElse (EC.applyMany (attachBoth $! condF) [eVar]) accumE aVar
 
     -- Note the element accumulator must be a function to match with our UCond pattern.
     mkIdAccF = mkAccF (\_ e -> EC.applyMany (EC.lambda "x" $! EC.variable "x") [e]) (\_ _ e -> e)
@@ -1176,7 +1180,7 @@ encodeTransformers noBR restChanged expr = do
 
         "map" -> let nfAs = fAs ++ [pOElemRec, pFusionSpec (UCond, IndepTr), pFusionLineage "map"]
                  in return (nfAs, mkAccF (\_ e -> EC.applyMany (EC.lambda "x" $! elemE' $! EC.variable "x")
-                                                    [ attachBoth $! EC.applyMany (attachFusionSource fArg) [e] ]) (\_ _ e -> e))
+                                                    [ EC.applyMany (attachBoth $! fArg) [e] ]) (\_ _ e -> e))
 
         _ -> invalidAccFerr fId
 
@@ -1190,18 +1194,15 @@ encodeTransformers noBR restChanged expr = do
           -- to avoid duplicate UIDs.
           missingAccFE = stripEUIDSpan accFE
 
-          guardAdd f' = if isJust (fAs @~ \case { EProperty (Left ("HGroupBy", Nothing)) -> True; _ -> False}) then id else f'
-
-          entryE v = EC.record [("key", guardAdd attachBoth $! EC.applyMany (attachFusionSource gbE) [eVar]), ("value", v)]
+          entryE v = EC.record [("key", EC.applyMany (attachBoth $! gbE) [eVar]), ("value", v)]
 
           missingE = EC.lambda "_" $
                        EC.record [("key", EC.project "key" rVar)
-                                 ,("value", EC.applyMany missingAccFE [zE, eVar])]
+                                 ,("value", EC.applyMany (attachBoth $! missingAccFE) [zE, eVar])]
 
           presentE = EC.lambda oVarId $
                       EC.record [("key", EC.project "key" oVar)
-                                ,("value", guardAdd attachBoth $
-                                   (EC.applyMany (guardAdd attachFusionSource accFE) [(EC.project "value" oVar) @:+ "Move", eVar]) @:+ "Move")]
+                                ,("value", (EC.applyMany (attachBoth $! accFE) [(EC.project "value" oVar) @:+ "Move", eVar]) @:+ "Move")]
 
       in do
       defaultV <- defaultExpression valueT
