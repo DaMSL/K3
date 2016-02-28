@@ -64,7 +64,7 @@ def isTrue(boolstr):
 
 
 
-class CompilerExecutor(mesos.interface.Executor):
+class K3Executor(mesos.interface.Executor):
   def __init__(self):
     logging.debug('Executor is initilizing')
     self.thread = None
@@ -133,6 +133,9 @@ class CompilerExecutor(mesos.interface.Executor):
         frequency = hostParams["perf_frequency"] if "perf_frequency" in hostParams else '10'
         k3_cmd += "perf record -F " + frequency + " -a --call-graph dwarf -- ";
 
+      if 'cmd_prefix' in hostParams:
+        k3_cmd += hostParams['cmd_prefix'] + ' '
+
       k3_cmd += "./" + hostParams["binary"]
       if "logging" in hostParams:
           k3_cmd += " -l INFO "
@@ -146,6 +149,9 @@ class CompilerExecutor(mesos.interface.Executor):
 
       if "resultVar" in hostParams:
           k3_cmd += " --result_path $MESOS_SANDBOX --result_var " + hostParams["resultVar"]
+
+      if 'cmd_suffix' in hostParams:
+          k3_cmd += ' ' + hostParams['cmd_suffix']
 
       if 'outpaths' in hostParams:
           var = hostParams['outpaths']['var']
@@ -176,8 +182,8 @@ class CompilerExecutor(mesos.interface.Executor):
           mosaicSeqfile = None
 
       ulimit = "core_dump" in hostParams
-  
-    # DATA ALLOCATION: Distribute input files among peers 
+
+    # DATA ALLOCATION: Distribute input files among peers
       #    (1 file list per local peer)
       inputFiles = [{} for i in range(len(localpeers))]
 
@@ -218,7 +224,7 @@ class CompilerExecutor(mesos.interface.Executor):
 
         except IOError as e:
           logging.error("Failed to open local path: %s  (on %s)", dataFile.path, self.host)
-          self.sendTaskStatus(driver, mesos_pb2.TASK_FAILED, 
+          self.sendTaskStatus(driver, mesos_pb2.TASK_FAILED,
                 "%s FAILED. Error opening local file, %s" % (str(self.job_id), dataFile))
 
       logging.debug("Input File Allocation (for total of %d files): ", myTotalFiles)
@@ -250,11 +256,11 @@ class CompilerExecutor(mesos.interface.Executor):
           path = os.path.join(mosaicSeqfile.data_dir, table)
           if not os.path.exists(path):
             self.sendTaskStatus(driver, mesos_pb2.TASK_FAILED, "Data Dir does not exist")
-            return          
+            return
 
           for i, filepath in enumerate(sorted(os.listdir(path))):
             for sw_index in mosaicSeqfile.switch_indexes:
-              if table == "sentinel" or (i % mosaicSeqfile.num_switches) == sw_index: 
+              if table == "sentinel" or (i % mosaicSeqfile.num_switches) == sw_index:
                 peerFilesList[sw_index][table].append({'path': os.path.join(path, filepath)})
                 logging.debug('Switch:  %d  =>  %s', sw_index, filepath)
 
@@ -417,7 +423,7 @@ class CompilerExecutor(mesos.interface.Executor):
 if __name__ == "__main__":
   print('PRINT: Executor is running')
   logging.debug( "Executor has started")
-  executor = CompilerExecutor()
+  executor = K3Executor()
   driver = mesos.native.MesosExecutorDriver(executor)
   sys.exit(0 if driver.run() == mesos_pb2.DRIVER_STOPPED else 1)
 
