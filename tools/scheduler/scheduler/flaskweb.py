@@ -162,21 +162,18 @@ def initWeb(port, **kwargs):
 
     compileLogger.info("\n\n\n\n\n====================  <<<<< Compiler Service Initiated >>>>> ===================================")
 
-    # Check for executor(s), build if necessary
-    compiler_exec = os.path.join(LOCAL_DIR, 'CompileExecutor.py')
+    # Check for executor(s), copy if necessary
+    compiler_nm = 'CompileExecutor.py'
+    compiler_exec = os.path.join(LOCAL_DIR, compiler_nm)
     if not os.path.exists(compiler_exec):
       logger.info("Compiler executor not found. Copying to web root dir.")
-      shutil.copyfile('CompileExecutor.py', compiler_exec)
+      shutil.copyfile(compiler_nm, compiler_exec)
 
-  launcher_exec = os.path.join(LOCAL_DIR, 'k3executor')
-  if not os.path.exists(launcher_exec):
-    logger.info("K3 Executor not found. Making & Copying to web root dir.")
-    os.chdir('executor')
-    os.system('cmake .')
-    os.system('make')
-    shutil.copyfile('k3executor', launcher_exec)
-    os.chdir('..')
-
+    launcher_nm = 'k3executor.py'
+    launcher_exec = os.path.join(LOCAL_DIR, launcher_nm)
+    if not os.path.exists(launcher_exec):
+      logger.info("K3 Executor not found. Copying to web root dir.")
+      shutil.copyfile(launcher_nm, launcher_exec)
 
 def returnError(msg, errcode):
   """
@@ -625,6 +622,8 @@ def createJob(appName, appUID):
   #             -F jsonfinal=[True | False]
   #             -F perf_profile=[True | False]
   #             -F perf_frequency=[n]
+  #             -F cmd_prefx='str'
+  #             -F cmd_suffix='str'
   #             -F http://<host>:<port>/jobs/<appName>/<appUID>
   #             NOTE: if appUID is omitted, job will be submitted to latest version of this app
   #
@@ -645,6 +644,8 @@ def createJob(appName, appUID):
         jsonfinal      = True if 'jsonfinal' in request.form else False
         perf_profile   = True if 'perf_profile' in request.form else False
         perf_frequency = request.form['perf_frequency'] if 'perf_frequency' in request.form else ''
+        cmd_prefix     = request.form['cmd_prefix'] if 'cmd_prefix' in request.form else None
+        cmd_suffix     = request.form['cmd_suffix'] if 'cmd_suffix' in request.form else None
         core_dump      = True if 'core_dump' in request.form else False
         stdout = request.form['stdout'] if 'stdout' in request.form else False
         user = request.form['user'] if 'user' in request.form else 'anonymous'
@@ -693,14 +694,13 @@ def createJob(appName, appUID):
         newJob = Job(binary=apploc, appName=appName, jobId=jobId,
                      rolefile=os.path.join(path, filename), logging=k3logging,
                      jsonlog=jsonlog, jsonfinal=jsonfinal,
-                     perf_profile=perf_profile, perf_frequency=perf_frequency, core_dump=core_dump)
+                     perf_profile=perf_profile, perf_frequency=perf_frequency, core_dump=core_dump,
+                     cmd_prefix=cmd_prefix, cmd_suffix=cmd_suffix)
 
         # Submit to Mesos
         dispatcher.submit(newJob)
 
         thisjob = dict(thisjob, url=dispatcher.getSandboxURL(jobId), status='SUBMITTED')
-
-
 
         if 'application/json' in request.headers['Accept']:
           return jsonify(thisjob), 202

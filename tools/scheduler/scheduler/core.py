@@ -94,6 +94,8 @@ class Job:
     self.perf_profile   = kwargs.get("perf_profile", False)
     self.core_dump      = kwargs.get("core_dump", False)
     self.perf_frequency = kwargs.get("perf_frequency", '10')
+    self.cmd_prefix     = kwargs.get("cmd_prefix", None)
+    self.cmd_suffix     = kwargs.get("cmd_suffix", None)
     self.stdout         = kwargs.get("stdout", False)
     self.roles          = {}
     self.tasks          = []
