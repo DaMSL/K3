@@ -153,13 +153,15 @@ class K3Executor(mesos.interface.Executor):
       if 'cmd_suffix' in hostParams:
           k3_cmd += ' ' + hostParams['cmd_suffix']
 
-      if 'outpaths' in hostParams:
-          var = hostParams['outpaths']['var']
-          pre = hostParams['outpaths']['prefix']
-          suf = hostParams['outpaths']['suffix']
-          mosaicOutpath = OutPath(var, pre, suf)
-      else:
-          mosaicOutpath = None
+      #  Outpaths derived from prevousl CPP executor. Not sure why we need it
+      #    BUT: retaining as comments for future reference
+      # if 'outpaths' in hostParams:
+      #     var = hostParams['outpaths']['var']
+      #     pre = hostParams['outpaths']['prefix']
+      #     suf = hostParams['outpaths']['suffix']
+      #     mosaicOutpath = OutPath(var, pre, suf)
+      # else:
+      mosaicOutpath = None
 
       if 'seq_files' in hostParams:
           ns  = hostParams['seq_files']["num_switches"]
@@ -320,8 +322,8 @@ class K3Executor(mesos.interface.Executor):
 
 
         # Mosaic outpath stuff
+        peerglobals["peer_idx"] = i;
         if mosaicOutpath is not None:
-          peerglobals["peer_idx"] = i;
           peerglobals[mosaicOutpath.var] = mosaicOutpath.prefix + str(i) + mosaicOutpath.suffix;
 
         # Mosaic seqfile stuff
