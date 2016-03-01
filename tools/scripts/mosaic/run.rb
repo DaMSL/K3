@@ -479,6 +479,11 @@ def run_deploy_k3_remote(uid, bin_path, perf_profile, perf_frequency)
     cmd_prefix = "perf record --call-graph dwarf -s -F #{perf_frequency} #{cmd_prefix}"
     curl_args['cmd_prefix'] = cmd_prefix
   end
+  if $options[:perf_stat]
+    events = %w{cache-references cache-misses branch-misses stalled-cycles-frontend stalled-cycles-backend page-faults context-switches cpu-migrations L1-dcache-loads L1-dcache-load-misses L1-dcache-stores L1-dcache-store-misses mem-loads}
+    events = (events.map {|s| "-e #{s}"}).join(' ')
+    cmd_prefix = "perf stat -B #{events} #{cmd_prefix}"
+  end
   if $options[:jemalloc_stats]
     cmd_prefix = "MALLOC_CONF=stats_print:true #{cmd_prefix}"
   end
@@ -932,6 +937,7 @@ def main()
     opts.on("--no-isobatch", "Disable isobatch mode") { $options[:isobatch] = false }
     opts.on("--extract-times [PATH]", "Extract times from sandbox") { |s| $options[:extract_times] = s }
     opts.on("--jemalloc-stats", "Get times from jemalloc") { $options[:jemalloc_stats] = true }
+    opts.on("--perf-stat", "Get stats from perf") { $options[:perf_stat] = true }
 
     # Stages.
     # Ktrace is not run by default.
