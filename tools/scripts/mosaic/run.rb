@@ -339,7 +339,7 @@ def perf_flame_graph(sandbox_path, trig_times)
         glob = File.join(sandbox_path, "*#{node}", "perf.data")
         Dir.glob(glob) do |perf_file|
           # create flame graph
-          flame_path = File.join($workdir, "#{node}_flame")
+          flame_path = File.join(sanbox_path, "#{node}_flame")
           exe_path = File.join($workdir, $nice_name)
           cmd = "#{perf_tool} 0 #{exe_path} /usr/bin/perf #{flame_path} #{perf_file}"
           puts cmd
@@ -406,7 +406,7 @@ def wait_and_fetch_results(stage_num, jobid)
   File.open(File.join(sandbox_path, "time.txt"), 'w') { |file| file.write(s) } if s != ""
 
   # If requested, create perf graphs
-  if $options[:perf_profile]
+  if $options[:perf_graph]
     perf_flame_graph(sandbox_path, trig_times)
   end
 
@@ -898,6 +898,7 @@ def main()
     opts.on("--json-regex [REGEX]", "Regex pattern for JSON logging") { |s| $options[:json_regex] = s}
     opts.on("--json-none", "Turn off JSON logging for ktrace") { $options[:logging] = :none }
     opts.on("--perf-profile", "Turn on perf profiling") { $options[:perf_profile] = true}
+    opts.on("--perf-graph", "Graph perf results") { $options[:perf_graph] = true}
     opts.on("--perf-frequency [NUM]", String, "Set perf profiling frequency") { |s| $options[:perf_frequency] = s }
     opts.on("--core-dump", "Turn on core dump for distributed run") { $options[:core_dump] = true }
     opts.on("--dots", "Get the awesome dots") { $options[:dots] = true }
@@ -1153,7 +1154,7 @@ def main()
   if $options[:extract_times]
     sandbox = $options[:extract_times]
     (_, trig_times, _) = extract_times($options[:extract_times], true)
-    if $options[:perf_profile]
+    if $options[:perf_graph]
       perf_flame_graph(sandbox, trig_times)
     end
   end
