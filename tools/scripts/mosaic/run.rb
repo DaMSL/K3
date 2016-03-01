@@ -467,6 +467,7 @@ def run_deploy_k3_remote(uid, bin_path, perf_profile, perf_frequency)
 
   stage "[5] Creating new mesos job"
   curl_args = {}
+  cmd_prefix = cmd_suffix = ''
   case $options[:logging]
     when :full
       curl_args['jsonlog'] = 'yes'
@@ -474,14 +475,18 @@ def run_deploy_k3_remote(uid, bin_path, perf_profile, perf_frequency)
       curl_args['jsonfinal'] = 'yes'
   end
   if perf_profile
-    curl_args['perf_profile'] = 'yes'
-    if perf_frequency != ""
-      curl_args['perf_frequency'] = perf_frequency
-    end
+    perf_frequency = perf_frequency == '' ? '30' : perf_frequency
+    cmd_prefix = "perf record --call-graph dwarf -s -F #{perf_frequency} #{cmd_prefix}"
+    curl_args['cmd_prefix'] = cmd_prefix
+  end
+  if $options[:jemalloc_stats]
+    cmd_prefix = "MALLOC_CONF=stats_print:true #{cmd_prefix}"
   end
   if $options[:core_dump]
     curl_args['core_dump'] = 'yes'
   end
+  curl_args['cmd_prefix'] = cmd_prefix unless cmd_prefix == ''
+  curl_args['cmd_suffix'] = cmd_suffix unless cmd_suffix == ''
   res = curl($server_url, "/jobs/#{$nice_name}#{uid_s}", json:true, post:true, file:role_path, args:curl_args)
   jobid = res['jobId']
   $options[:jobid] = jobid
@@ -926,6 +931,7 @@ def main()
     opts.on("--plot-messages", "Create message heat maps") { $options[:plot_messages] = true }
     opts.on("--no-isobatch", "Disable isobatch mode") { $options[:isobatch] = false }
     opts.on("--extract-times [PATH]", "Extract times from sandbox") { |s| $options[:extract_times] = s }
+    opts.on("--jemalloc-stats", "Get times from jemalloc") { $options[:jemalloc_stats] = true }
 
     # Stages.
     # Ktrace is not run by default.

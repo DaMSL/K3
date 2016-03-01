@@ -282,7 +282,7 @@ def create_dist_file(args):
     master_env  = {'k3_globals': master_role, 'mem': 'some'}
     timer_env   = {'k3_globals': timer_role, 'mem': 'some'}
 
-    # The amount of cores we have of qps. # TODO pack multiple switches into a single role
+    # The amount of cores we have for non-nodes
     extra_machines = ['qp-hd1$', 'qp-hd2']
     switch_machines = ['qp4', 'qp5', 'qp6', 'qp-hd4', 'qp-hd5']
     num_switch_machines = len(switch_machines)
@@ -317,7 +317,7 @@ def create_dist_file(args):
     k3_roles.append(('Timer',  extra_machines[1], 1, None, timer_env))
 
     # default node mask uses only hds
-    nmask = "^(qp-hd(([6-7,9])|(1[0,2-5]))"
+    nmask = "^(qp-hd(([6,7,9])|(1[0-5]))"
     if args.use_hm:
         nmask += "|qp-hm.*)$"
     else:
