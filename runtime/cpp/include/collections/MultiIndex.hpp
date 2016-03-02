@@ -751,9 +751,9 @@ class MultiIndexVMap
         auto& vmap = std::get<1>(elem);
         auto vexisting = vmap.find(v);
         if ( vexisting == vmap.end() ) {
-	        vmap.insert(vexisting, std::make_pair(v, rec));
+          vmap.insert(vexisting, std::make_pair(v, rec));
         } else {
-	        vexisting->second = f(std::move(vexisting->second), rec);
+          vexisting->second = f(std::move(vexisting->second), rec);
         }
       });
     }
@@ -773,7 +773,7 @@ class MultiIndexVMap
         auto& vmap = std::get<1>(elem);
         auto vexisting = vmap.find(v);
         if ( vexisting == vmap.end() ) {
-	        vmap.insert(vexisting, std::make_pair(v, f(unit_t{})));
+          vmap.insert(vexisting, std::make_pair(v, f(unit_t{})));
         } else {
           vexisting->second = g(std::move(vexisting->second));
         }
@@ -835,11 +835,11 @@ class MultiIndexVMap
     } else {
       container.modify(existing, [&](auto& elem){
         auto& vmap = std::get<1>(elem);
-        auto vit = vmap.upper_bound(v);
-        if ( vit == vmap.end() ) {
-	        vmap.insert(vit, std::make_pair(v, f(unit_t{})));
+        auto vit = vmap.upper_bound(v); // TODO: change to lower bound for correctives
+        if (vit == vmap.end()) {
+          vmap.insert(vit, std::make_pair(v, f(unit_t{})));
         } else {
-          vit->second = g(std::move(vit->second));
+          vmap.insert(vit, std::make_pair(v, g(vit->second)));
         }
       });
     }
@@ -1252,7 +1252,7 @@ class MultiIndexVMap
       ar.write(map.size());
       for (const auto& elem : map) {
         ar & elem.first;
-	ar & elem.second;
+        ar & elem.second;
       }
     }
   }
@@ -1273,11 +1273,11 @@ class MultiIndexVMap
       while (in_sz > 0) {
         typename VMap::key_type k;
         typename VMap::mapped_type v;
-	ar & k;
-	ar & v;
-	auto pair = std::make_pair(std::move(k), std::move(v));
-	inner.insert(std::move(pair));
-	in_sz--;
+        ar & k;
+        ar & v;
+        auto pair = std::make_pair(std::move(k), std::move(v));
+        inner.insert(std::move(pair));
+        in_sz--;
       }
       container.emplace(std::make_tuple<Key, VMap>(std::move(k), std::move(inner)));
       out_sz--;
