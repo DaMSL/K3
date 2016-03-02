@@ -95,6 +95,7 @@ class Job:
     self.core_dump      = kwargs.get("core_dump", False)
     self.perf_frequency = kwargs.get("perf_frequency", '10')
     self.cmd_prefix     = kwargs.get("cmd_prefix", None)
+    self.cmd_infix      = kwargs.get("cmd_infix", None)
     self.cmd_suffix     = kwargs.get("cmd_suffix", None)
     self.stdout         = kwargs.get("stdout", False)
     self.roles          = {}
