@@ -3,10 +3,10 @@
 #
 #
 # Stages:
-# Note: We assume the dbgen files are already created and split into table.dddd (d=digit)
+# Note: We assume the dbgen files are already created (*.tbl)
 #   (running dbgen to produce the files takes too long)
 #   Since we support at most 128 switches, the files must be divided into 128 chunks each.
-# - Split the tbl files from dbgen into 1024 shards each
+# - Split the tbl files from dbgen into 128 shards each
 # - Compile the k3 program necessary to run.
 # - For each table, for each shard, run the k3 program, producing an output file
 # - Store the number of batches in each (table,shard)
@@ -42,7 +42,7 @@ $tags = {
   :supplier => 6
 }
 
-# split the original tpch files into 1024 files
+# split the original tpch files into 128 files
 def split_files(path)
   pwd = FileUtils.pwd
   puts "Splitting files in #{path}"
