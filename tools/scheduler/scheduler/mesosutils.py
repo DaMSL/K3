@@ -150,6 +150,7 @@ def taskInfo(k3job, tnum, webaddr, slaveId):
       "perf_profile"     : k3job.perf_profile,
       "perf_frequency"   : k3job.perf_frequency,
       "cmd_prefix"       : k3job.cmd_prefix,
+      "cmd_infix"        : k3job.cmd_infix,
       "cmd_suffix"       : k3job.cmd_suffix,
       "core_dump"        : k3job.core_dump,
       "stdout"           : k3job.stdout }
@@ -176,6 +177,9 @@ def taskInfo(k3job, tnum, webaddr, slaveId):
 
   if task_data['cmd_prefix'] is None:
     del task_data['cmd_prefix']
+
+  if task_data['cmd_infix'] is None:
+    del task_data['cmd_infix']
 
   if task_data['cmd_suffix'] is None:
     del task_data['cmd_suffix']

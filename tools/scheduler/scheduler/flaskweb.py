@@ -622,7 +622,8 @@ def createJob(appName, appUID):
   #             -F jsonfinal=[True | False]
   #             -F perf_profile=[True | False]
   #             -F perf_frequency=[n]
-  #             -F cmd_prefx='str'
+  #             -F cmd_prefix='str'
+  #             -F cmd_infix='str'
   #             -F cmd_suffix='str'
   #             -F http://<host>:<port>/jobs/<appName>/<appUID>
   #             NOTE: if appUID is omitted, job will be submitted to latest version of this app
@@ -645,6 +646,7 @@ def createJob(appName, appUID):
         perf_profile   = True if 'perf_profile' in request.form else False
         perf_frequency = request.form['perf_frequency'] if 'perf_frequency' in request.form else ''
         cmd_prefix     = request.form['cmd_prefix'] if 'cmd_prefix' in request.form else None
+        cmd_infix      = request.form['cmd_infix'] if 'cmd_infix' in request.form else None
         cmd_suffix     = request.form['cmd_suffix'] if 'cmd_suffix' in request.form else None
         core_dump      = True if 'core_dump' in request.form else False
         stdout = request.form['stdout'] if 'stdout' in request.form else False
@@ -695,7 +697,7 @@ def createJob(appName, appUID):
                      rolefile=os.path.join(path, filename), logging=k3logging,
                      jsonlog=jsonlog, jsonfinal=jsonfinal,
                      perf_profile=perf_profile, perf_frequency=perf_frequency, core_dump=core_dump,
-                     cmd_prefix=cmd_prefix, cmd_suffix=cmd_suffix)
+                     cmd_prefix=cmd_prefix, cmd_infix=cmd_infix, cmd_suffix=cmd_suffix)
 
         # Submit to Mesos
         dispatcher.submit(newJob)

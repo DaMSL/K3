@@ -150,8 +150,8 @@ class K3Executor(mesos.interface.Executor):
       if "resultVar" in hostParams:
           k3_cmd += " --result_path $MESOS_SANDBOX --result_var " + hostParams["resultVar"]
 
-      if 'cmd_suffix' in hostParams:
-          k3_cmd += ' ' + hostParams['cmd_suffix']
+      if 'cmd_infix' in hostParams:
+          k3_cmd += ' ' + hostParams['cmd_infix']
 
       #  Outpaths derived from prevousl CPP executor. Not sure why we need it
       #    BUT: retaining as comments for future reference
@@ -346,6 +346,9 @@ class K3Executor(mesos.interface.Executor):
 
       # Finish up processing
       k3_cmd += " > stdout_" + self.host + " 2>&1"
+
+      if 'cmd_suffix' in hostParams:
+          k3_cmd += ' ' + hostParams['cmd_suffix']
 
       # Wrap the k3_cmd with a call to ulimit (if flagged)
       if (ulimit):
