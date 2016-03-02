@@ -92,8 +92,8 @@ def curl(server, url, args:{}, file:"", post:false, json:false, getfile:nil)
   cmd << if getfile.nil? then '-i ' else '-H "Accept: application/json" ' end
   cmd << '-X POST ' if post
   cmd << '-H "Accept: application/json" ' if json
-  cmd << "-F \"file=@#{file}\" " if file != ""
-  args.each_pair { |k,v| cmd << "-F \"#{k}=#{v}\" " }
+  cmd << "-F \'file=@#{file}\' " if file != ""
+  args.each_pair { |k,v| cmd << "-F \'#{k}=#{v}\' " }
 
   pipe = getfile.nil? ? '' : '-o ' + File.join($workdir, getfile)
   url2 = !getfile.nil? ? url + getfile + "/" : url
@@ -339,7 +339,7 @@ def perf_flame_graph(sandbox_path, trig_times)
         glob = File.join(sandbox_path, "*#{node}", "perf.data")
         Dir.glob(glob) do |perf_file|
           # create flame graph
-          flame_path = File.join(sanbox_path, "#{node}_flame")
+          flame_path = File.join(sandbox_path, "#{node}_flame")
           exe_path = File.join($workdir, $nice_name)
           cmd = "#{perf_tool} 0 #{exe_path} /usr/bin/perf #{flame_path} #{perf_file}"
           puts cmd
@@ -413,7 +413,7 @@ def wait_and_fetch_results(stage_num, jobid)
   # Run script to convert json format
   stage "[#{stage_num}] Extracting consolidated logs"
   unless files_to_clean.empty?
-    run("#{File.join($script_path, "clean_json.py")} --prefix_path #{sandbox_path} #{files_to_clean.join(" ")}")
+    run("#{File.join($script_path, "clean_json.py")} --prefix-path #{sandbox_path} #{files_to_clean.join(" ")}")
   end
 
   stage "[#{stage_num}] Extracting peer roles"
@@ -467,20 +467,27 @@ def run_deploy_k3_remote(uid, bin_path, perf_profile, perf_frequency)
 
   stage "[5] Creating new mesos job"
   curl_args = {}
-  cmd_prefix = cmd_suffix = ''
+  cmd_prefix = ''; cmd_infix = ''; cmd_suffix = ''
   case $options[:logging]
     when :full
       curl_args['jsonlog'] = 'yes'
     when :final
       curl_args['jsonfinal'] = 'yes'
   end
+  if $options[:json_regex]
+    cmd_infix += " -g #{$options[:json_regex]}"
+  end
   if perf_profile
     perf_frequency = perf_frequency == '' ? '30' : perf_frequency
     cmd_prefix = "perf record --call-graph dwarf -s -F #{perf_frequency} #{cmd_prefix}"
-    curl_args['cmd_prefix'] = cmd_prefix
+  end
+  # general perf record: no call graph
+  if $options[:perf_gen_record]
+    perf_frequency = perf_frequency == '' ? '60' : perf_frequency
+    cmd_prefix = "perf record -F #{perf_frequency} #{cmd_prefix}"
   end
   if $options[:perf_stat]
-    events = %w{cache-references cache-misses branch-misses stalled-cycles-frontend stalled-cycles-backend page-faults context-switches cpu-migrations L1-dcache-loads L1-dcache-load-misses L1-dcache-stores L1-dcache-store-misses mem-loads}
+    events = %w{cache-references cache-misses branch-misses stalled-cycles-frontend stalled-cycles-backend minor-faults major-faults context-switches cpu-migrations L1-dcache-loads L1-dcache-load-misses L1-dcache-stores L1-dcache-store-misses mem-loads}
     events = (events.map {|s| "-e #{s}"}).join(' ')
     cmd_prefix = "perf stat -B #{events} #{cmd_prefix}"
   end
@@ -491,6 +498,7 @@ def run_deploy_k3_remote(uid, bin_path, perf_profile, perf_frequency)
     curl_args['core_dump'] = 'yes'
   end
   curl_args['cmd_prefix'] = cmd_prefix unless cmd_prefix == ''
+  curl_args['cmd_infix'] = cmd_infix unless cmd_infix == ''
   curl_args['cmd_suffix'] = cmd_suffix unless cmd_suffix == ''
   res = curl($server_url, "/jobs/#{$nice_name}#{uid_s}", json:true, post:true, file:role_path, args:curl_args)
   jobid = res['jobId']
@@ -939,6 +947,7 @@ def main()
     opts.on("--extract-times [PATH]", "Extract times from sandbox") { |s| $options[:extract_times] = s }
     opts.on("--jemalloc-stats", "Get times from jemalloc") { $options[:jemalloc_stats] = true }
     opts.on("--perf-stat", "Get stats from perf") { $options[:perf_stat] = true }
+    opts.on("--perf-gen-record", "Get perf generic recording (no call graph)") { $options[:perf_gen_record] = true }
 
     # Stages.
     # Ktrace is not run by default.
