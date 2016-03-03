@@ -11,6 +11,8 @@ require 'csv'
 require 'open3'
 #require 'pg'
 
+  $all_events = (%w{cache-references cache-misses branch-instructions branch-misses cpu-clock cycles ref-cycles stalled-cycles-frontend stalled-cycles-backend minor-faults major-faults context-switches cpu-migrations L1-dcache-loads L1-dcache-load-misses L1-dcache-stores L1-dcache-store-misses L1-icache-loads L1-icache-load-misses LLC-loads LLC-load-misses LLC-stores LLC-store-misses dTLB-loads dTLB-load-misses dTLB-stores dTLB-store-misses iTLB-loads iTLB-load-misses}.map {|s| "-e #{s}"}).join(' ')
+
 def run(cmd, checks:[], always_out:false, local:false)
   puts cmd if $options[:debug] || local
   out, err, s = Open3.capture3(cmd)
@@ -255,9 +257,11 @@ def gen_yaml(role_path)
   if $options[:message_profiling]
     puts "MESSAGE PROFILING"
   else
-    puts "NO PROFILING"
+    puts "NO MESSAGE PROFILING"
   end
   cmd << "--message-profiling " if $options[:message_profiling]
+  cmd << "--switch-method pile " if $options[:switch_pile] # not round robin
+  cmd << "--switch-perhost #{$options[:switch_perhost]} " if $options.has_key? :switch_perhost # not round robin
 
   extra_args = []
   extra_args << "ms_gc_interval=" + $options[:gc_epoch] if $options[:gc_epoch]
@@ -333,7 +337,7 @@ def perf_flame_graph(sandbox_path, trig_times)
       times = trig_times[role]
       num = times.length
       # min node, max node, median node
-      nodes = [times[0][0], times[-1][0], times[num/2][0]]
+      nodes = [times[0][0], times[-1][0], times[num/2][0]].uniq
       # for each of these nodes, convert the perf file to a flame graph
       nodes.each do |node|
         glob = File.join(sandbox_path, "*#{node}", "perf.data")
@@ -468,38 +472,39 @@ def run_deploy_k3_remote(uid, bin_path, perf_profile, perf_frequency)
   stage "[5] Creating new mesos job"
   curl_args = {}
   cmd_prefix = ''; cmd_infix = ''; cmd_suffix = ''
-  case $options[:logging]
-    when :full
-      curl_args['jsonlog'] = 'yes'
-    when :final
-      curl_args['jsonfinal'] = 'yes'
+  perf_frequency = perf_frequency == '' ? '60' : perf_frequency
+
+  # handle options
+  curl_args['jsonlog'] = 'yes' if $options[:logging] == :full
+  curl_args['jsonfinal'] = 'yes' if $options[:logging] == :final
+  cmd_prefix = "MALLOC_CONF=stats_print:true #{cmd_prefix}" if $options[:jemalloc_stats]
+  cmd_prefix = "perf stat -B #{$all_events} #{cmd_prefix}" if $options[:perf_stat]
+  cmd_prefix = "perf record --call-graph dwarf -s -F #{perf_frequency} #{cmd_prefix}" if perf_profile
+  cmd_prefix = "perf record -F #{perf_frequency} #{cmd_prefix}" if $options[:perf_gen_record]
+  if $options.has_key? :perf_record_event
+    cmd_prefix =
+      "perf record --call-graph dwarf -F #{perf_frequency} -e #{$options[:perf_record_event]} #{cmd_prefix}"
   end
-  if $options[:json_regex]
-    cmd_infix += " -g #{$options[:json_regex]}"
+  if $options.has_key? :perf_gen_record_event
+    cmd_prefix =
+      "perf record -F #{perf_frequency} -e #{$options[:perf_gen_record_event]} #{cmd_prefix}"
   end
-  if perf_profile
-    perf_frequency = perf_frequency == '' ? '30' : perf_frequency
-    cmd_prefix = "perf record --call-graph dwarf -s -F #{perf_frequency} #{cmd_prefix}"
-  end
-  # general perf record: no call graph
-  if $options[:perf_gen_record]
-    perf_frequency = perf_frequency == '' ? '60' : perf_frequency
-    cmd_prefix = "perf record -F #{perf_frequency} #{cmd_prefix}"
-  end
-  if $options[:perf_stat]
-    events = %w{cache-references cache-misses branch-misses stalled-cycles-frontend stalled-cycles-backend minor-faults major-faults context-switches cpu-migrations L1-dcache-loads L1-dcache-load-misses L1-dcache-stores L1-dcache-store-misses mem-loads}
-    events = (events.map {|s| "-e #{s}"}).join(' ')
-    cmd_prefix = "perf stat -B #{events} #{cmd_prefix}"
-  end
-  if $options[:jemalloc_stats]
-    cmd_prefix = "MALLOC_CONF=stats_print:true #{cmd_prefix}"
-  end
+  cmd_infix += " -g #{$options[:json_regex]}" if $options[:json_regex]
+
+  # Allow overriding
+  cmd_prefix = $options[:cmd_prefix] if $options[:cmd_prefix]
+  cmd_infix  = $options[:cmd_infix]  if $options[:cmd_infix]
+  cmd_suffix = $options[:cmd_suffix] if $options[:cmd_suffix]
+
   if $options[:core_dump]
     curl_args['core_dump'] = 'yes'
   end
+
+  # save to curl args
   curl_args['cmd_prefix'] = cmd_prefix unless cmd_prefix == ''
   curl_args['cmd_infix'] = cmd_infix unless cmd_infix == ''
   curl_args['cmd_suffix'] = cmd_suffix unless cmd_suffix == ''
+
   res = curl($server_url, "/jobs/#{$nice_name}#{uid_s}", json:true, post:true, file:role_path, args:curl_args)
   jobid = res['jobId']
   $options[:jobid] = jobid
@@ -524,10 +529,12 @@ def run_deploy_k3_local(bin_path)
   args << "--json #{json_dist_path} " unless $options[:logging] == :none
   args << "--json_final_only " if $options[:logging] == :final
   args << "-g '#{$options[:json_regex]}' " if $options[:json_regex]
-  cmd_suffix = "#{bin_path} -p #{role_path} #{args}"
   frequency = if $options[:perf_frequency] then $options[:perf_frequency] else "10" end
-  perf_cmd = "perf record -F #{frequency} -a --call-graph dwarf -- "
-  run($options[:perf_profile] ? perf_cmd + cmd_suffix : cmd_suffix, local:true)
+  cmd_prefix = ''
+  cmd_prefix = "perf record -F #{frequency} --call-graph dwarf #{cmd_prefix}" if $options[:perf_profile]
+  cmd_prefix = "perf stat -B #{$all_events} #{cmd_prefix} " if $options[:perf_stat]
+  cmd = "#{bin_path} -p #{role_path} #{args}"
+  run(cmd_prefix + cmd, local:true)
 end
 
 # convert a string to the narrowest value
@@ -948,6 +955,13 @@ def main()
     opts.on("--jemalloc-stats", "Get times from jemalloc") { $options[:jemalloc_stats] = true }
     opts.on("--perf-stat", "Get stats from perf") { $options[:perf_stat] = true }
     opts.on("--perf-gen-record", "Get perf generic recording (no call graph)") { $options[:perf_gen_record] = true }
+    opts.on("--perf-record-event [EVENT]", "Perf record a specific event (with call graph)") {|s| $options[:perf_record_event] = s }
+    opts.on("--perf-gen-record-event [EVENT]", "Perf record a specific event (no call graph)") {|s| $options[:perf_gen_record_event] = s }
+    opts.on("--cmd_prefix [STR]", "Use this command prefix remotely") {|s| $options[:cmd_prefix] = s}
+    opts.on("--cmd_infix [STR]", "Use this command infix remotely") {|s| $options[:cmd_infix] = s}
+    opts.on("--cmd_suffix [STR]", "Use this command suffix remotely") {|s| $options[:cmd_suffix] = s}
+    opts.on("--switch-pile", "Pile the switches on the first machines") {$options[:switch_pile] = true}
+    opts.on("--switch-perhost [NUM]", "Peers per host for switches") {|s| $options[:switch_perhost] = s}
 
     # Stages.
     # Ktrace is not run by default.

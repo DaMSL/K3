@@ -284,7 +284,7 @@ def create_dist_file(args):
 
     # The amount of cores we have for non-nodes
     extra_machines = ['qp-hd1$', 'qp-hd2']
-    switch_machines = ['qp4', 'qp5', 'qp6', 'qp-hd4', 'qp-hd5']
+    switch_machines = map(lambda m: (m, []), ['qp4', 'qp5', 'qp6', 'qp-hd4', 'qp-hd5'])
     num_switch_machines = len(switch_machines)
     num_cores = 16
     max_switches = num_switch_machines * num_cores
@@ -294,24 +294,28 @@ def create_dist_file(args):
     # Pack multiple switches into each role
     if num_switches > max_switches:
         raise ValueError("Invalid number of switches: {}. Maximum is {}".format(num_switches, max_switches))
-    used_machines = num_switches if num_switches < num_switch_machines else num_switch_machines
-    # The max switches per machine
-    switches_per_machine = num_switches / num_switch_machines
-    # The point at which we have 1 more switch per machine (0 means there is no such point)
-    fewer_point = num_switches % num_switch_machines
-    if fewer_point != 0:
-        switches_per_machine = switches_per_machine + 1
+    # Assign switches -- round robin
+    if args.switch_method == 'round_robin':
+        for i in range(num_switches):
+            switch_machines[i % num_switch_machines][1].append(i)
+    else:
+        sw_perhost = args.switch_perhost
+        sw_idx = 0
+        for i in range(num_switch_machines):
+            remain = num_switches - sw_idx
+            used_cores = remain if remain < sw_perhost else sw_perhost
+            for _ in range(used_cores):
+                switch_machines[i][1].append(sw_idx)
+                sw_idx += 1
 
-    last_index = 0
-    for i in range(used_machines):
-        assign = switches_per_machine if i < fewer_point or fewer_point == 0 else switches_per_machine - 1
-        switch_indexes = range(last_index, last_index + assign)
-        last_index = last_index + assign
+    for (i, (nm, switch_indexes)) in enumerate(switch_machines):
+        if not switch_indexes: # skip over empty switches
+            continue
         switch_env2 = copy.deepcopy(switch_env)
         if args.tpch_data_path:
             switch_env2['k3_seq_files'] = \
                 mk_k3_seq_files(num_switches, switch_indexes, args.tpch_data_path, sorted(query_tables[query]))
-        k3_roles.append(('Switch' + str(i), switch_machines.pop(0), assign, None, switch_env2))
+        k3_roles.append(('Switch' + str(i), nm, len(switch_indexes), None, switch_env2))
 
     k3_roles.append(('Master', extra_machines[0], 1, None, master_env))
     k3_roles.append(('Timer',  extra_machines[1], 1, None, timer_env))
@@ -355,7 +359,7 @@ def main():
                         dest="num_nodes", default=4)
     parser.add_argument("--use-hm", dest="use_hm", action='store_true', help="use HM nodes", default=False)
     parser.add_argument("--perhost", type=int, help="peers per host", default=None)
-
+    parser.add_argument("--switch-perhost", type=int, default=16, dest="switch_perhost", help="switch peers per host")
     parser.add_argument("--csv_path", type=str, help="path of csv data source", default=None)
     parser.add_argument("--tpch_data_path", type=str, help="path of tpch flatpolys", default=None)
     parser.add_argument("--tpch_inorder_path", type=str, help="path of tpch inorder file", default=None)
@@ -364,6 +368,7 @@ def main():
     parser.add_argument("--extra-args", help="extra arguments in x=y format")
     parser.add_argument("--latency-profiling", action="store_true", default=False, dest="latency_profiling", help="activate profiling")
     parser.add_argument("--message-profiling", action="store_true", default=False, dest="message_profiling", help="activate profiling")
+    parser.add_argument("--switch-method", default='round_robin', dest="switch_method", help="How to assign switches")
     args = parser.parse_args()
     if args.run_mode == "dist":
         create_dist_file(args)
