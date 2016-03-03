@@ -333,7 +333,7 @@ end
 # create perf flame graphs for min/max/median nodes/switches
 def perf_flame_graph(sandbox_path, trig_times)
     perf_tool = File.join($k3_root_path, "tools", "scripts", "perf", "perf_analysis.sh")
-    ["nodes", "switches"].each do |role|
+    ["nodes"].each do |role|
       times = trig_times[role]
       num = times.length
       # min node, max node, median node
@@ -450,7 +450,7 @@ def wait_and_fetch_results(stage_num, jobid)
 
 end
 
-def run_deploy_k3_remote(uid, bin_path, perf_profile, perf_frequency)
+def run_deploy_k3_remote(uid, bin_path)
   role_path = if $options[:raw_yaml_file] then $options[:raw_yaml_file] else File.join($workdir, $nice_name + ".yaml") end
 
   # we can either have a uid from a previous stage, or send a binary and get a uid now
@@ -472,15 +472,15 @@ def run_deploy_k3_remote(uid, bin_path, perf_profile, perf_frequency)
   stage "[5] Creating new mesos job"
   curl_args = {}
   cmd_prefix = ''; cmd_infix = ''; cmd_suffix = ''
-  perf_frequency = perf_frequency == '' ? '60' : perf_frequency
+  perf_frequency = if $options.has_key? :perf_frequency then $options[:perf_frequency] else '60' end
 
   # handle options
   curl_args['jsonlog'] = 'yes' if $options[:logging] == :full
   curl_args['jsonfinal'] = 'yes' if $options[:logging] == :final
   cmd_prefix = "MALLOC_CONF=stats_print:true #{cmd_prefix}" if $options[:jemalloc_stats]
   cmd_prefix = "perf stat -B #{$all_events} #{cmd_prefix}" if $options[:perf_stat]
-  cmd_prefix = "perf record --call-graph dwarf -s -F #{perf_frequency} #{cmd_prefix}" if perf_profile
-  cmd_prefix = "perf record -F #{perf_frequency} #{cmd_prefix}" if $options[:perf_gen_record]
+  cmd_prefix = "perf record --call-graph dwarf -a -s -F #{perf_frequency} #{cmd_prefix}" if $options[:perf_record]
+  cmd_prefix = "perf record -a -F #{perf_frequency} #{cmd_prefix}" if $options[:perf_gen_record]
   if $options.has_key? :perf_record_event
     cmd_prefix =
       "perf record --call-graph dwarf -F #{perf_frequency} -e #{$options[:perf_record_event]} #{cmd_prefix}"
@@ -531,7 +531,7 @@ def run_deploy_k3_local(bin_path)
   args << "-g '#{$options[:json_regex]}' " if $options[:json_regex]
   frequency = if $options[:perf_frequency] then $options[:perf_frequency] else "10" end
   cmd_prefix = ''
-  cmd_prefix = "perf record -F #{frequency} --call-graph dwarf #{cmd_prefix}" if $options[:perf_profile]
+  cmd_prefix = "perf record -F #{frequency} --call-graph dwarf #{cmd_prefix}" if $options[:perf_record]
   cmd_prefix = "perf stat -B #{$all_events} #{cmd_prefix} " if $options[:perf_stat]
   cmd = "#{bin_path} -p #{role_path} #{args}"
   run(cmd_prefix + cmd, local:true)
@@ -869,7 +869,6 @@ def main()
   $options = {
     :run_mode   => :dist,
     :logging    => :none,
-    :perf_profile => false,
     :isobatch   => true,
     :corrective => false,
     :compileargs => ""
@@ -912,9 +911,6 @@ def main()
     opts.on("--json-final", "Turn on final JSON logging for ktrace") { $options[:logging] = :final }
     opts.on("--json-regex [REGEX]", "Regex pattern for JSON logging") { |s| $options[:json_regex] = s}
     opts.on("--json-none", "Turn off JSON logging for ktrace") { $options[:logging] = :none }
-    opts.on("--perf-profile", "Turn on perf profiling") { $options[:perf_profile] = true}
-    opts.on("--perf-graph", "Graph perf results") { $options[:perf_graph] = true}
-    opts.on("--perf-frequency [NUM]", String, "Set perf profiling frequency") { |s| $options[:perf_frequency] = s }
     opts.on("--core-dump", "Turn on core dump for distributed run") { $options[:core_dump] = true }
     opts.on("--dots", "Get the awesome dots") { $options[:dots] = true }
     opts.on("--gc-epoch [MS]", "Set gc epoch time (ms)") { |i| $options[:gc_epoch] = i }
@@ -954,7 +950,10 @@ def main()
     opts.on("--extract-times [PATH]", "Extract times from sandbox") { |s| $options[:extract_times] = s }
     opts.on("--jemalloc-stats", "Get times from jemalloc") { $options[:jemalloc_stats] = true }
     opts.on("--perf-stat", "Get stats from perf") { $options[:perf_stat] = true }
+    opts.on("--perf-record", "Turn on perf profiling") { $options[:perf_record] = true}
     opts.on("--perf-gen-record", "Get perf generic recording (no call graph)") { $options[:perf_gen_record] = true }
+    opts.on("--perf-graph", "Graph perf results") { $options[:perf_graph] = true}
+    opts.on("--perf-frequency [NUM]", String, "Set perf profiling frequency") { |s| $options[:perf_frequency] = s }
     opts.on("--perf-record-event [EVENT]", "Perf record a specific event (with call graph)") {|s| $options[:perf_record_event] = s }
     opts.on("--perf-gen-record-event [EVENT]", "Perf record a specific event (no call graph)") {|s| $options[:perf_gen_record_event] = s }
     opts.on("--cmd_prefix [STR]", "Use this command prefix remotely") {|s| $options[:cmd_prefix] = s}
@@ -1142,9 +1141,7 @@ def main()
     elsif $options[:run_mode] == :local
       run_deploy_k3_local(bin_path)
     else
-      prof = $options[:perf_profile]
-      freq = if $options.has_key?(:perf_frequency) then $options[:perf_frequency] else '' end
-      run_deploy_k3_remote(uid, bin_path, prof, freq)
+      run_deploy_k3_remote(uid, bin_path)
     end
   end
 
