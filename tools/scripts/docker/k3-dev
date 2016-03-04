@@ -17,7 +17,7 @@ ENV PERFTOOLS_VER=2.4 \
     PGHOST=qp2 \
     PGHOSTADDR=192.168.0.11 \
     PGUSER=postgres \
-    K3_BRANCH=fast-compile
+    K3_BRANCH=master
 
 # Install basic packages to build the image
 RUN apt-get install -y \
@@ -28,7 +28,8 @@ RUN apt-get install -y \
     opam \
     ruby2.2 ruby2.2-dev python-dev python-pip \
     postgresql-client-9.4 libpq-dev \
-    libzmq3-dev libre2-dev numactl libunwind-dev \
+    libzmq3-dev libre2-dev libunwind-dev \
+    numactl libnuma-dev \
     libfreetype6-dev libpng12-dev && \
     update-alternatives \
       --install /usr/bin/ruby ruby /usr/bin/ruby2.2 50 \
@@ -156,4 +157,6 @@ RUN mkdir -p /k3/K3 && \
 # Clean up
 RUN apt-get autoremove -y && \
     apt-get autoclean -y
+
+WORKDIR /k3/K3
 

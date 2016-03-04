@@ -35,6 +35,10 @@ RUN wget https://github.com/jemalloc/jemalloc/releases/download/$JEMALLOC_VER/je
   cd .. && \
   rm -Rf /jemalloc-$JEMALLOC_VER
 
+# Install NUMA stuff
+RUN apt-get install -y \
+    numactl libnuma-dev
+
 # Finish & Clean up
 RUN apt-get remove -y gcc g++ make cmake git \
     software-properties-common \

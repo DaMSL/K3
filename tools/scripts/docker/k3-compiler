@@ -12,7 +12,7 @@ ENV CABAL_VER=1.22 \
     GHC_VER=7.10.1 \
     HAPPY_VER=1.19.5 \
     ALEX_VER=3.1.4 \
-    K3_BRANCH=fast-compile
+    K3_BRANCH=master
 
 # Install basic packages to build the image
 RUN apt-get install -y \
