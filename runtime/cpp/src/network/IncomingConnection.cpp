@@ -36,7 +36,7 @@ void InternalIncomingConnection::receiveMessages(
     if (bytes == m->networkHeaderSize()) {
       // Resize the buffer and isssue a second async read
       // Again, use a raw pointer since closures need to be copyable
-      Buffer* payload_buf = new Buffer(m->payload_length());
+      Buffer* payload_buf = new Buffer(m->payload_length_);
       auto buffer = asio::buffer(payload_buf->data(), payload_buf->size());
       auto payload_callback =
           [this_shared, m, payload_buf, e_handler, m_handler](boost_error ec,
