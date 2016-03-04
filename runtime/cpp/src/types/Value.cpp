@@ -11,6 +11,11 @@ PackedValue::PackedValue(CodecFormat format) { format_ = format; }
 
 CodecFormat PackedValue::format() const { return format_; }
 
+BufferPackedValue::BufferPackedValue(Buffer* b, CodecFormat format)
+    : PackedValue(format) {
+  buffer_ = std::unique_ptr<Buffer>(b);
+}
+
 BufferPackedValue::BufferPackedValue(Buffer&& b, CodecFormat format)
     : PackedValue(format) {
   buffer_ = std::make_unique<Buffer>(std::move(b));

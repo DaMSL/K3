@@ -21,7 +21,8 @@ InternalIncomingConnection::InternalIncomingConnection(
 void InternalIncomingConnection::receiveMessages(
     shared_ptr<MessageHandler> m_handler, shared_ptr<ErrorHandler> e_handler) {
   // Create an empty NetworkMessage for reading into
-  shared_ptr<NetworkMessage> m = make_shared<NetworkMessage>();
+  // Using a raw pointer because closures need to be copyable
+  NetworkMessage* m = new NetworkMessage();
   auto in_buffers = m->inputBuffers();
 
   shared_ptr<InternalIncomingConnection> this_shared = shared_from_this();
@@ -34,8 +35,8 @@ void InternalIncomingConnection::receiveMessages(
     }
     if (bytes == m->networkHeaderSize()) {
       // Resize the buffer and isssue a second async read
-      shared_ptr<Buffer> payload_buf = make_shared<Buffer>();
-      payload_buf->resize(m->payload_length_);
+      // Again, use a raw pointer since closures need to be copyable
+      Buffer* payload_buf = new Buffer(m->payload_length());
       auto buffer = asio::buffer(payload_buf->data(), payload_buf->size());
       auto payload_callback =
           [this_shared, m, payload_buf, e_handler, m_handler](boost_error ec,
@@ -47,11 +48,9 @@ void InternalIncomingConnection::receiveMessages(
             if (bytes == m->payload_length_) {
               // Create a PackedValue from the buffer, and call the message
               // handler
-              unique_ptr<PackedValue> pv;
-              pv = make_unique<BufferPackedValue>(std::move(*payload_buf),
-                                                  this_shared->format_);
+              auto pv = std::make_unique<BufferPackedValue>(payload_buf, this_shared->format_);
               m->setValue(std::move(pv));
-              (*m_handler)(std::make_unique<NetworkMessage>(std::move(*m)));
+              (*m_handler)(std::unique_ptr<NetworkMessage>(m));
 
               // Recurse to receive the next message
               this_shared->receiveMessages(m_handler, e_handler);

@@ -71,6 +71,7 @@ class TNativeValue : public NativeValue {
 // Vector-based
 class BufferPackedValue : public PackedValue {
  public:
+  BufferPackedValue(Buffer *b, CodecFormat format);
   BufferPackedValue(Buffer&& b, CodecFormat format);
   CodecFormat format() const;
   virtual const char* buf() const;
