@@ -956,9 +956,9 @@ def main()
     opts.on("--perf-frequency [NUM]", String, "Set perf profiling frequency") { |s| $options[:perf_frequency] = s }
     opts.on("--perf-record-event [EVENT]", "Perf record a specific event (with call graph)") {|s| $options[:perf_record_event] = s }
     opts.on("--perf-gen-record-event [EVENT]", "Perf record a specific event (no call graph)") {|s| $options[:perf_gen_record_event] = s }
-    opts.on("--cmd_prefix [STR]", "Use this command prefix remotely") {|s| $options[:cmd_prefix] = s}
-    opts.on("--cmd_infix [STR]", "Use this command infix remotely") {|s| $options[:cmd_infix] = s}
-    opts.on("--cmd_suffix [STR]", "Use this command suffix remotely") {|s| $options[:cmd_suffix] = s}
+    opts.on("--cmd-prefix [STR]", "Use this command prefix remotely") {|s| $options[:cmd_prefix] = s}
+    opts.on("--cmd-infix [STR]", "Use this command infix remotely") {|s| $options[:cmd_infix] = s}
+    opts.on("--cmd-suffix [STR]", "Use this command suffix remotely") {|s| $options[:cmd_suffix] = s}
     opts.on("--switch-pile", "Pile the switches on the first machines") {$options[:switch_pile] = true}
     opts.on("--switch-perhost [NUM]", "Peers per host for switches") {|s| $options[:switch_perhost] = s}
 
