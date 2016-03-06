@@ -35,15 +35,23 @@ RUN wget https://github.com/jemalloc/jemalloc/releases/download/$JEMALLOC_VER/je
   cd .. && \
   rm -Rf /jemalloc-$JEMALLOC_VER
 
-# Install NUMA stuff
+# Install Python yaml/NUMA stuff
 RUN apt-get install -y \
-    numactl libnuma-dev
+    python-software-properties python-setuptools python-dev python-pip libyaml-dev \
+    numactl libnuma-dev && \
+    pip install pyyaml
+
+# Install Mesos Eggs (for k3 executor)
+RUN wget http://downloads.mesosphere.io/master/ubuntu/14.04/mesos-$MESOS_VER-py2.7-linux-x86_64.egg && \
+    wget https://pypi.python.org/packages/2.7/m/mesos.interface/mesos.interface-$MESOS_INT_VER-py2.7.egg && \
+    easy_install mesos.interface-$MESOS_INT_VER-py2.7.egg && \
+    easy_install --no-deps mesos-$MESOS_VER-py2.7-linux-x86_64.egg && \
+    rm mesos.interface-$MESOS_INT_VER-py2.7.egg && \
+    rm mesos-$MESOS_VER-py2.7-linux-x86_64.egg
 
 # Finish & Clean up
-RUN apt-get remove -y gcc g++ make cmake git \
-    software-properties-common \
-    python-software-properties \
-    unzip autoconf libtool && \
+RUN apt-get remove -y gcc g++ make cmake \
+    autoconf libtool && \
     apt-get autoremove -y && \
     apt-get autoclean -y && \
     rm -rf /usr/share/doc/* && \
