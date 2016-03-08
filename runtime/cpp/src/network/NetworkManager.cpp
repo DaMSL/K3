@@ -9,12 +9,12 @@ namespace K3 {
 
 std::atomic<unsigned long> NetworkManager::timer_cnt_(0);
 
-NetworkManager::NetworkManager(int num_threads) {
+NetworkManager::NetworkManager(int num_threads) :
+    io_service_(), work_(io_service_) {
   logger_ = spdlog::get("engine");
   if (!logger_) {
     logger_ = spdlog::stdout_logger_mt("engine");
   }
-  work_ = make_shared<asio::io_service::work>(io_service_);
   internal_listeners_ = make_shared<ListenerMap>();
   external_listeners_ = make_shared<ListenerMap>();
   internal_out_conns_ = make_shared<InternalConnectionMap>();
@@ -35,7 +35,6 @@ NetworkManager::~NetworkManager() {
 }
 
 void NetworkManager::stop() {
-  work_.reset();
   io_service_.stop();
 }
 
