@@ -16,7 +16,8 @@ int Options::parse(int argc, const char *const argv[]) {
       ("json_final_only,f", "json log final state only")
       ("json_messages_regex,m", po::value<string>(),  "Filter message log by trigger")
       ("json_globals_regex,g", po::value<string>(), "Filter globals log by variable name")
-      ("disable_local_messages,d", "force serialization of all messages)");
+      ("disable_local_messages,d", "force serialization of all messages")
+      ("num_threads,t", po::value<int>(), "threads for networking");
 
   po::variables_map vm;
   po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -68,6 +69,10 @@ int Options::parse(int argc, const char *const argv[]) {
     local_sends_enabled_ = false;
   } else {
     local_sends_enabled_ = true;
+  }
+
+  if (vm.count("num_threads")) {
+    num_threads_ = vm["num_threads"].as<int>();
   }
 
   return 0;

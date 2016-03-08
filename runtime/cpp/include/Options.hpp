@@ -30,8 +30,10 @@ class JSONOptions {
 class Options {
  public:
   Options() {
+    // default options
     log_level_ = 0;
     local_sends_enabled_ = true;
+    num_threads_ = 4;
   }
 
   int parse(int argc, const char* const argv[]);
@@ -40,6 +42,7 @@ class Options {
   int log_level_;
   bool local_sends_enabled_;
   JSONOptions json_;
+  int num_threads_;
 };
 }  // namespace K3
 

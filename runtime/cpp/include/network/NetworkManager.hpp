@@ -50,7 +50,7 @@ typedef std::function<void(boost_error)> ErrorHandler;
 class NetworkManager {
  public:
   // Core Interface
-  NetworkManager();
+  NetworkManager(int threads);
   ~NetworkManager();
   void stop();
   void join();

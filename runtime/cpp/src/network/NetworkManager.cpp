@@ -9,7 +9,7 @@ namespace K3 {
 
 std::atomic<unsigned long> NetworkManager::timer_cnt_(0);
 
-NetworkManager::NetworkManager() {
+NetworkManager::NetworkManager(int num_threads) {
   logger_ = spdlog::get("engine");
   if (!logger_) {
     logger_ = spdlog::stdout_logger_mt("engine");
@@ -24,7 +24,7 @@ NetworkManager::NetworkManager() {
   internal_format_ = K3_INTERNAL_FORMAT;
   running_ = true;
   timers_ = make_shared<TimerMap>();
-  for (int i = 0; i < 4; i ++) {
+  for (int i = 0; i < num_threads; i ++) {
     addThread();
   }
 }

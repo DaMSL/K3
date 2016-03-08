@@ -13,7 +13,7 @@
 namespace K3 {
 
 Engine::Engine(const Options& opts)
-    : network_manager_(),
+    : network_manager_(opts.num_threads_),
       storage_manager_(),
       peers_(),
       options_(opts),
