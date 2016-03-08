@@ -472,23 +472,22 @@ def run_deploy_k3_remote(uid, bin_path)
   stage "[5] Creating new mesos job"
   curl_args = {}
   cmd_prefix = ''; cmd_infix = ''; cmd_suffix = ''
-  perf_frequency = if $options.has_key? :perf_frequency then $options[:perf_frequency] else '60' end
+  perf_freq = if $options.has_key? :perf_frequency then $options[:perf_frequency] else '60' end
+  dwarf = '--call-graph dwarf'
+  record_prefix = "perf record -a -F #{perf_freq}"
 
   # handle options
   curl_args['jsonlog'] = 'yes' if $options[:logging] == :full
   curl_args['jsonfinal'] = 'yes' if $options[:logging] == :final
   cmd_prefix = "MALLOC_CONF=stats_print:true #{cmd_prefix}" if $options[:jemalloc_stats]
   cmd_prefix = "perf stat -B #{$all_events} #{cmd_prefix}" if $options[:perf_stat]
-  cmd_prefix = "perf record --call-graph dwarf -a -s -F #{perf_frequency} #{cmd_prefix}" if $options[:perf_record]
-  cmd_prefix = "perf record -a -F #{perf_frequency} #{cmd_prefix}" if $options[:perf_gen_record]
-  if $options.has_key? :perf_record_event
-    cmd_prefix =
-      "perf record --call-graph dwarf -F #{perf_frequency} -e #{$options[:perf_record_event]} #{cmd_prefix}"
-  end
-  if $options.has_key? :perf_gen_record_event
-    cmd_prefix =
-      "perf record -F #{perf_frequency} -e #{$options[:perf_gen_record_event]} #{cmd_prefix}"
-  end
+  cmd_prefix = "#{record_prefix} #{dwarf} #{cmd_prefix}" if $options[:perf_record]
+  cmd_prefix = "#{record_prefix} #{cmd_prefix}" if $options[:perf_gen_record]
+  cmd_prefix = "#{record_prefix} #{dwarf} -e #{$options[:perf_record_event]} #{cmd_prefix}" \
+    if $options[:perf_record_event]
+  cmd_prefix = "#{record_prefix} -e #{$options[:perf_gen_record_event]} #{cmd_prefix}" \
+    if $options[:perf_gen_record_event]
+  cmd_prefix = "#{cmd_prefix} numactl -m #{$options[:numactl]} -N #{$options[:numactl]}" if $options[:numactl]
   cmd_infix += " -g #{$options[:json_regex]}" if $options[:json_regex]
 
   # Allow overriding
@@ -961,6 +960,7 @@ def main()
     opts.on("--cmd-suffix [STR]", "Use this command suffix remotely") {|s| $options[:cmd_suffix] = s}
     opts.on("--switch-pile", "Pile the switches on the first machines") {$options[:switch_pile] = true}
     opts.on("--switch-perhost [NUM]", "Peers per host for switches") {|s| $options[:switch_perhost] = s}
+    opts.on("--numactl [NUM]", "Force app to run only on node x") {|s| $options[:numactl] = s}
 
     # Stages.
     # Ktrace is not run by default.
