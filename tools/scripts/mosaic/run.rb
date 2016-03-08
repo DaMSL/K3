@@ -489,6 +489,7 @@ def run_deploy_k3_remote(uid, bin_path)
     if $options[:perf_gen_record_event]
   cmd_prefix = "#{cmd_prefix} numactl -m #{$options[:numactl]} -N #{$options[:numactl]}" if $options[:numactl]
   cmd_infix += " -g #{$options[:json_regex]}" if $options[:json_regex]
+  cmd_infix += " -t #{$options[:network_threads]}" if $options[:network_threads]
 
   # Allow overriding
   cmd_prefix = $options[:cmd_prefix] if $options[:cmd_prefix]
@@ -529,10 +530,11 @@ def run_deploy_k3_local(bin_path)
   args << "--json_final_only " if $options[:logging] == :final
   args << "-g '#{$options[:json_regex]}' " if $options[:json_regex]
   frequency = if $options[:perf_frequency] then $options[:perf_frequency] else "10" end
-  cmd_prefix = ''
+  cmd_prefix = ''; cmd_infix = ''
   cmd_prefix = "perf record -F #{frequency} --call-graph dwarf #{cmd_prefix}" if $options[:perf_record]
   cmd_prefix = "perf stat -B #{$all_events} #{cmd_prefix} " if $options[:perf_stat]
-  cmd = "#{bin_path} -p #{role_path} #{args}"
+  cmd_infix += " -t #{$options[:network_threads]}" if $options[:network_threads]
+  cmd = "#{bin_path} -p #{role_path} #{cmd_infix} #{args}"
   run(cmd_prefix + cmd, local:true)
 end
 
@@ -961,6 +963,7 @@ def main()
     opts.on("--switch-pile", "Pile the switches on the first machines") {$options[:switch_pile] = true}
     opts.on("--switch-perhost [NUM]", "Peers per host for switches") {|s| $options[:switch_perhost] = s}
     opts.on("--numactl [NUM]", "Force app to run only on node x") {|s| $options[:numactl] = s}
+    opts.on("--network-threads [NUM]", "Set number of networking threads to use") {|s| $options[:network_threads] = s}
 
     # Stages.
     # Ktrace is not run by default.
