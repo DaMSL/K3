@@ -14,9 +14,7 @@ NetworkManager::NetworkManager(int num_threads) {
   if (!logger_) {
     logger_ = spdlog::stdout_logger_mt("engine");
   }
-  io_service_ = make_shared<asio::io_service>();
-  work_ = make_shared<asio::io_service::work>(*io_service_);
-  threads_ = make_shared<boost::thread_group>();
+  work_ = make_shared<asio::io_service::work>(io_service_);
   internal_listeners_ = make_shared<ListenerMap>();
   external_listeners_ = make_shared<ListenerMap>();
   internal_out_conns_ = make_shared<InternalConnectionMap>();
@@ -38,12 +36,12 @@ NetworkManager::~NetworkManager() {
 
 void NetworkManager::stop() {
   work_.reset();
-  io_service_->stop();
+  io_service_.stop();
 }
 
 void NetworkManager::join() {
   if (running_) {
-    threads_->join_all();
+    threads_.join_all();
     running_ = false;
   }
   return;
@@ -56,7 +54,7 @@ void NetworkManager::listenInternal(shared_ptr<Peer> peer) {
         return make_shared<InternalIncomingConnection>(service, format);
       });
   auto listen_addr = peer->address();
-  auto listener = make_shared<Listener>(*io_service_, listen_addr, peer,
+  auto listener = make_shared<Listener>(io_service_, listen_addr, peer,
                                         internal_format_, fac_ptr);
   internal_listeners_->insert(listen_addr, listener);
 
@@ -80,7 +78,7 @@ void NetworkManager::listenExternal(shared_ptr<Peer> peer, Address listen_addr,
                                                        peer_addr, trig);
       });
   auto listener =
-      make_shared<Listener>(*io_service_, listen_addr, peer, format, fac_ptr);
+      make_shared<Listener>(io_service_, listen_addr, peer, format, fac_ptr);
   external_listeners_->insert(listen_addr, listener);
 
   // Accept connections, removing the listener upon error
@@ -96,7 +94,7 @@ void NetworkManager::listenExternal(shared_ptr<Peer> peer, Address listen_addr,
 void NetworkManager::sendInternal(const Address& dst, shared_ptr<NetworkMessage> pm) {
   // Check for an existing connection, creating one if necessary
   shared_ptr<InternalOutgoingConnection> c =
-      internal_out_conns_->lookupOrCreate(dst, *io_service_);
+      internal_out_conns_->lookupOrCreate(dst, io_service_);
 
   // Send, removing the connection upon error
   shared_ptr<InternalConnectionMap> conn_map = internal_out_conns_;
@@ -112,7 +110,7 @@ void NetworkManager::sendExternal(const Address& addr,
                                   shared_ptr<PackedValue> pm) {
   // Check for an existing connection, creating one if necessary
   shared_ptr<ExternalOutgoingConnection> c =
-      external_out_conns_->lookupOrCreate(addr, *io_service_);
+      external_out_conns_->lookupOrCreate(addr, io_service_);
 
   // Send, removing the connection upon error
   shared_ptr<ExternalConnectionMap> conn_map = external_out_conns_;
@@ -136,20 +134,20 @@ CodecFormat NetworkManager::internalFormat() { return internal_format_; }
 
 shared_ptr<InternalOutgoingConnection> NetworkManager::connectInternal(
     const Address& a) {
-  auto c = make_shared<InternalOutgoingConnection>(a, *io_service_);
+  auto c = make_shared<InternalOutgoingConnection>(a, io_service_);
   internal_out_conns_->insert(a, c);
   return c;
 }
 
 shared_ptr<ExternalOutgoingConnection> NetworkManager::connectExternal(
     const Address& a) {
-  auto c = make_shared<ExternalOutgoingConnection>(a, *io_service_);
+  auto c = make_shared<ExternalOutgoingConnection>(a, io_service_);
   external_out_conns_->insert(a, c);
   return c;
 }
 
 void NetworkManager::addThread() {
-  threads_->create_thread([this]() { io_service_->run(); });
+  threads_.create_thread([this]() { io_service_.run(); });
 }
 
 std::shared_ptr<TimerKey>
@@ -176,7 +174,7 @@ NetworkManager::timerKey(const TimerType& ty, const Address& src, const Address&
 
 void NetworkManager::addTimer(std::shared_ptr<TimerKey> k, const Delay& delay)
 {
-  auto& ios = *io_service_;
+  auto& ios = io_service_;
   timers_->apply([k, &ios, &delay](auto& map) mutable {
     auto it = map.find(k);
     if ( it == map.end() ) {

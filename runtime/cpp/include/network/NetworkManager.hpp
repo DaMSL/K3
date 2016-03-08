@@ -81,9 +81,9 @@ class NetworkManager {
   shared_ptr<spdlog::logger> logger_;
 
   // IO service related members
-  shared_ptr<asio::io_service> io_service_;
+  asio::io_service io_service_;
   shared_ptr<asio::io_service::work> work_;
-  shared_ptr<boost::thread_group> threads_;
+  boost::thread_group threads_;
 
   // Listeners
   shared_ptr<ListenerMap> internal_listeners_;
