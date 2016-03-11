@@ -331,8 +331,8 @@ class K3Executor(mesos.interface.Executor):
           peerglobals["seqfiles"] = seqFileYamlByPeer[mosaicSeqfile.switch_indexes[i]]
           peerglobals["inorder"] = inorderVarByPeer[i]
 
-          for logfile in ['eventlog', 'msgcountlog', 'routelog']:
-            peerglobals[logfile] = "%s_%d.csv" % (logfile, i)
+        for logfile in ['eventlog', 'msgcountlog', 'routelog']:
+          peerglobals[logfile] = "%s_%d.csv" % (logfile, i)
 
         for k,v in peerglobals.items():
           logging.debug('    %s: %s', str(k), str(v))
