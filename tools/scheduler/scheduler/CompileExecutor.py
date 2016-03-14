@@ -103,11 +103,11 @@ class CompilerExecutor(mesos.interface.Executor):
             if daemon['role'] == 'client':
                 daemon[
                     'k3src'] = DEBUG_FILE if DEBUG else '$MESOS_SANDBOX/%s.k3' % daemon['name']
-                cmd = './tools/scripts/run/service.sh submit --svid %(svid)s --host %(host)s --port %(port)s  --blocksize %(blocksize)s -j %(cppthread)s %(compilestage)s %(compileargs)s %(k3src)s +RTS -N -RTS' % daemon
+                cmd = './tools/scripts/run/service.sh submit --svid %(svid)s --host %(host)s --port %(port)s  --blocksize %(blocksize)s -j %(cppthread)s %(compilestage)s %(compileargs)s %(k3src)s +RTS -s -N -RTS' % daemon
             elif daemon['role'] == 'master':
-                cmd = './tools/scripts/run/service.sh %(role)s --svid %(svid)s --host %(host)s --port %(port)s --workers %(m_workerthread)s +RTS -N -RTS' % daemon
+                cmd = './tools/scripts/run/service.sh %(role)s --svid %(svid)s --host %(host)s --port %(port)s --workers %(m_workerthread)s +RTS -s -N -RTS' % daemon
             else:
-                cmd = './tools/scripts/run/service.sh %(role)s --svid %(svid)s --host %(host)s --port %(port)s --workers %(w_workerthread)s --heartbeat %(heartbeat)s +RTS -N -RTS' % daemon
+                cmd = './tools/scripts/run/service.sh %(role)s --svid %(svid)s --host %(host)s --port %(port)s --workers %(w_workerthread)s --heartbeat %(heartbeat)s +RTS -s -N -RTS' % daemon
 
             logging.info("CMD = %s" % cmd)
 
