@@ -12,11 +12,31 @@ from pyhistogram import Hist1D
 from ascii_graph import Pyasciigraph
 
 # Event classes.
-events = {'switch_process': 0, 'rcv_fetch': 1, 'rcv_push': 2, 'do_complete': 3, 'corr_done': 4, 'buffered_push': 5
-          }
+events = {
+    'switch_process': 0,
+    'rcv_fetch': 1,
+    'rcv_push': 2,
+    'do_complete': 3,
+    'corr_done': 4,
+    'buffered_push': 5
+    }
 
-tags = {'pre_send_fetch': 0, 'post_send_fetch': 1, 'rcv_fetch': 2, 'buffered_push': 3, 'push_done': 4, 'do_complete_done': 5, 'corr_done': 6, 'corr_send': 7, 'push_cnts': 8, 'push_decr': 9, 'fetch_route': 10, 'send_put': 11, 'gc_start': 12, 'gc_done': 13
-        }
+tags = {
+    'pre_send_fetch': 0,
+    'post_send_fetch': 1,
+    'rcv_fetch': 2,
+    'buffered_push': 3,
+    'push_done': 4,
+    'do_complete_done': 5,
+    'corr_done': 6,
+    'corr_send': 7,
+    'push_cnts': 8,
+    'push_decr': 9,
+    'fetch_route': 10,
+    'send_put': 11,
+    'gc_start': 12,
+    'gc_done': 13
+    }
 
 # An interval tree of vid-segments to update start times.
 switchspans = IntervalTree()
@@ -104,7 +124,7 @@ def process_events(switch_files, node_files, save_intermediate):
                     latencyspans[events['switch_process']] = (
                         min(rmin, l), max(rmax, l))
                 else:
-                    print("Unknown switch tag: {tg}".format(**locals()))
+                    print("Unknown switch tag: {}".format(tag))
 
     for fn in node_files:
         with open(fn) as csvfile:
