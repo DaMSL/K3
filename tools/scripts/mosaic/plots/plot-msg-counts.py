@@ -29,6 +29,9 @@ def make_png(max_node, variant, file, data):
     plt.clf()
     plt.pcolormesh(x, y, intensity)
     plt.colorbar()
+    plt.ylabel('Sources')
+    plt.xlabel('Destinations')
+    plt.title(variant)
     plt.savefig(file)
 
 def make_csv(max_node, variant, file, data):
