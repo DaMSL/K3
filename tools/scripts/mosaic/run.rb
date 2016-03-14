@@ -471,6 +471,7 @@ def run_deploy_k3_remote(uid, bin_path)
 
   stage "[5] Creating new mesos job"
   curl_args = {}
+  malloc_conf = []
   cmd_prefix = ''; cmd_infix = ''; cmd_suffix = ''
   perf_freq = if $options.has_key? :perf_frequency then $options[:perf_frequency] else '60' end
   dwarf = '--call-graph dwarf'
@@ -479,7 +480,7 @@ def run_deploy_k3_remote(uid, bin_path)
   # handle options
   curl_args['jsonlog'] = 'yes' if $options[:logging] == :full
   curl_args['jsonfinal'] = 'yes' if $options[:logging] == :final
-  cmd_prefix = "MALLOC_CONF=stats_print:true #{cmd_prefix}" if $options[:jemalloc_stats]
+
   cmd_prefix = "perf stat -B #{$all_events} #{cmd_prefix}" if $options[:perf_stat]
   cmd_prefix = "#{record_prefix} #{dwarf} #{cmd_prefix}" if $options[:perf_record]
   cmd_prefix = "#{record_prefix} #{cmd_prefix}" if $options[:perf_gen_record]
@@ -490,6 +491,10 @@ def run_deploy_k3_remote(uid, bin_path)
   cmd_prefix = "#{cmd_prefix} numactl -m #{$options[:numactl]} -N #{$options[:numactl]}" if $options[:numactl]
   cmd_infix += " -g #{$options[:json_regex]}" if $options[:json_regex]
   cmd_infix += " -t #{$options[:network_threads]}" if $options[:network_threads]
+
+  malloc_conf += ['narenas:20'] if $options[:jemalloc_tune]
+  malloc_conf << 'stats_print:true' if $options[:jemalloc_stats]
+  cmd_prefix = "MALLOC_CONF='#{malloc_conf.join(',')}'; #{cmd_prefix}" unless malloc_conf.empty?
 
   # Allow overriding
   cmd_prefix = $options[:cmd_prefix] if $options[:cmd_prefix]
@@ -796,35 +801,24 @@ def run_ktrace(jobid)
 end
 
 def post_process_latencies(jobid, sw_regex)
+  # Note: we assume switches are separate from nodes
+  puts "Post-processing latencies" 
   job_path = File.join($workdir, "job_#{jobid}")
   if $options[:latency_dir]
     job_path = $options[:latency_dir]
   end
-  dirs = Dir.entries(job_path).select {|entry|
-    File.directory? File.join(job_path, entry) and !(entry == '.' || entry == '..')
-  }
-  switch_dirs = dirs.select {|d| d =~ Regexp.new(sw_regex)}.map {|d| File.join(job_path, d) }
-  switch_files = switch_dirs.map {|d|
-    files = Dir.entries(d).select {|f| f =~ /eventlog_.+\.csv/}
-    files.map {|x| File.join(d, x) }
-  }.flatten
-
-  node_dirs = dirs.select {|d| !(switch_dirs.include? File.join(job_path, d)) }.map {|d| File.join(job_path, d) }
-  node_files = node_dirs.map {|d|
-    files = Dir.entries(d).select {|f| f =~ /eventlog_.+\.csv/}
-    files.map {|x| File.join(d, x) }
-  }.flatten
-  for file in node_files
-    puts file
+  node_files = []; switch_files = []
+  Dir.glob(File.join(job_path, '**', 'peers*.yaml')) do |file|
+    # get eventlog_file and role from peers file
+    yaml = YAML.load_file(file)
+    eventlog, role = [yaml['eventlog'], yaml['role'][0]['i']]
+    eventlog_path = File.join(File.split(file)[0], eventlog)
+    node_files << eventlog_path if role == 'node'
+    switch_files << eventlog_path if role == 'switch'
   end
 
-  cmd = ""
-  cmd << "--switches " << switch_files.join(" ") << " "
-  cmd << "--nodes " << node_files.join(" ") << " "
-  print cmd
-
+  cmd = "--switches #{switch_files.join(" ")} --nodes #{node_files.join(" ")}"
   run("#{File.join($script_path, "event_latencies.py")} #{cmd}", always_out:true)
-
 end
 
 # create heat maps for messages
@@ -836,7 +830,9 @@ def plot_messages(jobid)
   path = $options[:run_mode] == :local ? "-f #{local_path}" : "-j #{job_path}"
   heat_path = $options[:run_mode] == :local ? "heat" : File.join(job_path, "heat")
 
+  puts "Post-Processing Message Counts"
   run("#{File.join(plots_path, "process-msg-counts.rb")} #{path} > #{yaml_path}", always_out:true)
+  puts "Plotting Message Counts"
   run("#{File.join(plots_path, "plot-msg-counts.py")} #{yaml_path} --out-prefix #{heat_path}", always_out:true)
 end
 
@@ -944,12 +940,13 @@ def main()
     opts.on("--wmoderate",  "Skew argument")                                   { $options[:compileargs] += " --workerfactor hm=3 --workerblocks hd=4:qp3=4:qp4=4:qp5=4:qp6=4" }
     opts.on("--wmoderate2", "Skew argument")                                   { $options[:compileargs] += " --workerfactor hm=3 --workerblocks hd=2:qp3=2:qp4=2:qp5=2:qp6=2" }
     opts.on("--wextreme",   "Skew argument")                                   { $options[:compileargs] += " --workerfactor hm=4 --workerblocks hd=1:qp3=1:qp4=1:qp5=1:qp6=1" }
-    opts.on("--process-latencies [SWITCH_REGEX]", "Post-processing on latency files") { |s| $options[:process_latencies] = s }
+    opts.on("--process-latencies", "Post-processing on latency files") { $options[:process_latencies] = true }
     opts.on("--latency-job-dir [PATH]", "Manual selection of job directory") { |s| $options[:latency_dir] = s }
     opts.on("--plot-messages", "Create message heat maps") { $options[:plot_messages] = true }
     opts.on("--no-isobatch", "Disable isobatch mode") { $options[:isobatch] = false }
     opts.on("--extract-times [PATH]", "Extract times from sandbox") { |s| $options[:extract_times] = s }
     opts.on("--jemalloc-stats", "Get times from jemalloc") { $options[:jemalloc_stats] = true }
+    opts.on("--jemalloc-tune", "Tune jemalloc") { $options[:jemalloc_tune] = true }
     opts.on("--perf-stat", "Get stats from perf") { $options[:perf_stat] = true }
     opts.on("--perf-record", "Turn on perf profiling") { $options[:perf_record] = true}
     opts.on("--perf-gen-record", "Get perf generic recording (no call graph)") { $options[:perf_gen_record] = true }
@@ -1010,14 +1007,10 @@ def main()
   end
 
   # load old options from last run
-  if File.exists?($last_path)
-    update_from_json(JSON.parse(File.read($last_path)))
-  end
+  update_from_json(JSON.parse(File.read($last_path))) if File.exists?($last_path)
 
   # handle json options
-  if $options.has_key?(:json_file)
-    update_from_json(JSON.parse($options[:json_file]))
-  end
+  update_from_json(JSON.parse($options[:json_file])) if $options.has_key?(:json_file)
 
   ### fill in default options (must happen after filling in from json)
   # if only one data file, take that one
@@ -1098,14 +1091,13 @@ def main()
   bin_path = File.join($workdir, bin_file)
   dbt_results = []
 
-  if $options[:mosaic]
-    run_mosaic(k3_path, mosaic_path, source)
-  end
+  run_mosaic(k3_path, mosaic_path, source) if $options[:mosaic]
 
   if $options[:dbtoaster]
     run_dbtoaster($options[:dbt_exec_only], test_path, $options[:dbt_data_path], dbt_plat,
                   dbt_lib_path, dbt_name, dbt_name_hpp, source_path, start_path)
   end
+
   # either nil or take from command line
   uid = $options[:uid] ? $options[:uid] : $options[:latest_uid] ? "latest" : nil
   jobid = $options[:jobid] ? $options[:jobid] : nil
@@ -1149,19 +1141,13 @@ def main()
   end
 
   # options to fetch to job results
-  if $options[:fetch_results]
-    wait_and_fetch_results(5, jobid)
-  end
+  wait_and_fetch_results(5, jobid) if $options[:fetch_results]
 
   # post-process latency files
-  if $options[:process_latencies]
-    post_process_latencies(jobid, $options[:process_latencies])
-  end
+  post_process_latencies(jobid, $options[:process_latencies]) if $options[:process_latencies]
 
   #plot messages
-  if $options[:plot_messages]
-    plot_messages(jobid)
-  end
+  plot_messages(jobid) if $options[:plot_messages]
 
   if $options[:compare]
     dbt_results = parse_dbt_results(dbt_name)
@@ -1169,9 +1155,7 @@ def main()
     run_compare(dbt_results, k3_results)
   end
 
-  if $options[:ktrace]
-    run_ktrace(jobid)
-  end
+  run_ktrace(jobid) if $options[:ktrace]
 
   # extract times if requested
   if $options[:extract_times]
@@ -1181,7 +1165,6 @@ def main()
       perf_flame_graph(sandbox, trig_times)
     end
   end
-
 end
 
 main
