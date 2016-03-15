@@ -13,8 +13,8 @@ require 'open3'
 
   $all_events = (%w{cache-references cache-misses branch-instructions branch-misses cpu-clock cycles ref-cycles stalled-cycles-frontend stalled-cycles-backend minor-faults major-faults context-switches cpu-migrations L1-dcache-loads L1-dcache-load-misses L1-dcache-stores L1-dcache-store-misses L1-icache-loads L1-icache-load-misses LLC-loads LLC-load-misses LLC-stores LLC-store-misses dTLB-loads dTLB-load-misses dTLB-stores dTLB-store-misses iTLB-loads iTLB-load-misses}.map {|s| "-e #{s}"}).join(' ')
 
-def run(cmd, checks:[], always_out:false, local:false)
-  puts cmd if $options[:debug] || local
+def run(cmd, checks:[], always_out:false, always_cmd:false, local:false)
+  puts cmd if $options[:debug] || local || always_cmd
   out, err, s = Open3.capture3(cmd)
   puts out if $options[:debug] || always_out || local
   puts err if $options[:debug] || local
@@ -143,7 +143,7 @@ end
 def run_create_k3_local(k3_cpp_name, k3_cpp_path, k3_path)
   stage "[3] Creating K3 cpp file locally"
   compile = File.join($script_path, "..", "run", "compile_mosaic.sh")
-  res = run("time #{compile} -1 #{k3_path} +RTS -A1G -N -c -s -RTS", local:true)
+  res = run("time #{compile} -1 #{k3_path} +RTS -A10M -N -c -s -RTS", local:true)
 
   src_path = File.join($k3_root_path, "__build")
   # copy to work directory
@@ -287,6 +287,9 @@ def gen_yaml(role_path)
   cmd << "--extra-args " << extra_args.join(',') << " " if extra_args.size > 0
 
   yaml = run("#{File.join($script_path, "gen_yaml.py")} #{cmd}")
+
+  role_dir = File.split(role_path)[0]
+  FileUtils.mkdir_p role_dir unless File.exist?(role_dir)
   File.write(role_path, yaml)
 end
 
@@ -522,25 +525,29 @@ end
 
 # local deployment
 def run_deploy_k3_local(bin_path)
-  role_path = if $options[:raw_yaml_file] then $options[:raw_yaml_file] else File.join($workdir, $nice_name + "_local.yaml") end
+  local_path = File.join($workdir, 'local')
+  local_yaml_path = File.join(local_path, $nice_name + '.yaml')
+  role_path = $options[:raw_yaml_file] ? $options[:raw_yaml_file] : local_yaml_path
   gen_yaml(role_path) unless $options[:raw_yaml_file]
 
-  json_dist_path = File.join($workdir, 'json')
+  json_dist_path = File.join(local_path, 'json')
 
   stage "[5] Running K3 executable locally"
-  `rm -rf #{json_dist_path}`
-  `mkdir -p #{json_dist_path}`
-  args = ""
-  args << "--json #{json_dist_path} " unless $options[:logging] == :none
-  args << "--json_final_only " if $options[:logging] == :final
-  args << "-g '#{$options[:json_regex]}' " if $options[:json_regex]
+  FileUtils.rm_rf json_dist_path
+  FileUtils.mkdir_p json_dist_path
   frequency = if $options[:perf_frequency] then $options[:perf_frequency] else "10" end
   cmd_prefix = ''; cmd_infix = ''
   cmd_prefix = "perf record -F #{frequency} --call-graph dwarf #{cmd_prefix}" if $options[:perf_record]
   cmd_prefix = "perf stat -B #{$all_events} #{cmd_prefix} " if $options[:perf_stat]
-  cmd_infix += " -t #{$options[:network_threads]}" if $options[:network_threads]
-  cmd = "#{bin_path} -p #{role_path} #{cmd_infix} #{args}"
+  cmd_infix << " -t #{$options[:network_threads]}" if $options[:network_threads]
+  cmd_infix << " --json #{json_dist_path} " unless $options[:logging] == :none
+  cmd_infix << " --json_final_only " if $options[:logging] == :final
+  cmd_infix << " -g '#{$options[:json_regex]}' " if $options[:json_regex]
+  dir = Dir.pwd
+  Dir.chdir local_path # so all files are produced here
+  cmd = "#{bin_path} -p #{role_path} #{cmd_infix}"
   run(cmd_prefix + cmd, local:true)
+  Dir.chdir dir
 end
 
 # convert a string to the narrowest value
@@ -800,25 +807,38 @@ def run_ktrace(jobid)
 
 end
 
-def post_process_latencies(jobid, sw_regex)
+def post_process_latencies(jobid)
   # Note: we assume switches are separate from nodes
-  puts "Post-processing latencies" 
-  job_path = File.join($workdir, "job_#{jobid}")
-  if $options[:latency_dir]
-    job_path = $options[:latency_dir]
-  end
+  puts "Post-processing latencies"
+  job_path = $options[:run_mode] == :local ? File.join($workdir, 'local') : File.join($workdir, "job_#{jobid}")
+  job_path = $options[:latency_dir] if $options[:latency_dir]
+
   node_files = []; switch_files = []
-  Dir.glob(File.join(job_path, '**', 'peers*.yaml')) do |file|
-    # get eventlog_file and role from peers file
-    yaml = YAML.load_file(file)
-    eventlog, role = [yaml['eventlog'], yaml['role'][0]['i']]
-    eventlog_path = File.join(File.split(file)[0], eventlog)
-    node_files << eventlog_path if role == 'node'
-    switch_files << eventlog_path if role == 'switch'
+
+  if $options[:run_mode] == :local
+    Dir.glob(File.join(job_path, '*.yaml')) do |file|
+      File.open(file, 'r') do |f|
+        YAML.load_documents f do |yaml|
+          eventlog, role = [yaml['eventlog'], yaml['role'][0]['i']]
+          eventlog_path = File.join(job_path, eventlog)
+          node_files   << eventlog_path if role == 'node'
+          switch_files << eventlog_path if role == 'switch'
+        end
+      end
+    end
+  else # distributed mode
+    Dir.glob(File.join(job_path, '**', 'peers*.yaml')) do |file|
+      # get eventlog_file and role from peers file
+      yaml = YAML.load_file(file)
+      eventlog, role = [yaml['eventlog'], yaml['role'][0]['i']]
+      eventlog_path = File.join(File.split(file)[0], eventlog)
+      node_files   << eventlog_path if role == 'node'
+      switch_files << eventlog_path if role == 'switch'
+    end
   end
 
   cmd = "--switches #{switch_files.join(" ")} --nodes #{node_files.join(" ")}"
-  run("#{File.join($script_path, "event_latencies.py")} #{cmd}", always_out:true)
+  run("#{File.join($script_path, "event_latencies.py")} #{cmd}", always_out:true, always_cmd:true)
 end
 
 # create heat maps for messages
@@ -1144,7 +1164,7 @@ def main()
   wait_and_fetch_results(5, jobid) if $options[:fetch_results]
 
   # post-process latency files
-  post_process_latencies(jobid, $options[:process_latencies]) if $options[:process_latencies]
+  post_process_latencies(jobid) if $options[:process_latencies]
 
   #plot messages
   plot_messages(jobid) if $options[:plot_messages]
