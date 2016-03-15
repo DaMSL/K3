@@ -415,10 +415,12 @@ inline e = do
       -- kg <- genSym
       -- ke <- reify (RDecl kg Nothing) k
 
+      br <- gets (boxRecords . flags)
+
       kt <- getKType k >>= genCType
       rt <- getKType c >>= \(tag &&& children -> (TCollection, [rt])) -> genCType rt
       kp <- genSym
-      let kpdecl = R.Forward $ R.ScalarDecl (R.Name kp) (R.Reference R.Inferred) (Just $ R.Project (R.Variable $ R.Name kn) (R.Name "key"))
+      let kpdecl = R.Forward $ R.ScalarDecl (R.Name kp) (R.Reference R.Inferred) (Just $ R.Project ((if br then R.Dereference else id) $ R.Variable $ R.Name kn) (R.Name "key"))
 
       ug <- genSym
       let ue = R.Forward $ R.ScalarDecl (R.Name ug) (R.Reference R.Inferred) (Just $  R.Call (R.Project cv (R.Name "getContainer")) [])
