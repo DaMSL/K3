@@ -14,10 +14,10 @@ class DEFAULT:
   # workerNodes =  ['qp3', 'qp4', 'qp5', 'qp6'] + ['qp-hm' + str(i) for i in range(2,9)] + ['qp-hd' + str(i) for i in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13]]
   # clientNodes =  ['qp-hd14', 'qp-hd15', 'qp-hd16']
 
-  masterNodes =  ['qp-hm1']
+  masterNodes =  ['qp-hm2']
   workerNodes =  ['qp4', 'qp5', 'qp6'] + \
                  ['qp-hd' + str(i) for i in [1, 2, 4, 5, 6, 7, 9, 10, 12, 13]] + \
-                 ['qp-hm' + str(i) for i in [2, 3, 4, 5, 6, 7, 8]]
+                 ['qp-hm' + str(i) for i in [1, 3, 4, 5, 6, 7, 8]]
   clientNodes =  ['qp-hd14', 'qp-hd15', 'qp-hd16']
 
 # compilerNodes    =  masterNodes + workerNodes + clientNodes
