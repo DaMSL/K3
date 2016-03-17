@@ -17,45 +17,47 @@ events = {
     'rcv_fetch': 1,
     'rcv_push': 2,
     'do_complete': 3,
-    'corr_done': 4,
+    'corrective': 4,
     'buffered_push': 5
     }
 
+# detailed tag -> (number, general event for tracking)
 tags = {
-    'pre_send_fetch': 0,
-    'post_send_fetch': 1,
-    'rcv_fetch': 2,
-    'buffered_push': 3,
-    'push_done': 4,
-    'do_complete_done': 5,
-    'corr_done': 6,
-    'corr_send': 7,
-    'push_cnts': 8,
-    'push_decr': 9,
-    'fetch_route': 10,
-    'send_put': 11,
-    'gc_start': 12,
-    'gc_done': 13
+    'pre_send_fetch': (0, 'switch_process'),
+    'post_send_fetch': (1, 'switch_process'),
+    'rcv_fetch': (2, 'rcv_fetch'),
+    'buffered_push': (3, 'buffered_push'),
+    'push_done': (4, 'rcv_push'),
+    'do_complete_done': (5, 'do_complete'),
+    'corr_done': (6, 'corr_done'),
+    'corr_send': (7, 'corr_send'),
+    'push_cnts': (8, None),
+    'push_decr': (9, None),
+    'fetch_route': (10, None),
+    'send_put': (11, None),
+    'gc_start': (12, None),
+    'gc_done': (13, None)
     }
 
-# An interval tree of vid-segments to update start times.
+tag_to_ev = ['' for x in range(len(tags))]
+for _, v in tags.iteritems():
+    tag_to_ev[v[0]] = v[1]
+
+# An interval tree of vid-segments to update start times. Uses fetch events
 switchspans = IntervalTree()
 
-# A dictionary of event spans per vid.
-nodespans = {}
+# A dictionary of event -> vid -> span (min, max). Uses all other events
+nodespans = [{} for ev in events]
 
-# A dictionary of event latencies per vid.
-latencies = {}
+# A dictionary of event -> vid -> latency
+latencies = [{} for ev in events]
 
-# A dictionary of global latency ranges, across all vids per event class.
-latencyspans = {v: (sys.maxint, -sys.maxint - 1) for v in events.values()}
-
-# A dictionary of latency histograms per event class.
-lhists = {}
-nbins = 20
+# A dictionary of global latency min/max values across all vids per event class.
+latencyspans = [(sys.maxint, -sys.maxint - 1) for ev in events]
 
 
-def max_from_start(tg, vid, t):
+def update_latency(tag, vid, t):
+    # get the matching interval from the switch interval tree
     intervals = switchspans[vid]
     if len(intervals) > 1:
         print("Invalid point query on switch vid intervals")
@@ -63,24 +65,22 @@ def max_from_start(tg, vid, t):
         if len(intervals) == 0:
             print("No start interval found for {}".format(vid))
         else:
-            l = t - list(intervals)[0].data
+            # get the interval's latency (there should be only one match)
+            lat = t - list(intervals)[0].data
 
-            if vid not in latencies:
-                latencies[vid] = {v: -sys.maxint - 1 for v in events.values()}
+            ev = events[tag]
 
-            latencies[vid][events[tg]] = max(latencies[vid][events[tg]], l)
+            old_lat = latencies[ev][vid] if vid in latencies[ev] else -1
+            latencies[ev][vid] = max(old_lat, lat)
 
-            (rmin, rmax) = latencyspans[events[tg]]
-            latencyspans[events[tg]] = (min(rmin, l), max(rmax, l))
+            (rmin, rmax) = latencyspans[ev]
+            latencyspans[ev] = (min(rmin, lat), max(rmax, lat))
 
 
-def event_span(tg, vid, t):
-    if vid not in nodespans:
-        nodespans[vid] = {v: (sys.maxint, -sys.maxint - 1)
-                          for v in events.values()}
-
-    (rmin, rmax) = nodespans[vid][events[tg]]
-    nodespans[vid][events[tg]] = (min(rmin, t), max(rmax, t))
+def update_nodespan(tag, vid, t):
+    ev = events[tag]
+    (rmin, rmax) = nodespans[ev][vid] if vid in nodespans[ev] else (sys.maxint, -sys.maxint - 1)
+    nodespans[ev][vid] = (min(rmin, t), max(rmax, t))
 
 
 def banner(s):
@@ -88,15 +88,13 @@ def banner(s):
 
 
 def dump_final_latencies():
-    print("Dumping Final latencies:")
-    with open("latencies.txt", 'w') as f:
-        for vid in latencies:
-            l = latencies[vid][events['do_complete']]
-            if l > 0:
-                f.write(str(l) + '\n')
-
+    print(banner('Dumping Final latencies'))
+    with open('latencies.txt', 'w') as f:
+        for lat in latencies[events['do_complete']].values():
+            f.write(str(lat) + '\n')
 
 def process_events(switch_files, node_files, save_intermediate):
+    """ Main function """
     # Build an interval tree with switch files.
     # Probe and reconstruct latencies from node files.
     for fn in switch_files:
@@ -105,88 +103,55 @@ def process_events(switch_files, node_files, save_intermediate):
             prev_vid = 0
             prev_v = 0
             prev_t = 0
+            count = 0
             for row in swreader:
-                [tg, vid, comp, t] = map(lambda x: int(x), row)
+                count = count + 1
+                [tag, vid, comp, t] = map(lambda x: int(x), row)
 
-                if tg == tags['pre_send_fetch']:
+                if tag == tags['pre_send_fetch'][0]:
                     prev_vid = vid
                     prev_t = t
-                elif tg == tags['post_send_fetch']:
-                    switchspans[prev_vid:vid] = t
-                    l = t - prev_t
-                    print(vid, l)
+                elif tag == tags['post_send_fetch'][0]:
+                    # add one to post_send_fetch vid to include it also
+                    switchspans[prev_vid:vid + 1] = t
+                    lat = t - prev_t
+                    # print(vid, lat) # debug
 
-                    latencies[vid] = {v: -sys.maxint -
-                                      1 for v in events.values()}
-                    latencies[vid][events['switch_process']] = l
+                    # initialize latencies for this vid
+                    ev = events[tags['post_send_fetch'][1]]
+                    latencies[ev][vid] = lat
 
-                    (rmin, rmax) = latencyspans[events['switch_process']]
-                    latencyspans[events['switch_process']] = (
-                        min(rmin, l), max(rmax, l))
+                    (rmin, rmax) = latencyspans[ev]
+                    latencyspans[ev] = (min(rmin, lat), max(rmax, lat))
                 else:
                     print("Unknown switch tag: {}".format(tag))
+        # print("Processed {} lines in switch file {}".format(count, fn))
+    # print("latencies: {}".format(latencies)) # debug
 
     for fn in node_files:
         with open(fn) as csvfile:
             swreader = csv.reader(csvfile, delimiter=',')
+            count = 0
             for row in swreader:
-                [tg, vid, comp, t] = map(lambda x: int(x), row)
+                count = count + 1
+                [tag, vid, comp, t] = map(lambda x: int(x), row)
 
                 # For each class of event, track the last event from the start of the
                 # update at this vid, and the timespan of the event class.
-                if tg == tags['rcv_fetch']:
-                    max_from_start('rcv_fetch', vid, t)
-                    event_span('rcv_fetch', vid, t)
-
-                elif tg == tags['buffered_push']:
-                    max_from_start('buffered_push', vid, t)
-                    event_span('buffered_push', vid, t)
-
-                elif tg == tags['push_done']:
-                    max_from_start('rcv_push', vid, t)
-                    event_span('rcv_push', vid, t)
-
-                elif tg == tags['do_complete_done']:
-                    max_from_start('do_complete', vid, t)
-                    event_span('do_complete', vid, t)
-
-                elif tg == tags['corr_done']:
-                    max_from_start('corr_done', vid, t)
-                    event_span('corr_done', vid, t)
+                if tag < len(tag_to_ev):
+                    event = tag_to_ev[tag]
+                    if not event is None:
+                        update_latency(event, vid, t)
+                        update_nodespan(event, vid, t)
 
                 # else:
-                #   print("Unknown node tag: {tg}".format(**locals()))
+                #   print("Unknown node tag: {tag}".format(**locals()))
+        # print("Processed {} lines in node file {}".format(count, fn))
+    # print("latencies: {}".format(latencies)) # debug
+
     dump_final_latencies()
 
-    # Build latency histograms
-    #print(banner("Computing latency histograms"))
-
-    # for ecls, span in latencyspans.iteritems():
-    #  lhists[ecls] = Hist1D(nbins, span[0], span[1])
-
-    # for eventl in latencies.values():
-    #  for ecls, l in eventl.iteritems():
-    #    lhists[ecls].fill(l)
-
-    #print(banner("Saving latency histograms"))
-
-    # for k, v in events.iteritems():
-    #  if k == "corr_done":
-    #    continue
-    #  with open('latency_{}.yml'.format(k), 'w') as outfile:
-    #    data = {b.x.center: b.value for b in lhists[v].bins()}
-    #    yaml.dump(data, outfile, default_flow_style=True)
-
-    #    # Interactive plot
-    #    graph = Pyasciigraph()
-
-    #    # Simpler example
-    #    try:
-    #      for line in graph.graph('{} latency'.format(k), sorted(data.items())):
-    #        print(line)
-    #    except Exception as e:
-    #      print("Exception on {}".format(k))
-    #      print(e)
+    build_histograms()
 
     if save_intermediate:
         # Finally, save intermediate data for now.
@@ -198,6 +163,46 @@ def process_events(switch_files, node_files, save_intermediate):
         with open('nodespans.yml', 'w') as outfile:
             yaml.dump(nodespans, outfile, default_flow_style=True)
 
+def build_histograms():
+    # Build latency histograms
+    print(banner("Computing latency histograms"))
+
+    # A dictionary of latency histograms per event class.
+    lhists = {}
+    nbins = 20
+
+    # Set the spans of the histogram
+    for ev, span in enumerate(latencyspans):
+        lhists[ev] = Hist1D(nbins, span[0], span[1])
+
+    # Fill out the histogram
+    for ev, vid_lat in enumerate(latencies):
+       for lat in vid_lat.values():
+           lhists[ev].fill(lat)
+
+    print(banner("Saving latency histograms"))
+
+    with open("graph.txt", 'w') as file:
+        for k, v in events.iteritems():
+            # correctives aren't tracked
+            if k == "corrective":
+                continue
+            # save to file
+            with open('latency_{}.yml'.format(k), 'w') as outfile:
+                data = {b.x.center: b.value for b in lhists[v].bins()}
+                yaml.dump(data, outfile, default_flow_style=True)
+
+            if all(v == 0 for v in data.values()):
+                continue
+
+            # plot
+            graph = Pyasciigraph(graphsymbol='*')
+            try:
+              for line in graph.graph('{} latency'.format(k), sorted(data.items())):
+                file.write(line + '\n')
+            except Exception as e:
+              print("Exception on {}".format(k))
+              print(e)
 
 def main():
     parser = argparse.ArgumentParser()
