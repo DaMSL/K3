@@ -137,7 +137,9 @@ control MosaicPreEvent[lbl:label, tl:expr, ve:expr, ce:expr]
                 $.[e]
   +> {}
 
-  ?e => (if ($[lbl]_event_sample_mod == 0 or $[ve] % $[lbl]_event_sample_mod == 0)
+  ?e => (if ($[lbl]_event_sample_mod == 0 or
+             $[ve] % $[lbl]_event_sample_mod == 0 or
+             $[ve] % 2 == 1)
          then (
           ($[lbl]_event_buffer.insert {etag: $[tl], evid: $[ve], pcomponent: $[ce], t: now_int()});
           (if $[lbl]_event_buffer.size() >= $[lbl]_event_buffer_batch_sz
@@ -150,7 +152,7 @@ control MosaicPreEvent[lbl:label, tl:expr, ve:expr, ce:expr]
   shared {
     declare $[lbl]_event_buffer : collection {etag: int, evid: int, pcomponent: int, t: int} @Vector
     declare $[lbl]_event_buffer_batch_sz : mut int = 1000
-    declare $[lbl]_event_sample_mod      : mut int = 5
+    declare $[lbl]_event_sample_mod      : mut int = 40
   }
 }
 
@@ -162,7 +164,9 @@ control MosaicPostEvent[lbl:label, tl:expr, ve:expr, ce:expr]
   +> {}
 
   ?e => ( $.[e] );
-        (if ($[lbl]_event_sample_mod == 0 or $[ve] % $[lbl]_event_sample_mod == 0)
+        (if ($[lbl]_event_sample_mod == 0 or
+             $[ve] % $[lbl]_event_sample_mod == 0 or
+             $[ve] % 2 == 1)
          then (
           ($[lbl]_event_buffer.insert {etag: $[tl], evid: $[ve], pcomponent: $[ce], t: now_int()});
           (if $[lbl]_event_buffer.size() >= $[lbl]_event_buffer_batch_sz
@@ -174,7 +178,7 @@ control MosaicPostEvent[lbl:label, tl:expr, ve:expr, ce:expr]
   shared {
     declare $[lbl]_event_buffer : collection {etag:int, evid:int, pcomponent:int, t:int} @Vector
     declare $[lbl]_event_buffer_batch_sz : mut int = 1000
-    declare $[lbl]_event_sample_mod      : mut int = 5
+    declare $[lbl]_event_sample_mod      : mut int = 40
   }
 }
 
