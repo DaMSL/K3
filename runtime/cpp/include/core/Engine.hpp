@@ -20,6 +20,7 @@
 #include "serialization/Yaml.hpp"
 #include "serialization/Codec.hpp"
 #include "Peer.hpp"
+#include "builtins/ProfilingBuiltins.hpp"
 
 namespace K3 {
 class ProgramContext;

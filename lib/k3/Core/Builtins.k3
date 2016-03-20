@@ -81,6 +81,12 @@ with effects \_ -> io
 declare jemallocDump: () -> ()
 with effects \_ -> io
 
+declare jemallocTotalSizeStart: () -> ()
+with effects \_ -> io
+
+declare jemallocTotalSizeStop: () -> ()
+with effects \_ -> io
+
 declare pcmStart: () -> ()
 with effects \_ -> io
 

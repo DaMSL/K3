@@ -40,9 +40,12 @@ namespace K3 {
 class __heap_profiler {
  public:
   __heap_profiler() { heap_profiler_done.clear(); }
+  // set period in ms
+  void set_period(int p) { period_ = p; }
 
  protected:
-  std::shared_ptr<boost::thread> heap_profiler_thread;
+  int period_ = 250;
+  std::unique_ptr<boost::thread> heap_profiler_thread;
   std::atomic_flag heap_profiler_done;
   int64_t time_milli() {
     auto t = std::chrono::system_clock::now();
@@ -51,18 +54,19 @@ class __heap_profiler {
     return elapsed.count();
   }
 
-  template <class I, class B>
-  void heap_series_start(I init, B body) {
-    heap_profiler_thread = make_shared<boost::thread>([this, &init, &body]() {
+  template <class I, class B, class S>
+  void heap_series_start(I init, B body, S shutdown) {
+    heap_profiler_thread = make_unique<boost::thread>([this, init, body, shutdown]() {
       std::string name = init();
-      int i = 0;
+      int i = 0; // steps since start
       std::cout << "Heap profiling thread starting: " << name << " ("
                 << time_milli() << ")" << std::endl;
       while (!heap_profiler_done.test_and_set()) {
         heap_profiler_done.clear();
-        boost::this_thread::sleep_for(boost::chrono::milliseconds(250));
+        boost::this_thread::sleep_for(boost::chrono::milliseconds(period_));
         body(name, i++);
       }
+      shutdown(name);
       std::cout << "Heap profiling thread terminating: " << name << " ("
                 << time_milli() << ")" << std::endl;
     });
@@ -71,7 +75,7 @@ class __heap_profiler {
   void heap_series_stop() {
     heap_profiler_done.test_and_set();
     if (heap_profiler_thread) {
-      heap_profiler_thread->interrupt();
+      heap_profiler_thread->interrupt(); // wake up the thread if needed
     }
   }
 };
@@ -91,6 +95,9 @@ class ProfilingBuiltins: public __heap_profiler {
   // JEMalloc
   unit_t jemallocStart(unit_t);
   unit_t jemallocStop(unit_t);
+  void dumpStatsToFile(std::string& name);
+  unit_t jemallocTotalSizeStart(unit_t);
+  unit_t jemallocTotalSizeStop(unit_t);
   unit_t jemallocDump(unit_t);
 
   unit_t perfRecordStart(unit_t);
@@ -105,6 +112,12 @@ class ProfilingBuiltins: public __heap_profiler {
   unit_t vmapDump(unit_t);
 
  protected:
+#if defined(K3_JEMALLOC) && defined(K3_HEAP_TOTAL_SIZE)
+  size_t mib_[2] = {0};
+  size_t miblen_ = 2;
+  std::vector<std::pair<uint64_t, uint64_t>> stats_;
+#endif
+
 #ifdef BSL_ALLOC
 #ifdef BCOUNT
   bsl::ofstream vmapAllocLog;

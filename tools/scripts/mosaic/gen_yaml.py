@@ -147,6 +147,9 @@ def create_local_file(args):
         if pmap is not None:
             peer.update(pmap)
 
+        if role == 'master':
+            peer['peer_masters'] = [{'key':address(port), 'value':address(port)}]
+
         if role == 'node':
             if opt_route:
                 peer.update(opt_route)
