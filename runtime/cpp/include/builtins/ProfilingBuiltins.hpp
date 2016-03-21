@@ -17,7 +17,7 @@
 #include "gperftools/heap-profiler.h"
 #endif
 
-#ifdef K3_JEMALLOC
+#if defined(K3_JEMALLOC) || defined(K3_JEMALLOC_HEAP_SIZE)
 #include "jemalloc/jemalloc.h"
 #endif
 
@@ -112,7 +112,7 @@ class ProfilingBuiltins: public __heap_profiler {
   unit_t vmapDump(unit_t);
 
  protected:
-#if defined(K3_JEMALLOC) && defined(K3_HEAP_TOTAL_SIZE)
+#ifdef K3_JEMALLOC_HEAP_SIZE
   size_t mib_[2] = {0};
   size_t miblen_ = 2;
   std::vector<std::pair<uint64_t, uint64_t>> stats_;

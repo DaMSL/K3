@@ -135,7 +135,7 @@ unit_t ProfilingBuiltins::jemallocDump(unit_t) {
 }
 
   void ProfilingBuiltins::dumpStatsToFile (std::string& name) {
-#if defined(K3_JEMALLOC) && defined(K3_HEAP_TOTAL_SIZE)
+#ifdef K3_JEMALLOC_HEAP_SIZE
     std::ofstream file;
     file.open(name, std::ios::out | std::ios::app);
     for (auto p : stats_) {
@@ -149,7 +149,7 @@ unit_t ProfilingBuiltins::jemallocDump(unit_t) {
   // gather statistics for the allocated size over time
   // No need for jemalloc profiling (slow)
   unit_t ProfilingBuiltins::jemallocTotalSizeStart(unit_t) {
-#if defined(K3_JEMALLOC) && defined(K3_HEAP_TOTAL_SIZE)
+#ifdef K3_JEMALLOC_HEAP_SIZE
     mallctlnametomib("stats.allocated", mib_, &miblen_);
     set_period(500);       // every half a second by default
     std::cout << "Starting JEMALLOC total memory size tracking\n";
@@ -165,11 +165,14 @@ unit_t ProfilingBuiltins::jemallocDump(unit_t) {
 
     // Get time & allocated size and save them
     auto body = [this](std::string& name, int) {
-      const int threshold = 10;
-      size_t alloc_sz;
+      size_t epoch = 1;
+      size_t epoch_sz = sizeof(epoch);
+      mallctl("epoch", &epoch, &epoch_sz, &epoch, epoch_sz);
+      const int threshold = 10; // how often to save (how many samples)
+      size_t alloc_sz = 0;
       size_t alloc_sz_len = sizeof(alloc_sz);
       uint64_t time = time_milli();
-      mallctlbymib(mib_, miblen_, &alloc_sz, &alloc_sz_len, NULL, 0);
+      mallctl("stats.allocated", &alloc_sz, &alloc_sz_len, NULL, 0);
       stats_.push_back(std::make_pair(time, (uint64_t)alloc_sz));
       // check if we need to dump
       if (stats_.size() > threshold) {
@@ -185,14 +188,14 @@ unit_t ProfilingBuiltins::jemallocDump(unit_t) {
     };
 
     heap_series_start(init, body, shutdown);
-#endif // JEMALLOC & K3_HEAP_TOTAL_SIZE
+#endif // K3_JEMALLOC_HEAP_SIZE
     return unit_t();
   }
 
   unit_t ProfilingBuiltins::jemallocTotalSizeStop(unit_t) {
-#if defined(K3_JEMALLOC) && defined(K3_HEAP_TOTAL_SIZE)
+#ifdef K3_JEMALLOC_HEAP_SIZE
     heap_series_stop();
-#endif // JEMALLOC & K3_HEAP_TOTAL_SIZE
+#endif // K3_JEMALLOC_HEAP_SIZE
     return unit_t();
   }
 
