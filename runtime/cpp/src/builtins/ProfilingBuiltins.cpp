@@ -18,7 +18,7 @@ namespace K3 {
         std::string name = init();
         int i = 0; // steps since start
         // firing the interruption exception will still RAII this shutdown
-        shutdown_object(shutdown, name);
+        shutdown_object shut(shutdown, name);
         std::cout << "Heap profiling thread starting: " << name << " ("
                   << time_milli() << ")" << std::endl;
         // allow interruption out of sleep
@@ -194,6 +194,7 @@ unit_t ProfilingBuiltins::jemallocDump(unit_t) {
 
     // Get time & allocated size and save them
     auto body = [this](std::string& name, int) {
+      // Needed to refresh mallctl, otherwise we have stale data
       size_t epoch = 1;
       size_t epoch_sz = sizeof(epoch);
       mallctl("epoch", &epoch, &epoch_sz, &epoch, epoch_sz);
