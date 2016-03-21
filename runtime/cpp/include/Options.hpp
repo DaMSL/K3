@@ -34,6 +34,7 @@ class Options {
     log_level_ = 0;
     local_sends_enabled_ = true;
     num_threads_ = 4;
+    profile_interval_ = 250;
   }
 
   int parse(int argc, const char* const argv[]);
@@ -42,7 +43,8 @@ class Options {
   int log_level_;
   bool local_sends_enabled_;
   JSONOptions json_;
-  int num_threads_;
+  int num_threads_; // number of threads for networking
+  int profile_interval_;  // ms to wait between profiling instances
 };
 }  // namespace K3
 

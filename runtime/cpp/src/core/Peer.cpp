@@ -24,7 +24,7 @@ namespace K3 {
   }
 
 Peer::Peer(shared_ptr<ContextFactory> fac, const YAML::Node& config,
-           std::function<void()> callback, const JSONOptions& opts)
+           std::function<void()> callback, const Options& opts)
 #ifdef BSL_ALLOC
   :
   #ifdef BSEQ
@@ -46,7 +46,7 @@ Peer::Peer(shared_ptr<ContextFactory> fac, const YAML::Node& config,
   finished_ = false;
   message_counter_ = 0;
   statistics_.resize(ProgramContext::__trigger_names_.size());
-  json_opts_ = opts;
+  json_opts_ = opts.json_;
 
   // Log configuration
   logger_ = spdlog::get(address_.toString());
@@ -60,9 +60,10 @@ Peer::Peer(shared_ptr<ContextFactory> fac, const YAML::Node& config,
     json_messages_log_ = make_shared<std::ofstream>(
         json_path + "/" + address_.toString() + "_Messages.dsv");
   }
+  int profile_interval = opts.profile_interval_;
 
   // Create work to run in new thread
-  auto work = [this, fac, config, callback]() {
+  auto work = [this, fac, config, callback, profile_interval]() {
   #ifdef BSL_ALLOC
     #ifdef BSEQ
     mpool = &mpool_;
@@ -81,6 +82,7 @@ Peer::Peer(shared_ptr<ContextFactory> fac, const YAML::Node& config,
     queue_ = make_shared<Queue>();
     batch_.resize(1000);
     context_ = (*fac)();
+    context_->__set_period(profile_interval); // set profiler period
     context_->__patch(config);
     context_->initDecls(unit_t{});
 

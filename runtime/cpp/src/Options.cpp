@@ -17,7 +17,8 @@ int Options::parse(int argc, const char *const argv[]) {
       ("json_messages_regex,m", po::value<string>(),  "Filter message log by trigger")
       ("json_globals_regex,g", po::value<string>(), "Filter globals log by variable name")
       ("disable_local_messages,d", "force serialization of all messages")
-      ("num_threads,t", po::value<int>(), "threads for networking");
+      ("num_threads,t", po::value<int>(), "threads for networking")
+      ("profile_interval,i", po::value<int>(), "profile intervals(ms)");
 
   po::variables_map vm;
   po::store(po::parse_command_line(argc, argv, desc), vm);
@@ -73,6 +74,10 @@ int Options::parse(int argc, const char *const argv[]) {
 
   if (vm.count("num_threads")) {
     num_threads_ = vm["num_threads"].as<int>();
+  }
+
+  if (vm.count("profile_interval")) {
+    profile_interval_ = vm["profile_interval"].as<int>();
   }
 
   return 0;

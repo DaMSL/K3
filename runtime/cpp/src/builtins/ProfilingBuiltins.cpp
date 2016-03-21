@@ -151,8 +151,7 @@ unit_t ProfilingBuiltins::jemallocDump(unit_t) {
   unit_t ProfilingBuiltins::jemallocTotalSizeStart(unit_t) {
 #ifdef K3_JEMALLOC_HEAP_SIZE
     mallctlnametomib("stats.allocated", mib_, &miblen_);
-    set_period(500);       // every half a second by default
-    std::cout << "Starting JEMALLOC total memory size tracking\n";
+    std::cout << "Starting JEMALLOC total memory size tracking. Period: " << period_ << "\n";
 
     auto init = []() {
       std::string name = "heap_size.txt";

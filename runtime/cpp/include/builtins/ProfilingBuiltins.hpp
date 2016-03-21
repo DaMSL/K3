@@ -41,7 +41,7 @@ class __heap_profiler {
  public:
   __heap_profiler() { heap_profiler_done.clear(); }
   // set period in ms
-  void set_period(int p) { period_ = p; }
+  void __set_period(int p) { period_ = p; }
 
  protected:
   int period_ = 250;

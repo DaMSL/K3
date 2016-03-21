@@ -35,7 +35,7 @@ class Peer {
  public:
   // Core Interface
   Peer(shared_ptr<ContextFactory> fac, const YAML::Node& peer_config,
-       std::function<void()> ready_callback, const JSONOptions& json);
+       std::function<void()> ready_callback, const Options&);
   void start();
   void processRole();
   void join();

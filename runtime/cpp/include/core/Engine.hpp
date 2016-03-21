@@ -90,7 +90,7 @@ void Engine::run() {
       throw std::runtime_error("Engine createPeers(): Duplicate address: " +
                                addr.toString());
     }
-    auto p = make_shared<Peer>(ctxt_fac, node, rdy_callback, options_.json_);
+    auto p = make_shared<Peer>(ctxt_fac, node, rdy_callback, options_);
     (*tmp_peers)[addr] = p;
   }
   peers_ = tmp_peers;
