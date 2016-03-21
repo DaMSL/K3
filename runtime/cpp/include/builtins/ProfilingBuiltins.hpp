@@ -39,45 +39,38 @@ namespace K3 {
 
 class __heap_profiler {
  public:
-  __heap_profiler() { heap_profiler_done.clear(); }
+  __heap_profiler() { heap_profiler_done = false; }
   // set period in ms
   void __set_period(int p) { period_ = p; }
+  void heap_series_start(std::function<std::string()> init,
+                         std::function<void(std::string&, int)> body,
+                         std::function<void(std::string&)> shutdown);
+  void heap_series_stop();
 
  protected:
   int period_ = 250;
   std::unique_ptr<boost::thread> heap_profiler_thread;
-  std::atomic_flag heap_profiler_done;
-  int64_t time_milli() {
+  std::atomic_bool heap_profiler_done;
+
+  static int64_t time_milli() {
     auto t = std::chrono::system_clock::now();
     auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
         t.time_since_epoch());
     return elapsed.count();
   }
 
-  template <class I, class B, class S>
-  void heap_series_start(I init, B body, S shutdown) {
-    heap_profiler_thread = make_unique<boost::thread>([this, init, body, shutdown]() {
-      std::string name = init();
-      int i = 0; // steps since start
-      std::cout << "Heap profiling thread starting: " << name << " ("
-                << time_milli() << ")" << std::endl;
-      while (!heap_profiler_done.test_and_set()) {
-        heap_profiler_done.clear();
-        boost::this_thread::sleep_for(boost::chrono::milliseconds(period_));
-        body(name, i++);
-      }
-      shutdown(name);
-      std::cout << "Heap profiling thread terminating: " << name << " ("
-                << time_milli() << ")" << std::endl;
-    });
-  }
-
-  void heap_series_stop() {
-    heap_profiler_done.test_and_set();
-    if (heap_profiler_thread) {
-      heap_profiler_thread->interrupt(); // wake up the thread if needed
+  // ensures shutdown happens
+  struct shutdown_object {
+    shutdown_object(std::function<void(std::string&)> s, std::string& name) : s_(s), name_(name) {}
+    ~shutdown_object() {
+        s_(name_);
+        std::cout << "Heap profiling thread terminating: " << name_ << " ("
+                  << __heap_profiler::time_milli() << ")" << std::endl;
     }
-  }
+    std::function<void(std::string&)> s_;
+    std::string name_;
+  };
+
 };
 
 class ProfilingBuiltins: public __heap_profiler {

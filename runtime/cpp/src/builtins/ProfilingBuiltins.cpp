@@ -9,6 +9,36 @@
 #include <sys/wait.h>
 
 namespace K3 {
+  void __heap_profiler::heap_series_start(std::function<std::string()> init,
+                         std::function<void(std::string&, int)> body,
+                         std::function<void(std::string&)> shutdown) {
+    heap_profiler_thread = make_unique<boost::thread>([this, init, body, shutdown]() {
+        // Make sure we can't be interrupted here
+        boost::this_thread::disable_interruption di;
+        std::string name = init();
+        int i = 0; // steps since start
+        // firing the interruption exception will still RAII this shutdown
+        shutdown_object(shutdown, name);
+        std::cout << "Heap profiling thread starting: " << name << " ("
+                  << time_milli() << ")" << std::endl;
+        // allow interruption out of sleep
+        while (!heap_profiler_done) {
+          {
+            boost::this_thread::restore_interruption ri(di);
+            boost::this_thread::sleep_for(boost::chrono::milliseconds(period_));
+          }
+          body(name, i++);
+        }
+    });
+  }
+
+  void __heap_profiler::heap_series_stop() {
+    heap_profiler_done = true;
+    if (heap_profiler_thread) {
+      heap_profiler_thread->interrupt(); // wake up the thread if needed
+    }
+    heap_profiler_thread->join();
+  }
 
 ProfilingBuiltins::ProfilingBuiltins() {}
 
@@ -194,6 +224,7 @@ unit_t ProfilingBuiltins::jemallocDump(unit_t) {
   unit_t ProfilingBuiltins::jemallocTotalSizeStop(unit_t) {
 #ifdef K3_JEMALLOC_HEAP_SIZE
     heap_series_stop();
+    // wait for a signal from the profiling thread
 #endif // K3_JEMALLOC_HEAP_SIZE
     return unit_t();
   }
