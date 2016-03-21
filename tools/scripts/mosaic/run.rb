@@ -212,6 +212,7 @@ def run_create_k3_remote(block_on_compile, k3_cpp_name, k3_path)
     # get the cpp file
     wait_and_fetch_remote_compile(nil, k3_cpp_name, uid)
   end
+  return uid
 end
 
 # compile cpp->bin locally
@@ -481,7 +482,7 @@ def run_deploy_k3_remote(uid, bin_path)
   record_prefix = "perf record -a -F #{perf_freq}"
 
   # handle options
-  curl_args['jsonlog'] = 'yes' if $options[:logging] == :full
+  curl_args['jsonlog']   = 'yes' if $options[:logging] == :full
   curl_args['jsonfinal'] = 'yes' if $options[:logging] == :final
 
   cmd_prefix = "perf stat -B #{$all_events} #{cmd_prefix}" if $options[:perf_stat]
@@ -495,22 +496,22 @@ def run_deploy_k3_remote(uid, bin_path)
   cmd_infix += " -g #{$options[:json_regex]}" if $options[:json_regex]
   cmd_infix += " -t #{$options[:network_threads]}" if $options[:network_threads]
 
-  malloc_conf += ['narenas:20'] if $options[:jemalloc_tune]
+  malloc_conf << 'narenas:20' if $options[:jemalloc_tune]
   malloc_conf << 'stats_print:true' if $options[:jemalloc_stats]
-  cmd_prefix = "MALLOC_CONF='#{malloc_conf.join(',')}'; #{cmd_prefix}" unless malloc_conf.empty?
+  malloc_conf += ['prof:true'] if $options[:jemalloc_profile]
+
+  cmd_prefix = "export MALLOC_CONF='#{malloc_conf.join(',')}'; #{cmd_prefix}" unless malloc_conf.empty?
 
   # Allow overriding
   cmd_prefix = $options[:cmd_prefix] if $options[:cmd_prefix]
   cmd_infix  = $options[:cmd_infix]  if $options[:cmd_infix]
   cmd_suffix = $options[:cmd_suffix] if $options[:cmd_suffix]
 
-  if $options[:core_dump]
-    curl_args['core_dump'] = 'yes'
-  end
+  curl_args['core_dump'] = 'yes' if $options[:core_dump]
 
   # save to curl args
   curl_args['cmd_prefix'] = cmd_prefix unless cmd_prefix == ''
-  curl_args['cmd_infix'] = cmd_infix unless cmd_infix == ''
+  curl_args['cmd_infix']  = cmd_infix  unless cmd_infix  == ''
   curl_args['cmd_suffix'] = cmd_suffix unless cmd_suffix == ''
 
   res = curl($server_url, "/jobs/#{$nice_name}#{uid_s}", json:true, post:true, file:role_path, args:curl_args)
@@ -521,6 +522,7 @@ def run_deploy_k3_remote(uid, bin_path)
 
   # Wait for job to finish and get results
   wait_and_fetch_results(5, jobid)
+  return jobid
 end
 
 # local deployment
@@ -536,9 +538,14 @@ def run_deploy_k3_local(bin_path)
   FileUtils.rm_rf json_dist_path
   FileUtils.mkdir_p json_dist_path
   frequency = if $options[:perf_frequency] then $options[:perf_frequency] else "10" end
+  malloc_conf = []
+  malloc_conf << 'narenas:20' if $options[:jemalloc_tune]
+  malloc_conf << 'stats_print:true' if $options[:jemalloc_stats]
+  malloc_conf += ['prof:true'] if $options[:jemalloc_profile]
   cmd_prefix = ''; cmd_infix = ''
   cmd_prefix = "perf record -F #{frequency} --call-graph dwarf #{cmd_prefix}" if $options[:perf_record]
   cmd_prefix = "perf stat -B #{$all_events} #{cmd_prefix} " if $options[:perf_stat]
+  cmd_prefix = "export MALLOC_CONF='#{malloc_conf.join(',')}'; #{cmd_prefix}" unless malloc_conf.empty?
   cmd_infix << " -t #{$options[:network_threads]}" if $options[:network_threads]
   cmd_infix << " --json #{json_dist_path} " unless $options[:logging] == :none
   cmd_infix << " --json_final_only " if $options[:logging] == :final
@@ -837,8 +844,11 @@ def post_process_latencies(jobid)
     end
   end
 
+  dir = Dir.pwd
+  Dir.chdir(job_path)
   cmd = "--switches #{switch_files.join(" ")} --nodes #{node_files.join(" ")}"
-  run("#{File.join($script_path, "event_latencies.py")} #{cmd}", always_out:true, always_cmd:true)
+  run("#{File.join($script_path, "event_latencies.py")} #{cmd}", always_out:true)
+  Dir.chdir(dir)
 end
 
 # create heat maps for messages
@@ -967,6 +977,7 @@ def main()
     opts.on("--extract-times [PATH]", "Extract times from sandbox") { |s| $options[:extract_times] = s }
     opts.on("--jemalloc-stats", "Get times from jemalloc") { $options[:jemalloc_stats] = true }
     opts.on("--jemalloc-tune", "Tune jemalloc") { $options[:jemalloc_tune] = true }
+    opts.on("--jemalloc-profile", "Profile jemalloc") { $options[:jemalloc_profile] = true }
     opts.on("--perf-stat", "Get stats from perf") { $options[:perf_stat] = true }
     opts.on("--perf-record", "Turn on perf profiling") { $options[:perf_record] = true}
     opts.on("--perf-gen-record", "Get perf generic recording (no call graph)") { $options[:perf_gen_record] = true }
@@ -1140,7 +1151,7 @@ def main()
         run_create_k3_local(k3_cpp_name, k3_cpp_path, k3_path)
       else
         block_on_compile = $options[:compile_k3] || $options[:deploy_k3] || $options[:dots]
-        run_create_k3_remote(block_on_compile, k3_cpp_name, k3_path)
+        uid = run_create_k3_remote(block_on_compile, k3_cpp_name, k3_path)
       end
     end
     # if we're not doing everything remotely, we can only compile locally
@@ -1156,7 +1167,7 @@ def main()
     elsif $options[:run_mode] == :local
       run_deploy_k3_local(bin_path)
     else
-      run_deploy_k3_remote(uid, bin_path)
+      jobid = run_deploy_k3_remote(uid, bin_path)
     end
   end
 
