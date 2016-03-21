@@ -495,6 +495,7 @@ def run_deploy_k3_remote(uid, bin_path)
   cmd_prefix = "#{cmd_prefix} numactl -m #{$options[:numactl]} -N #{$options[:numactl]}" if $options[:numactl]
   cmd_infix += " -g #{$options[:json_regex]}" if $options[:json_regex]
   cmd_infix += " -t #{$options[:network_threads]}" if $options[:network_threads]
+  cmd_infix += " --profile_interval #{$options[:profile_interval]}" if $options[:profile_interval]
 
   malloc_conf << 'narenas:20' if $options[:jemalloc_tune]
   malloc_conf << 'stats_print:true' if $options[:jemalloc_stats]
@@ -546,10 +547,11 @@ def run_deploy_k3_local(bin_path)
   cmd_prefix = "perf record -F #{frequency} --call-graph dwarf #{cmd_prefix}" if $options[:perf_record]
   cmd_prefix = "perf stat -B #{$all_events} #{cmd_prefix} " if $options[:perf_stat]
   cmd_prefix = "export MALLOC_CONF='#{malloc_conf.join(',')}'; #{cmd_prefix}" unless malloc_conf.empty?
-  cmd_infix << " -t #{$options[:network_threads]}" if $options[:network_threads]
+  cmd_infix << " --num_threads #{$options[:network_threads]}" if $options[:network_threads]
   cmd_infix << " --json #{json_dist_path} " unless $options[:logging] == :none
   cmd_infix << " --json_final_only " if $options[:logging] == :final
-  cmd_infix << " -g '#{$options[:json_regex]}' " if $options[:json_regex]
+  cmd_infix << " --json_messages_regex '#{$options[:json_regex]}' " if $options[:json_regex]
+  cmd_infix << " --profile_interval #{$options[:profile_interval]}" if $options[:profile_interval]
   dir = Dir.pwd
   Dir.chdir local_path # so all files are produced here
   cmd = "#{bin_path} -p #{role_path} #{cmd_infix}"
@@ -898,7 +900,8 @@ def main()
     :logging    => :none,
     :isobatch   => true,
     :corrective => false,
-    :compileargs => ""
+    :compileargs => "",
+    :profile_interval => 5000
   }
 
   uid = nil
@@ -992,6 +995,7 @@ def main()
     opts.on("--switch-perhost [NUM]", "Peers per host for switches") {|s| $options[:switch_perhost] = s}
     opts.on("--numactl [NUM]", "Force app to run only on node x") {|s| $options[:numactl] = s}
     opts.on("--network-threads [NUM]", "Set number of networking threads to use") {|s| $options[:network_threads] = s}
+    opts.on("--profile-interval [NUM]", "Set C++ profiling interval") {|s| $options[:profile_interval] = s}
 
     # Stages.
     # Ktrace is not run by default.
