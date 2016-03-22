@@ -910,6 +910,7 @@ def main()
   parser = OptionParser.new do |opts|
     opts.banner = usage
     opts.on("-w", "--workdir [PATH]", "Path in which to create files") {|s| $options[:workdir] = s}
+    opts.on("--binary [STR]", "Set a binary image to run with (possibly not in workdir)") {|s| $options[:binary] = s}
     opts.on("-d", "--dbtdata [PATH]", String, "Set the path of the dbt data file") { |s| $options[:dbt_data_path] = s }
     opts.on("-p", "--tpch_path [PATH]", String, "Set the path of the tpch fpb files") { |s| $options[:tpch_data_path] = s }
     opts.on("-i", "--inorder [PATH]", String, "Set the path of the tpch inorder file") { |s| $options[:tpch_inorder_path] = s }
@@ -933,31 +934,22 @@ def main()
     opts.on("--fetch-bin", "Fetch bin + cpp files after remote compilation") { $options[:fetch_bin] = true}
     opts.on("--fetch-results", "Fetch results after job") { $options[:fetch_results] = true }
     opts.on("--latest-uid",  "Use the latest uid on the server") { $options[:latest_uid] = true}
-    opts.on("--moderate",  "Query is of moderate skew (and size)") { $options[:skew] = :moderate}
-    opts.on("--moderate2",  "Query is of moderate skew (and size), class 2") { $options[:skew] = :moderate2}
-    opts.on("--extreme",  "Query is of extreme skew (and size)") { $options[:skew] = :extreme}
     opts.on("--dry-run",  "Dry run for Mosaic deployment (generates K3 YAML topology)") { $options[:dry_run] = true}
+    opts.on("--dots", "Get the awesome dots") { $options[:dots] = true }
+    # JSON logging
     opts.on("--json-full", "Turn on JSON logging for ktrace") { $options[:logging] = :full }
     opts.on("--json-final", "Turn on final JSON logging for ktrace") { $options[:logging] = :final }
     opts.on("--json-regex [REGEX]", "Regex pattern for JSON logging") { |s| $options[:json_regex] = s}
     opts.on("--json-none", "Turn off JSON logging for ktrace") { $options[:logging] = :none }
     opts.on("--core-dump", "Turn on core dump for distributed run") { $options[:core_dump] = true }
-    opts.on("--dots", "Get the awesome dots") { $options[:dots] = true }
-    opts.on("--gc-epoch [MS]", "Set gc epoch time (ms)") { |i| $options[:gc_epoch] = i }
-    opts.on("--msg-delay [MS]", "Set switch message delay (ms)") { |i| $options[:msg_delay] = i }
     opts.on("--corrective", "Run in corrective mode") { $options[:corrective] = true }
-    opts.on("--batch-size [SIZE]", "Set the batch size") {|s| $options[:batch_size] = s }
+    opts.on("--no-isobatch", "Disable isobatch mode") { $options[:isobatch] = false }
+    opts.on("--batch-size [SIZE]", "Set the (re)batch size") {|s| $options[:batch_size] = s }
     opts.on("--no-reserve", "Prevent reserve on the poly buffers") { $options[:no_poly_reserve] = true }
-    opts.on("--event-profile", "Run with event profiling") { $options[:event_profile] = true }
-    opts.on("--latency-profiling", "Run with latency profiling options") {
-      $options[:event_profile] = true
-      $options[:latency_profiling] = true
-    }
-    opts.on("--message-profiling", "Run with message profiling options") {
-      $options[:event_profile] = true
-      $options[:message_profiling] = true
-    }
-    opts.on("--str-trace", "Run with string tracing") { $options[:str_trace] = true }
+    opts.on("--extract-times [PATH]", "Extract times from sandbox") { |s| $options[:extract_times] = s }
+
+    opts.on("--profile-events", "Run with event profiling") { $options[:event_profile] = true }
+    opts.on("--str-trace", "Run with string tracing") { $options[:str_trace] = true } #?
     opts.on("--raw-yaml [FILE]", "Supply a yaml file") { |s| $options[:raw_yaml_file] = s }
     opts.on("--map-overlap [FLOAT]", "Adjust % overlap of maps on cluster. 100%=all maps everywhere") { |f| $options[:map_overlap] = f }
     opts.on("--buckets [INT]", "Number of buckets (partitioning)") { |s| $options[:buckets] = s }
@@ -965,22 +957,42 @@ def main()
     opts.on("--query [NAME]", "Name of query to run (optional, derived from path)") { |s| $options[:query] = s }
     opts.on("--gen-deletes", "Generate deletes") { $options[:gen_deletes] = true }
 
-    # Compile args synonyms
+    # Compiler arguments
     opts.on("--compileargs [STRING]", "Pass arguments to compiler (distributed only)") { |s| $options[:compileargs] = s }
 
+    # Specialized compiler arguments
+    opts.on("--moderate",  "Query is of moderate skew (and size)") { $options[:skew] = :moderate}
+    opts.on("--moderate2",  "Query is of moderate skew (and size), class 2") { $options[:skew] = :moderate2}
+    opts.on("--extreme",  "Query is of extreme skew (and size)") { $options[:skew] = :extreme}
     opts.on("--dmat",       "Use distributed materialization")                 { $options[:compileargs] += " --sparallel2stage sparallel2=True" }
     opts.on("--dmat-debug", "Use distributed materialization (in debug mode)") { $options[:compileargs] += " --sparallel2stage sparallel2-debug=True" }
     opts.on("--wmoderate",  "Skew argument")                                   { $options[:compileargs] += " --workerfactor hm=3 --workerblocks hd=4:qp3=4:qp4=4:qp5=4:qp6=4" }
     opts.on("--wmoderate2", "Skew argument")                                   { $options[:compileargs] += " --workerfactor hm=3 --workerblocks hd=2:qp3=2:qp4=2:qp5=2:qp6=2" }
     opts.on("--wextreme",   "Skew argument")                                   { $options[:compileargs] += " --workerfactor hm=4 --workerblocks hd=1:qp3=1:qp4=1:qp5=1:qp6=1" }
-    opts.on("--process-latencies", "Post-processing on latency files") { $options[:process_latencies] = true }
+
+    # Latency profiling
+    opts.on("--msg-delay [MS]", "Set switch message delay (ms)") { |i| $options[:msg_delay] = i }
+    opts.on("--profile-latency", "Run with latency profiling options") {
+      $options[:event_profile] = true
+      $options[:latency_profiling] = true
+    }
+    opts.on("--process-latency", "Post-processing on latency files") { $options[:process_latencies] = true }
     opts.on("--latency-job-dir [PATH]", "Manual selection of job directory") { |s| $options[:latency_dir] = s }
+
+    # Message profiling (heat maps)
+    opts.on("--profile-messages", "Run with message profiling options") {
+      $options[:event_profile] = true
+      $options[:message_profiling] = true
+    }
     opts.on("--plot-messages", "Create message heat maps") { $options[:plot_messages] = true }
-    opts.on("--no-isobatch", "Disable isobatch mode") { $options[:isobatch] = false }
-    opts.on("--extract-times [PATH]", "Extract times from sandbox") { |s| $options[:extract_times] = s }
+
+    # JEMalloc/memory profiling options
+    opts.on("--gc-epoch [MS]", "Set gc epoch time (ms)") { |i| $options[:gc_epoch] = i }
+    opts.on("--jemalloc-profile", "Profile jemalloc") { $options[:jemalloc_profile] = true }
     opts.on("--jemalloc-stats", "Get times from jemalloc") { $options[:jemalloc_stats] = true }
     opts.on("--jemalloc-tune", "Tune jemalloc") { $options[:jemalloc_tune] = true }
-    opts.on("--jemalloc-profile", "Profile jemalloc") { $options[:jemalloc_profile] = true }
+
+    # Perf options
     opts.on("--perf-stat", "Get stats from perf") { $options[:perf_stat] = true }
     opts.on("--perf-record", "Turn on perf profiling") { $options[:perf_record] = true}
     opts.on("--perf-gen-record", "Get perf generic recording (no call graph)") { $options[:perf_gen_record] = true }
@@ -988,26 +1000,29 @@ def main()
     opts.on("--perf-frequency [NUM]", String, "Set perf profiling frequency") { |s| $options[:perf_frequency] = s }
     opts.on("--perf-record-event [EVENT]", "Perf record a specific event (with call graph)") {|s| $options[:perf_record_event] = s }
     opts.on("--perf-gen-record-event [EVENT]", "Perf record a specific event (no call graph)") {|s| $options[:perf_gen_record_event] = s }
+
+    # Remote run command manipulation
     opts.on("--cmd-prefix [STR]", "Use this command prefix remotely") {|s| $options[:cmd_prefix] = s}
     opts.on("--cmd-infix [STR]", "Use this command infix remotely") {|s| $options[:cmd_infix] = s}
     opts.on("--cmd-suffix [STR]", "Use this command suffix remotely") {|s| $options[:cmd_suffix] = s}
+
+    # Control switch distribution
     opts.on("--switch-pile", "Pile the switches on the first machines") {$options[:switch_pile] = true}
     opts.on("--switch-perhost [NUM]", "Peers per host for switches") {|s| $options[:switch_perhost] = s}
-    opts.on("--numactl [NUM]", "Force app to run only on node x") {|s| $options[:numactl] = s}
-    opts.on("--network-threads [NUM]", "Set number of networking threads to use") {|s| $options[:network_threads] = s}
-    opts.on("--profile-interval [NUM]", "Set C++ profiling interval") {|s| $options[:profile_interval] = s}
 
-    # Stages.
+    # Currently these seem to have no effect
+    opts.on("--numactl [NUM]", "Force app to run only on numa node x") {|s| $options[:numactl] = s}
+    opts.on("--network-threads [NUM]", "Set number of networking threads to use") {|s| $options[:network_threads] = s}
+
+    # Memory profiling (low interval = profiling)
+    opts.on("--profile-interval [NUM]", "Set C++ heap profiling interval") {|s| $options[:profile_interval] = s}
+
+    # Stages to run
     # Ktrace is not run by default.
     opts.on("-a", "--all", "All stages") {
-      $options[:dbtoaster]  = true
-      $options[:mosaic]     = true
-      $options[:create_k3]  = true
-      $options[:compile_k3] = true
-      $options[:deploy_k3]  = true
-      $options[:compare]    = true
+      $options[:dbtoaster]  = true; $options[:mosaic] = true; $options[:create_k3]  = true
+      $options[:compile_k3] = true; $options[:deploy_k3]  = true; $options[:compare]    = true
     }
-
     opts.on("-1", "--mosaic",    "Mosaic stage (creates Mosaic K3 program)")       { $options[:mosaic]     = true }
     opts.on("-2", "--dbtoaster", "DBToaster stage")                                { $options[:dbtoaster]  = true }
     opts.on("-3", "--create",    "Create K3 stage (creates Mosaic CPP program)")   { $options[:create_k3]  = true }
@@ -1123,7 +1138,7 @@ def main()
   $server_url = "mddb2:5000"
 
   bin_file = $nice_name
-  bin_path = File.join($workdir, bin_file)
+  bin_path = $options[:binary] ? $options[:binary] : File.join($workdir, bin_file)
   dbt_results = []
 
   run_mosaic(k3_path, mosaic_path, source) if $options[:mosaic]
