@@ -198,7 +198,7 @@ unit_t ProfilingBuiltins::jemallocDump(unit_t) {
       size_t epoch = 1;
       size_t epoch_sz = sizeof(epoch);
       mallctl("epoch", &epoch, &epoch_sz, &epoch, epoch_sz);
-      const int threshold = 10; // how often to save (how many samples)
+      const int threshold = 100; // how often to save (how many samples)
       size_t alloc_sz = 0;
       size_t alloc_sz_len = sizeof(alloc_sz);
       uint64_t time = time_milli();
