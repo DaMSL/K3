@@ -324,7 +324,7 @@ def create_dist_file(args):
     k3_roles.append(('Timer',  extra_machines[1], 1, None, timer_env))
 
     # default node mask uses only hds
-    nmask = "^(qp-hd(([6,7,9])|(1[0-5]))"
+    nmask = "^(qp-hd(([6,7,9])|(1[0-6]))"
     if args.use_hm:
         nmask += "|qp-hm.*)$"
     else:
