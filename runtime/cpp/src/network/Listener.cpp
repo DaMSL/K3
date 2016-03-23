@@ -85,7 +85,13 @@ void Listener::registerConnection(shared_ptr<IncomingConnection> c) {
   shared_ptr<IncomingConnectionMap> conn_map = in_conns_;
   shared_ptr<ErrorHandler> e_handler;
   e_handler = make_shared<ErrorHandler>([conn_map, a](
-      const boost::system::error_code& ec) { conn_map->erase(a); });
+      const boost::system::error_code& ec) {
+        conn_map->erase(a);
+        if (ec.message() != "End of file") {
+          std::cout << "Encountered invalid message. Closing connection.\n";
+          std::cout << ec.message() << "\n";
+        }
+      });
 
   c->receiveMessages(m_handler, e_handler);
 }

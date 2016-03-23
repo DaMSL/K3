@@ -82,7 +82,7 @@ class NetworkManager {
 
   // IO service related members
   asio::io_service io_service_;
-  asio::io_service::work work_;
+  unique_ptr<asio::io_service::work> work_;
   boost::thread_group threads_;
 
   // Listeners

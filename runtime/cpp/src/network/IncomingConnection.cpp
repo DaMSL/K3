@@ -32,6 +32,7 @@ void InternalIncomingConnection::receiveMessages(
       boost_error ec, size_t bytes) {
     if (ec) {
       (*e_handler)(ec);
+      return;
     }
     if (bytes == m->networkHeaderSize()) {
       // Resize the buffer and isssue a second async read
@@ -41,11 +42,7 @@ void InternalIncomingConnection::receiveMessages(
       auto payload_callback =
           [this_shared, m, payload_buf, e_handler, m_handler](boost_error ec,
                                                               size_t bytes) {
-            if (ec) {
-              (*e_handler)(ec);
-            }
-
-            if (bytes == m->payload_length_) {
+            if (!ec && bytes == m->payload_length_) {
               // Create a PackedValue from the buffer, and call the message
               // handler
               auto pv = std::make_unique<BufferPackedValue>(payload_buf, this_shared->format_);
@@ -56,6 +53,7 @@ void InternalIncomingConnection::receiveMessages(
               this_shared->receiveMessages(m_handler, e_handler);
             } else {
               (*e_handler)(ec);
+              return;
             }
           };
 
