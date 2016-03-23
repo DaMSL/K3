@@ -79,7 +79,7 @@ def update_latency(tag, vid, t, filename):
             latencyspans[ev] = (min(rmin, lat), max(rmax, lat))
 
             m = re.search('.*(qp[^/]+)/.*',filename)
-            machine = m.group(1)
+            machine = filename if m is None else m.group(1) 
             (rmin, rmax) = nd_spans[ev][machine] if machine in nd_spans[ev] else (sys.maxint, -sys.maxint-1)
             nd_spans[ev][machine] = (min(rmin, lat), max(rmax, lat))
 

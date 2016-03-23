@@ -530,6 +530,7 @@ end
 def run_deploy_k3_local(bin_path)
   local_path = File.join($workdir, 'local')
   local_yaml_path = File.join(local_path, $nice_name + '.yaml')
+  out_path = File.join(local_path, 'stdout_local.txt')
   role_path = $options[:raw_yaml_file] ? $options[:raw_yaml_file] : local_yaml_path
   gen_yaml(role_path) unless $options[:raw_yaml_file]
 
@@ -554,9 +555,19 @@ def run_deploy_k3_local(bin_path)
   cmd_infix << " --profile_interval #{$options[:profile_interval]}" if $options[:profile_interval]
   dir = Dir.pwd
   Dir.chdir local_path # so all files are produced here
-  cmd = "#{bin_path} -p #{role_path} #{cmd_infix}"
+  cmd = "#{bin_path} -p #{role_path} #{cmd_infix} > #{out_path} 2>&1"
   run(cmd_prefix + cmd, local:true)
   Dir.chdir dir
+
+  # Extract time, which is in the master's stdout. Currently checking all stdout.
+  (_, trig_times, s) = extract_times(local_path, true)
+  # save times
+  File.open(File.join(local_path, "time.txt"), 'w') { |file| file.write(s) } if s != ''
+
+  # If requested, create perf graphs
+  if $options[:perf_graph]
+    perf_flame_graph(local_path, trig_times)
+  end
 end
 
 # convert a string to the narrowest value
