@@ -7,6 +7,7 @@ import csv
 import sys
 import yaml
 import re
+import math
 
 from intervaltree import Interval, IntervalTree
 from pyhistogram import Hist1D
@@ -79,7 +80,7 @@ def update_latency(tag, vid, t, filename):
             latencyspans[ev] = (min(rmin, lat), max(rmax, lat))
 
             m = re.search('.*(qp[^/]+)/.*',filename)
-            machine = filename if m is None else m.group(1) 
+            machine = filename if m is None else m.group(1)
             (rmin, rmax) = nd_spans[ev][machine] if machine in nd_spans[ev] else (sys.maxint, -sys.maxint-1)
             nd_spans[ev][machine] = (min(rmin, lat), max(rmax, lat))
 
@@ -97,6 +98,17 @@ def banner(s):
 def dump_final_latencies():
     print(banner('Dumping Final latencies'))
     with open('latencies.txt', 'w') as f:
+        f.write("Latency stats (do_complete)\n")
+        lats = latencies[events['do_complete']]
+        lats = [lat for lat in lats.values()].sort()
+        total = sum(lats)
+        n = len(lats)
+        mean = total / n
+        median = lats[n/2] if n % 2 == 1 else (lats[n/2] + lats[n/2 - 1] / 2)
+        stdev = math.sqrt(sum(map(lambda x: (x - mean)**2, lats)))
+        f.write("mean:{}\nmedian:{}\nstd_dev:{}\nn:{}\n".format(mean, median, stdev, n))
+
+        f.write("\n---- Per machine: ----\n")
         for i,ev in enumerate(nd_spans):
             for file,(min,max) in ev.iteritems():
                 f.write("{}: {}, ({}, {})\n".format(file, i, min, max))
