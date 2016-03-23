@@ -6,6 +6,7 @@ import argparse
 import csv
 import sys
 import yaml
+import re
 
 from intervaltree import Interval, IntervalTree
 from pyhistogram import Hist1D
@@ -55,8 +56,9 @@ latencies = [{} for ev in events]
 # A dictionary of global latency min/max values across all vids per event class.
 latencyspans = [(sys.maxint, -sys.maxint - 1) for ev in events]
 
+nd_spans = [{} for ev in events]
 
-def update_latency(tag, vid, t):
+def update_latency(tag, vid, t, filename):
     # get the matching interval from the switch interval tree
     intervals = switchspans[vid]
     if len(intervals) > 1:
@@ -76,6 +78,11 @@ def update_latency(tag, vid, t):
             (rmin, rmax) = latencyspans[ev]
             latencyspans[ev] = (min(rmin, lat), max(rmax, lat))
 
+            m = re.search('.*(qp[^/]+)/.*',filename)
+            machine = m.group(1)
+            (rmin, rmax) = nd_spans[ev][machine] if machine in nd_spans[ev] else (sys.maxint, -sys.maxint-1)
+            nd_spans[ev][machine] = (min(rmin, lat), max(rmax, lat))
+
 
 def update_nodespan(tag, vid, t):
     ev = events[tag]
@@ -90,8 +97,9 @@ def banner(s):
 def dump_final_latencies():
     print(banner('Dumping Final latencies'))
     with open('latencies.txt', 'w') as f:
-        for lat in latencies[events['do_complete']].values():
-            f.write(str(lat) + '\n')
+        for i,ev in enumerate(nd_spans):
+            for file,(min,max) in ev.iteritems():
+                f.write("{}: {}, ({}, {})\n".format(file, i, min, max))
 
 def process_events(switch_files, node_files, save_intermediate):
     """ Main function """
@@ -141,7 +149,7 @@ def process_events(switch_files, node_files, save_intermediate):
                 if tag < len(tag_to_ev):
                     event = tag_to_ev[tag]
                     if not event is None:
-                        update_latency(event, vid, t)
+                        update_latency(event, vid, t, fn)
                         update_nodespan(event, vid, t)
 
                 # else:
