@@ -287,7 +287,7 @@ def create_dist_file(args):
 
     # The amount of cores we have for non-nodes
     extra_machines = ['qp-hd1$', 'qp-hd2']
-    switch_machines = map(lambda m: (m, []), ['qp4', 'qp5', 'qp6', 'qp-hd4', 'qp-hd5'])
+    switch_machines = map(lambda m: (m, []), ['qp4', 'qp5', 'qp6', 'qp-hd5', 'qp-hd12'])
     num_switch_machines = len(switch_machines)
     num_cores = 16
     max_switches = num_switch_machines * num_cores
@@ -324,7 +324,7 @@ def create_dist_file(args):
     k3_roles.append(('Timer',  extra_machines[1], 1, None, timer_env))
 
     # default node mask uses only hds
-    nmask = "^(qp-hd(([6,7,9])|(1[0-6]))"
+    nmask = "^(qp-hd(([4,6,7,9])|(1[0,1,3-6]))"
     if args.use_hm:
         nmask += "|qp-hm.*)$"
     else:
