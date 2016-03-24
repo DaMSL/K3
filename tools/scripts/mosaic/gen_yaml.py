@@ -108,6 +108,29 @@ def tpch_paths_dist(p):
 
     return files
 
+def default_profiling(h):
+    largenum = 1000000000
+    batch_sz = 100
+    h['do_profile'] = True
+    h['mosaic_sendupoly_sample_mod'] = largenum
+    h['mosaic_sendpoly_sample_mod'] = largenum
+    h['mosaic_event_sample_mod'] = largenum
+    h['mosaic_route_sample_mod'] = largenum
+    h['mosaic_sendput_sample_mod'] = largenum
+    h['mosaic_push_sample_mod'] = largenum
+    h['mosaic_sendupoly_buffer_batch_sz'] = batch_sz
+    h['mosaic_sendpoly_buffer_batch_sz'] = batch_sz
+    h['mosaic_event_buffer_batch_sz'] = batch_sz
+
+def add_profiling(h, args, lat_override=None):
+    if args.latency_profiling or args.message_profiling:
+        default_profiling(h)
+    if args.latency_profiling:
+        h['mosaic_event_sample_mod'] = args.sample_rate if lat_override is None else lat_override
+    if args.message_profiling:
+        peer['mosaic_sendupoly_sample_mod'] = args.sample_rate
+        peer['mosaic_sendpoly_sample_mod'] = args.sample_rate
+
 def create_local_file(args):
     extra_args = parse_extra_args(args.extra_args)
     switch_role = "switch_old" if args.csv_path else "switch"
@@ -151,35 +174,13 @@ def create_local_file(args):
             peer['peer_masters'] = [{'key':address(port), 'value':address(port)}]
 
         if role == 'node':
+            add_profiling(peer, args)
             if opt_route:
                 peer.update(opt_route)
-            if args.message_profiling:
-                peer['do_profile'] = True
-                peer['mosaic_sendupoly_buffer_batch_sz'] = 1
-                peer['mosaic_sendupoly_sample_mod'] = 5
-                peer['mosaic_sendpoly_buffer_batch_sz'] = 1
-                peer['mosaic_sendpoly_sample_mod'] = 5
-                peer['mosaic_event_sample_mod'] = 1000000
-                peer['mosaic_route_sample_mod'] = 1000000
-                peer['mosaic_sendput_sample_mod'] = 1000000
-                peer['mosaic_push_sample_mod'] = 1000000
 
         if role == 'switch' or role == 'switch_old':
-            if args.latency_profiling:
-                peer['mosaic_event_buffer_batch_sz'] = 1
-                peer['mosaic_event_sample_mod'] = 0
-                peer['mosaic_route_sample_mod'] = 1000000
-                peer['mosaic_sendput_sample_mod'] = 1000000
-            if args.message_profiling:
-                peer['do_profile'] = True
-                peer['mosaic_sendupoly_buffer_batch_sz'] = 1
-                peer['mosaic_sendupoly_sample_mod'] = 5
-                peer['mosaic_sendpoly_buffer_batch_sz'] = 1
-                peer['mosaic_sendpoly_sample_mod'] = 5
-                peer['mosaic_event_sample_mod'] = 1000000
-                peer['mosaic_route_sample_mod'] = 1000000
-                peer['mosaic_sendput_sample_mod'] = 1000000
-                peer['mosaic_push_sample_mod'] = 1000000
+            # latency profiling needs full switch logging
+            add_profiling(peer, args, lat_override=0)
             if args.csv_path:
                 peer['switch_path'] = args.csv_path
             if args.tpch_data_path:
@@ -195,8 +196,6 @@ def create_local_file(args):
             if opt_route is not None:
                 peer.update(opt_route)
             switch_index = switch_index + 1
-
-
 
         peer.update(extra_args)
         peers2.append(peer)
@@ -242,37 +241,16 @@ def create_dist_file(args):
     switch_role.update(pmap if pmap is not None else {})
     switch_role.update(opt_route if opt_route is not None else {})
     # latency profiling needs full switch logging
-    if args.latency_profiling:
-        switch_role['mosaic_event_buffer_batch_sz'] = 1
-        switch_role['mosaic_event_sample_mod'] = 0
-
-    if args.message_profiling:
-      switch_role['do_profile'] = True
-      switch_role['mosaic_sendupoly_buffer_batch_sz'] = 1
-      switch_role['mosaic_sendupoly_sample_mod'] = 5
-      switch_role['mosaic_sendpoly_buffer_batch_sz'] = 1
-      switch_role['mosaic_sendpoly_sample_mod'] = 5
-      switch_role['mosaic_event_sample_mod'] = 1000000
-      switch_role['mosaic_route_sample_mod'] = 1000000
-      switch_role['mosaic_sendput_sample_mod'] = 1000000
-      switch_role['mosaic_push_sample_mod'] = 1000000
+    add_profiling(switch_role, args, lat_override=0)
 
     switch_role.update(extra_args)
 
     node_role = {'role': wrap_role('node'),
-                 'role2': wrap_role('node')}
+                 'role2': wrap_role('node')
+                 }
     node_role.update(pmap if pmap is not None else {})
     node_role.update(opt_route if opt_route is not None else {})
-    if args.message_profiling:
-      node_role['do_profile'] = True
-      node_role['mosaic_sendupoly_buffer_batch_sz'] = 1
-      node_role['mosaic_sendupoly_sample_mod'] = 5
-      node_role['mosaic_sendpoly_buffer_batch_sz'] = 1
-      node_role['mosaic_sendpoly_sample_mod'] = 5
-      node_role['mosaic_event_sample_mod'] = 1000000
-      node_role['mosaic_route_sample_mod'] = 1000000
-      node_role['mosaic_sendput_sample_mod'] = 1000000
-      node_role['mosaic_push_sample_mod'] = 1000000
+    add_profiling(node_role, args)
     node_role.update(extra_args)
 
     # switch1_env = {'peer_globals': [master_role, timer_role, switch_role]}
@@ -372,6 +350,7 @@ def main():
     parser.add_argument("--latency-profiling", action="store_true", default=False, dest="latency_profiling", help="activate profiling")
     parser.add_argument("--message-profiling", action="store_true", default=False, dest="message_profiling", help="activate profiling")
     parser.add_argument("--switch-method", default='round_robin', dest="switch_method", help="How to assign switches")
+    parser.add_argument("--sample", default='5', help="How often to sample")
     args = parser.parse_args()
     if args.run_mode == "dist":
         create_dist_file(args)
