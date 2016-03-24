@@ -42,17 +42,27 @@ end
 
 $headers = %i{exp sf nd sw perhost q trial}
 
+def config_path() File.join($workdir, $options[:config_file]) end
+
 def load_config()
-  path = File.join($workdir, $options[:config_file])
+  path = config_path
   return nil unless File.exists? path
   YAML.load(path)
 end
 
-def save_config(h_list)
-  path = File.join($workdir, $options[:config_file])
-  File.open(path, 'w') do |f|
-    f << h_list.to_yaml
+def save_config(h_list, backup:false)
+  path = config_path
+  # backup if needed
+  if backup && File.exist?(path)
+    max = 0
+    Dir.glob("#{path}.*") do |p|
+      num = p[/^.+\.(\d+)$/,1].to_i
+      max = num if num > max
+    end
+    FileUtils.cp(path, "#{path}.#{max+1}")
   end
+  FileUtils.cp(path, path + ".bak") if File.exist? path
+  File.open(path, 'w') {|f| f << h_list.to_yaml}
 end
 
 def get_switches(nodes)
@@ -65,28 +75,26 @@ end
 def create_config()
   # Materialize an array of desired trial configurations
   tests = []
-  puts "\n---- Scalability Experiments ----"
   if $options[:experiments].include? :scalability
     $options[:scale_factors].each do |sf|
       $options[:node_counts].each do |nodes|
         $options[:queries].each do |q|
           trials = sf >= $options[:trial_cutoff] ? 1 : $options[:trials]
           (1..trials).each do |trial|
-            tests << $headers[0..-1].zip([exp, sf, nodes, get_switches(nodes), 2, q, trial]).to_h
+            tests << $headers[0..-1].zip([:scalability, sf, nodes, get_switches(nodes), 2, q, trial]).to_h
           end
         end
       end
     end
   end
-  puts "\n---- Latency Experiments ----"
   if $options[:experiments].include? :latency
     $options[:scale_factors].each do |sf|
       $options[:node_counts].each do |nodes|
-        $options[:switch_counts].each do |switches|
+        [1, 2, 4].each do |switches|
           $options[:queries].each do |q|
             trials = sf >= $options[:trial_cutoff] ? 1 : $options[:trials]
             (1..trials).each do |trial|
-              t = $headers[0..-1].zip([exp, sf, nodes, switches, 2, q, trial]).to_h
+              t = $headers[0..-1].zip([:latency, sf, nodes, switches, 2, q, trial]).to_h
               tests << t
             end
           end
@@ -94,7 +102,6 @@ def create_config()
       end
     end
   end
-  puts "\n---- Memory Experiments ----"
   if $options[:experiments].include? :memory
     $options[:scale_factors].each do |sf|
       $options[:queries].each do |q|
@@ -103,7 +110,7 @@ def create_config()
             $options[:delays].each do |delay|
               trials = sf >= $options[:trial_cutoff] ? 1 : $options[:trials]
               (1..trials).each do |trial|
-                t = $headers[0..-1].zip([exp, sf, nodes, get_switches(nodes), 2, q, trial]).to_h
+                t = $headers[0..-1].zip([:memory, sf, nodes, get_switches(nodes), 2, q, trial]).to_h
                 t[:gc_epoch] = gc_epoch
                 t[:delay] = delay
                 tests << t
@@ -186,7 +193,7 @@ def main()
 
   config = load_config() unless $options[:clean]
   config = create_config unless config
-  save_config(config)
+  save_config(config, backup:$options[:clean])
 
   # Otherwise, setup and run
   config2 = config.dup
