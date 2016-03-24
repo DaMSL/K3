@@ -45,12 +45,12 @@ $headers = %i{exp sf nd sw perhost q trial}
 def config_path() File.join($workdir, $options[:config_file]) end
 
 def load_config()
-  path = config_path
+  path = config_path()
   return nil unless File.exists? path
-  YAML.load(path)
+  File.open(path, 'r') { |f| YAML.load(f) }
 end
 
-def save_config(h_list, backup:false)
+def save_config(config, backup:false)
   path = config_path
   # backup if needed
   if backup && File.exist?(path)
@@ -62,7 +62,7 @@ def save_config(h_list, backup:false)
     FileUtils.cp(path, "#{path}.#{max+1}")
   end
   FileUtils.cp(path, path + ".bak") if File.exist? path
-  File.open(path, 'w') {|f| f << h_list.to_yaml}
+  File.open(path, 'w') {|f| f << config.to_yaml}
 end
 
 def get_switches(nodes)
@@ -188,7 +188,7 @@ end
 def main()
   # Initialization
   parse_args()
-  $workdir = $options[:workdir]
+  $workdir = File.expand_path($options[:workdir])
   FileUtils.mkdir_p $workdir unless File.exist? $workdir
 
   config = load_config() unless $options[:clean]
