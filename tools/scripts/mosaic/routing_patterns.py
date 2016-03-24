@@ -19,18 +19,18 @@ import argparse, itertools, math, string, sys, yaml
 # 'x' : {'maps' : {i: ()} }
 
 map_buckets_by_query = {
-  '4': {'maps': { 'ORDER_COUNT'               : (1, [16]),
-                  'ORDER_COUNT_mLINEITEM1'    : (2, [16, 16]),
-                  'ORDER_COUNT_mORDERS3_E1_1' : (3, [16]) }},
-
   '3': {'maps': { "QUERY3"                        : (1, [4, 4, 4]),
                   "QUERY3_mLINEITEM1"             : (2, [4, 4, 4]),
                   "QUERY3_mLINEITEM1_mCUSTOMER2"  : (3, [4, 4, 4, 4]),
-                  "QUERY3_mORDERS1"               : (4, [4]),
-                  "QUERY3_mORDERS3"               : (5, [4]),
-                  "QUERY3_mORDERS6"               : (6, [4]),
+                  "QUERY3_mORDERS1"               : (4, [16]), # not optroute
+                  "QUERY3_mORDERS3"               : (5, [16]), # not optroute
+                  "QUERY3_mORDERS6"               : (6, [16]), # not optroute
                   "QUERY3_mCUSTOMER2"             : (7, [4, 4, 4, 4]),
                   "QUERY3_mCUSTOMER4"             : (8, [4, 4, 4, 4]) }},
+
+  '4': {'maps': { 'ORDER_COUNT'               : (1, [16]),
+                  'ORDER_COUNT_mLINEITEM1'    : (2, [16, 16]),
+                  'ORDER_COUNT_mORDERS3_E1_1' : (3, [16]) }},
 
   '10': {'maps': { "REVENUE"                       : (2, [8, 8, 8, 8, 8, 8, 8]),
                    "REVENUE_mLINEITEM2"            : (3, [8, 8, 8, 8, 8, 8, 8, 8]),
@@ -44,27 +44,29 @@ map_buckets_by_query = {
 
   '11a': {'maps': { "QUERY11A"            : (1, [16]),
                     "QUERY11A_mSUPPLIER1" : (2, [16, 16]),
-                    "QUERY11A_mPARTSUPP1" : (3, [16]) }},
+                    "QUERY11A_mPARTSUPP1" : (3, [16]) }}, # not optroute
 
   '12': {'maps': { "HIGH_LINE_COUNT"            : (1, [16]),
-                   "HIGH_LINE_COUNT_mLINEITEM1" : (2, [16]),
-                   "HIGH_LINE_COUNT_mLINEITEM8" : (3, [16]),
+                   "HIGH_LINE_COUNT_mLINEITEM1" : (2, [16]), # not optroute
+                   "HIGH_LINE_COUNT_mLINEITEM8" : (3, [16]), # not optroute
                    "HIGH_LINE_COUNT_mORDERS1"   : (4, [16, 16]),
                    "HIGH_LINE_COUNT_mORDERS4"   : (5, [16, 16]),
                    "LOW_LINE_COUNT"             : (6, [16]),
-                   "LOW_LINE_COUNT_mLINEITEM6"  : (7, [16]) }},
+                   "LOW_LINE_COUNT_mLINEITEM6"  : (7, [16]) }}, # not optroute
+  # 13 has none
+  # 15 has none
 
   '17': {'maps': { "AVG_YEARLY_pLINEITEM5"           : (2, [16, 16]),
-                   "AVG_YEARLY_mLINEITEM1"           : (3, [16]),
-                   "AVG_YEARLY_mLINEITEM2_L1_1_L1_1" : (4, [16]),
-                   "AVG_YEARLY_mLINEITEM2_L1_2"      : (5, [16]),
+                   "AVG_YEARLY_mLINEITEM1"           : (3, [16]), # not optroute
+                   "AVG_YEARLY_mLINEITEM2_L1_1_L1_1" : (4, [16]), # not optroute
+                   "AVG_YEARLY_mLINEITEM2_L1_2"      : (5, [16]), # not optroute
                    "AVG_YEARLY_mLINEITEM5"           : (6, [16, 16]) }},
 
   '18a': {'maps': { "QUERY18"                       : (1, [16]),
                     "QUERY18_mLINEITEM2"            : (2, [16, 16]),
                     "QUERY18_mLINEITEM2_mCUSTOMER1" : (3, [16, 16]),
                     "QUERY18_mLINEITEM5"            : (4, [16, 16]),
-                    "QUERY18_mORDERS2"              : (5, [16]),
+                    "QUERY18_mORDERS2"              : (5, [16]), # not optroute
                     "QUERY18_mCUSTOMER1"            : (6, [16, 16]),
                     "QUERY18_mCUSTOMER1_L1_1_L1_1"  : (7, [16]),
                     "QUERY18_mCUSTOMER1_L1_2"       : (8, [16]) }},
@@ -76,9 +78,11 @@ map_buckets_by_query = {
                    "QUERY18_mLINEITEM1"            : (5, [4, 4, 4, 4, 4]),
                    "QUERY18_mLINEITEM1_mLINEITEM1" : (6, [4, 4, 4, 4, 4]),
                    "QUERY18_mLINEITEM1_E1_1_L1_1"  : (7, [4]) }},
+  # 19 has none
 
   '22a': {'maps': {"QUERY22"                 : (1, [8]),
                    "QUERY22_mCUSTOMER1"      : (2, [8, 8, 8]),
+                   "QUERY22_mCUSTOMER1_L2_1" : (4, [8]),
                    "QUERY22_mCUSTOMER1_L3_1" : (4, [8]) }}
 }
 
@@ -89,7 +93,7 @@ map_buckets_by_query = {
 #        'binding_patterns': {}},
 
 stmts_by_query = {
-	'4' : {'stmts':
+    '4' : {'stmts':
                 {4: {'map_vars': [("ORDER_COUNT",               ["O_ORDERPRIORITY"]),
                                   ("ORDER_COUNT_mLINEITEM1",    ["O_ORDERPRIORITY", "LINEITEM_ORDERKEY"]),
                                   ("ORDER_COUNT_mORDERS3_E1_1", ["LINEITEM_ORDERKEY"])]}
@@ -554,6 +558,7 @@ def generate_pattern(varname, stmt_id):
   pattern_map = {}
   return {k3n: k3ds}
 
+# get the partition map definition
 def get_pmap(query):
   available = init_pattern(query, False)
   if available:
@@ -564,6 +569,7 @@ def get_pmap(query):
     return {'pmap_input': k3pmap}
   return None
 
+# return routing data structure
 def get_node_data(query, varname='route_opt_init_s', stmt_ids=None):
   nd = {}
   available = init_pattern(query, True)
