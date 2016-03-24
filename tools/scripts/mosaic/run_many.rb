@@ -143,6 +143,7 @@ def run_trial(t)
   # Construct a call to run.rb
   tpch = "tpch#{query}"
   query_workdir = File.join($workdir, tpch)
+  FileUtils.mkdir_p query_workdir if !File.exist? query_workdir
   output_path = File.join(query_workdir, 'out.txt')
   infix = ''
   infix << " --binary #{File.join($options[:bindir], tpch, tpch)}" if $options[:bindir]
@@ -152,13 +153,14 @@ def run_trial(t)
   infix << " --use-hm" if $options[:use_hm]
   infix << " --profile-latency --process-latency" if exp == :latency
   infix << " --mem-interval 250 --gc-epoch #{t[:gc_epoch]} --msg-delay#{t[:delay]} --process-memory" if exp == :memory
+  infix << " --perhost #{perhost}" unless nodes < perhost
 
   cmd = "#{File.join($script_path, "run.rb")} -5"\
         " #{File.join($common_path, "K3-Mosaic/tests/queries/tpch/query#{query}.sql")}"\
         " -w #{query_workdir}/"\
         " -p /local/data/mosaic/#{sf}f"\
         " -s #{switches} -n #{nodes}"\
-        " --perhost #{perhost} --query #{query}"\
+        " --query #{query}"\
         " --compile-local --create-local #{infix}"\
         " 2>&1 | tee #{output_path}"
   puts cmd
