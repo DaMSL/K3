@@ -255,11 +255,7 @@ def gen_yaml(role_path)
   end
   cmd << "--dist " if $options[:run_mode] == :dist
   cmd << "--latency-profiling " if $options[:latency_profiling]
-  if $options[:message_profiling]
-    puts "MESSAGE PROFILING"
-  else
-    puts "NO MESSAGE PROFILING"
-  end
+  puts "MESSAGE PROFILING" if $options[:message_profiling]
   cmd << "--message-profiling " if $options[:message_profiling]
   cmd << "--switch-method pile " if $options[:switch_pile] # not round robin
   cmd << "--switch-perhost #{$options[:switch_perhost]} " if $options.has_key? :switch_perhost # not round robin
@@ -381,14 +377,15 @@ def wait_and_fetch_results(stage_num, jobid)
   peer_yaml_files = []
   file_paths.each do |f|
     f_path = File.join($workdir, f)
-    f_final_path = File.join(sandbox_path, f)
     node_sandbox_path = File.join(sandbox_path, File.basename(f, ".*"))
     `mkdir -p #{node_sandbox_path}` unless Dir.exists?(node_sandbox_path)
 
     # Retrieve, extract and move node sandbox.
     curl($server_url, "/fs/jobs/#{$nice_name}/#{jobid}/", getfile:f)
     run("tar xvf #{f_path} -C #{node_sandbox_path}")
-    `mv #{f_path} #{f_final_path}`
+    FileUtils.rm f_path # tar files are too big to save
+    nice_path = File.join(node_sandbox_path, $nice_name)
+    FileUtils.rm(nice_path) if exist? nice_path # don't need copy of executable
 
     # Track node logs.
     json_path = File.join(node_sandbox_path, "json")
@@ -864,6 +861,42 @@ def post_process_latencies(jobid)
   Dir.chdir(dir)
 end
 
+def post_process_memory(jobid)
+  # Note: we assume switches are separate from nodes
+  puts "Post-processing memory"
+  job_path = $options[:run_mode] == :local ? File.join($workdir, 'local') : File.join($workdir, "job_#{jobid}")
+
+  node_files = []; switch_files = []
+
+  if $options[:run_mode] == :local
+    Dir.glob(File.join(job_path, '*.yaml')) do |file|
+      File.open(file, 'r') do |f|
+        YAML.load_documents f do |yaml|
+          eventlog, role = [yaml['eventlog'], yaml['role'][0]['i']]
+          eventlog_path = File.join(job_path, eventlog)
+          node_files   << eventlog_path if role == 'node'
+          switch_files << eventlog_path if role == 'switch'
+        end
+      end
+    end
+  else # distributed mode
+    Dir.glob(File.join(job_path, '**', 'peers*.yaml')) do |file|
+      # get eventlog_file and role from peers file
+      yaml = YAML.load_file(file)
+      eventlog, role = [yaml['eventlog'], yaml['role'][0]['i']]
+      eventlog_path = File.join(File.split(file)[0], eventlog)
+      node_files   << eventlog_path if role == 'node'
+      switch_files << eventlog_path if role == 'switch'
+    end
+  end
+
+  dir = Dir.pwd
+  Dir.chdir(job_path)
+  cmd = "--switches #{switch_files.join(" ")} --nodes #{node_files.join(" ")}"
+  run("#{File.join($script_path, "event_latencies.py")} #{cmd}", always_out:true)
+  Dir.chdir(dir)
+end
+
 # create heat maps for messages
 def plot_messages(jobid)
   job_path = File.join($workdir, "job_#{jobid}")
@@ -997,8 +1030,12 @@ def main()
     }
     opts.on("--plot-messages", "Create message heat maps") { $options[:plot_messages] = true }
 
-    # JEMalloc/memory profiling options
+    # Memory profiling options
     opts.on("--gc-epoch [MS]", "Set gc epoch time (ms)") { |i| $options[:gc_epoch] = i }
+    # Memory profiling (low interval = profiling)
+    opts.on("--mem-interval [NUM]", "Set C++ heap profiling interval (ms)") {|s| $options[:profile_interval] = s}
+    opts.on("--process-memory", "Process memory data") {|s| $options[:process_memory] = s}
+    # JEMalloc options
     opts.on("--jemalloc-profile", "Profile jemalloc") { $options[:jemalloc_profile] = true }
     opts.on("--jemalloc-stats", "Get times from jemalloc") { $options[:jemalloc_stats] = true }
     opts.on("--jemalloc-tune", "Tune jemalloc") { $options[:jemalloc_tune] = true }
@@ -1024,9 +1061,6 @@ def main()
     # Currently these seem to have no effect
     opts.on("--numactl [NUM]", "Force app to run only on numa node x") {|s| $options[:numactl] = s}
     opts.on("--network-threads [NUM]", "Set number of networking threads to use") {|s| $options[:network_threads] = s}
-
-    # Memory profiling (low interval = profiling)
-    opts.on("--profile-interval [NUM]", "Set C++ heap profiling interval") {|s| $options[:profile_interval] = s}
 
     # Stages to run
     # Ktrace is not run by default.
@@ -1204,8 +1238,9 @@ def main()
   # options to fetch to job results
   wait_and_fetch_results(5, jobid) if $options[:fetch_results]
 
-  # post-process latency files
   post_process_latencies(jobid) if $options[:process_latencies]
+
+  post_process_memory(jobid) if $options[:process_memory]
 
   #plot messages
   plot_messages(jobid) if $options[:plot_messages]
