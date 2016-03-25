@@ -408,8 +408,8 @@ class K3Executor(mesos.interface.Executor):
 
             # Package Sandbox
             tarfile = app_name + "_" + \
-                str(self.job_id) + "_" + self.host + ".tar"
-            tar_cmd = 'cd $MESOS_SANDBOX && tar -cf ' + tarfile + \
+                str(self.job_id) + "_" + self.host + ".tar.gz"
+            tar_cmd = 'cd $MESOS_SANDBOX && tar -czf ' + tarfile + \
                     ' --exclude=k3executor.py --exclude=' + \
                     hostParams['binary'] + ' *'
             archive_endpoint = webaddr + app_name + \
@@ -421,14 +421,14 @@ class K3Executor(mesos.interface.Executor):
 
             logging.debug("POST-PROCESSING:")
 
-            output = executecmd(tar_cmd)
             logging.debug('TAR CMD: %s\n%s', tar_cmd, output)
+            output = executecmd(tar_cmd)
 
-            output = executecmd(curl_cmd)
             logging.debug('CURL CMD: %s\n%s', curl_cmd, output)
+            output = executecmd(curl_cmd)
 
-            output = executecmd(curl_output)
             logging.debug('CURL OUTPUT: %s\n%s', curl_output, output)
+            output = executecmd(curl_output)
 
             exit_code = proc.returncode
             self.success = (exit_code == 0)

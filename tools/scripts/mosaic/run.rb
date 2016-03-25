@@ -237,7 +237,7 @@ end
 def gen_yaml(role_path)
   # Generate yaml file"
   num_nodes = 1
-  if $options[:num_nodes] then num_nodes = $options[:num_nodes] end
+  num_nodes = $options[:num_nodes] if $options[:num_nodes]
 
   cmd = ""
   cmd << "--switches " << $options[:num_switches].to_s << " " if $options[:num_switches]
@@ -326,7 +326,7 @@ def extract_times(sandbox_path, verbose=false)
       std_dev = Math.sqrt((times.inject(0){|acc,x| acc + (x[1] - mean)**2}) / num.to_f)
       s += "#{role}: mean:#{mean.to_i}, median:#{median.to_i}, min:#{min}, max:#{max}, num:#{num}, std_dev:#{std_dev.to_i}\n"
     end
-    if verbose then puts s end
+    puts s if verbose
     [time, trig_times, s]
 end
 
@@ -368,7 +368,7 @@ def wait_and_fetch_results(stage_num, jobid)
 
   file_paths = []
   res['sandbox'].each do |s|
-    if File.extname(s) == '.tar'
+    if File.extname(s) == '.tar.gz'
       file_paths << s
     end
   end
@@ -378,14 +378,12 @@ def wait_and_fetch_results(stage_num, jobid)
   file_paths.each do |f|
     f_path = File.join($workdir, f)
     node_sandbox_path = File.join(sandbox_path, File.basename(f, ".*"))
-    `mkdir -p #{node_sandbox_path}` unless Dir.exists?(node_sandbox_path)
+    `mkdir -p #{node_sandbox_path}` unless Dir.exist?(node_sandbox_path)
 
     # Retrieve, extract and move node sandbox.
     curl($server_url, "/fs/jobs/#{$nice_name}/#{jobid}/", getfile:f)
-    run("tar xvf #{f_path} -C #{node_sandbox_path}")
+    run("tar xvzf #{f_path} -C #{node_sandbox_path}")
     FileUtils.rm f_path # tar files are too big to save
-    nice_path = File.join(node_sandbox_path, $nice_name)
-    FileUtils.rm(nice_path) if exist? nice_path # don't need copy of executable
 
     # Track node logs.
     json_path = File.join(node_sandbox_path, "json")
@@ -452,7 +450,7 @@ def wait_and_fetch_results(stage_num, jobid)
 end
 
 def run_deploy_k3_remote(uid, bin_path)
-  role_path = if $options[:raw_yaml_file] then $options[:raw_yaml_file] else File.join($workdir, $nice_name + ".yaml") end
+  role_path = $options[:raw_yaml_file] ? $options[:raw_yaml_file] : File.join($workdir, $nice_name + ".yaml")
 
   # we can either have a uid from a previous stage, or send a binary and get a uid now
   if uid.nil? || $options[:compile_local]
@@ -536,7 +534,7 @@ def run_deploy_k3_local(bin_path)
   stage "[5] Running K3 executable locally"
   FileUtils.rm_rf json_dist_path
   FileUtils.mkdir_p json_dist_path
-  frequency = if $options[:perf_frequency] then $options[:perf_frequency] else "10" end
+  frequency = $options[:perf_frequency] ? $options[:perf_frequency] : '10'
   malloc_conf = []
   malloc_conf << 'narenas:20' if $options[:jemalloc_tune]
   malloc_conf << 'stats_print:true' if $options[:jemalloc_stats]
@@ -1162,12 +1160,8 @@ def main()
   dbt_path     = File.join(test_path, dbt_plat) # dbtoaster path
   dbt_lib_path = File.join(dbt_path, "lib", "dbt_c++")
 
-  $nice_name, query =
-    if match = basename.match(/query(.*)/)
-      [lastpath + match.captures[0], match.captures[0]]
-    else
-      [basename, nil]
-    end
+  match = basename.match(/query(.*)/)
+  $nice_name, query = match ? [lastpath + match.captures[0], match.captures[0]] : [basename, nil]
 
   $options[:query] = query unless $options[:query]
 
@@ -1226,7 +1220,7 @@ def main()
 
   if $options[:deploy_k3]
     if $options[:dry_run]
-      role_path = if $options[:raw_yaml_file] then $options[:raw_yaml_file] else File.join($workdir, $nice_name + "_local.yaml") end
+      role_path = $options[:raw_yaml_file] ? $options[:raw_yaml_file] : File.join($workdir, $nice_name + "_local.yaml")
       gen_yaml(role_path) unless $options[:raw_yaml_file]
     elsif $options[:run_mode] == :local
       run_deploy_k3_local(bin_path)

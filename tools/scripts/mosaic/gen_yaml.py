@@ -388,7 +388,7 @@ def main():
                         default=False, dest="message_profiling", help="activate profiling")
     parser.add_argument("--switch-method", default='round_robin',
                         dest="switch_method", help="How to assign switches")
-    parser.add_argument("--sample", default='5',
+    parser.add_argument("--sample-rate", default='100',
                         dest='sample_rate', help="How often to sample")
     args = parser.parse_args()
     if args.run_mode == "dist":
