@@ -131,19 +131,21 @@ def default_profiling(h):
     h['mosaic_route_sample_mod'] = largenum
     h['mosaic_sendput_sample_mod'] = largenum
     h['mosaic_push_sample_mod'] = largenum
+    h['mosaic_msgcount_sample_mod'] = largenum
     h['mosaic_sendupoly_buffer_batch_sz'] = batch_sz
     h['mosaic_sendpoly_buffer_batch_sz'] = batch_sz
     h['mosaic_event_buffer_batch_sz'] = batch_sz
+    h['mosaic_msgcount_buffer_batch_sz'] = batch_sz
 
 
 def add_profiling(h, args, lat_override=None):
     if args.latency_profiling or args.message_profiling:
         default_profiling(h)
     if args.latency_profiling:
-        h['mosaic_event_sample_mod'] = args.sample_rate if lat_override is None else lat_override
+        h['mosaic_event_sample_mod'] = args.sample_delay if lat_override is None else lat_override
     if args.message_profiling:
-        h['mosaic_sendupoly_sample_mod'] = args.sample_rate
-        h['mosaic_sendpoly_sample_mod'] = args.sample_rate
+        h['mosaic_sendupoly_sample_mod'] = args.sample_delay
+        h['mosaic_sendpoly_sample_mod'] = args.sample_delay
 
 
 def create_local_file(args):
@@ -388,8 +390,8 @@ def main():
                         default=False, dest="message_profiling", help="activate profiling")
     parser.add_argument("--switch-method", default='round_robin',
                         dest="switch_method", help="How to assign switches")
-    parser.add_argument("--sample-rate", default='100',
-                        dest='sample_rate', help="How often to sample")
+    parser.add_argument("--sample-delay", default='100',
+                        dest='sample_delay', help="How often to sample")
     args = parser.parse_args()
     if args.run_mode == "dist":
         create_dist_file(args)
