@@ -253,7 +253,7 @@ class K3Executor(mesos.interface.Executor):
                 for k, v in p.items():
                     logging.debug('     %d:  %s --> %s', i, str(k), str(v))
 
-        # Mosaic Seq Files
+            # Mosaic Seq Files
             if mosaicSeqfile is not None:
                 inorderVarByPeer = []
                 switchToPeer = {}
@@ -301,7 +301,7 @@ class K3Executor(mesos.interface.Executor):
                 for k, v in switchToPeer.items():
                     logging.debug("   Switch %d: %s", k, str(v))
 
-        # Build Parameters for All peers (on this host)
+            # Build Parameters for All peers (on this host)
             localMaster = localpeers[0]
             peermastermap = []
             logging.debug('Local Master is %s', str(localMaster))
@@ -378,7 +378,7 @@ class K3Executor(mesos.interface.Executor):
                 k3_cmd += ' ' + hostParams['cmd_suffix']
 
             # Wrap the k3_cmd with a call to ulimit (if flagged)
-            if (ulimit):
+            if ulimit:
                 k3_cmd = "bash -c 'ulimit -c unlimited && %s'" % k3_cmd
 
             k3_cmd = "cd $MESOS_SANDBOX && " + k3_cmd
@@ -388,8 +388,8 @@ class K3Executor(mesos.interface.Executor):
                 logging.info("I am master")
             logging.info("Launching K3.")
 
-        # Start the service (in current thread with stderr/stdout redirected
-        # from Mesos)
+            # Start the service (in current thread with stderr/stdout redirected
+            # from Mesos)
             proc = subprocess.Popen(k3_cmd, shell=True,
                                     stdin=None,
                                     stdout=subprocess.PIPE,
@@ -409,8 +409,9 @@ class K3Executor(mesos.interface.Executor):
             # Package Sandbox
             tarfile = app_name + "_" + \
                 str(self.job_id) + "_" + self.host + ".tar"
-            tar_cmd = 'cd $MESOS_SANDBOX && tar -cf ' + \
-                tarfile + " --exclude='k3executor.py' *"
+            tar_cmd = 'cd $MESOS_SANDBOX && tar -cf ' + tarfile + \
+                    ' --exclude=k3executor.py --exclude=' + \
+                    hostParams['binary'] + ' *'
             archive_endpoint = webaddr + app_name + \
                 "/" + str(self.job_id) + "/archive"
             post_curl = 'cd $MESOS_SANDBOX && curl -i -H "Accept: application/json" -X POST '
@@ -429,8 +430,8 @@ class K3Executor(mesos.interface.Executor):
             output = executecmd(curl_output)
             logging.debug('CURL OUTPUT: %s\n%s', curl_output, output)
 
-            exitCode = proc.returncode
-            self.success = (exitCode == 0)
+            exit_code = proc.returncode
+            self.success = (exit_code == 0)
 
             if self.success:
                 self.status.state = mesos_pb2.TASK_FINISHED
