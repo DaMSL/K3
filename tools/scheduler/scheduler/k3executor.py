@@ -462,6 +462,9 @@ class K3Executor(mesos.interface.Executor):
 if __name__ == "__main__":
     print('PRINT: Executor is running')
     logging.debug("Executor has started")
-    executor = K3Executor()
-    driver = mesos.native.MesosExecutorDriver(executor)
-    sys.exit(0 if driver.run() == mesos_pb2.DRIVER_STOPPED else 1)
+
+    driver = mesos.native.MesosExecutorDriver(K3Executor())
+    status = 0 if driver.run() == mesos_pb2.DRIVER_STOPPED else 1
+    driver.stop()
+
+    sys.exit(status)
