@@ -937,145 +937,7 @@ end
 
 
 def main()
-  $options = {
-    :run_mode   => :dist,
-    :logging    => :none,
-    :isobatch   => true,
-    :corrective => false,
-    :compileargs => "",
-    :profile_interval => 5000
-  }
-
-  uid = nil
-
-  usage = "Usage: #{$PROGRAM_NAME} sql_file options"
-  parser = OptionParser.new do |opts|
-    opts.banner = usage
-    opts.on("-w", "--workdir [PATH]", "Path in which to create files") {|s| $options[:workdir] = s}
-    opts.on("--binary [STR]", "Set a binary image to run with (possibly not in workdir)") {|s| $options[:binary] = s}
-    opts.on("-d", "--dbtdata [PATH]", String, "Set the path of the dbt data file") { |s| $options[:dbt_data_path] = s }
-    opts.on("-p", "--tpch_path [PATH]", String, "Set the path of the tpch fpb files") { |s| $options[:tpch_data_path] = s }
-    opts.on("-i", "--inorder [PATH]", String, "Set the path of the tpch inorder file") { |s| $options[:tpch_inorder_path] = s }
-    opts.on("--k3csv [PATH]", String, "Set the path of the k3 data file(when not using fpbs)") { |s| $options[:k3_csv_path] = s }
-    opts.on("-s", "--switches [NUM]", Integer, "Set the number of switches") { |i| $options[:num_switches] = i }
-    opts.on("-n", "--nodes [NUM]", Integer, "Set the number of nodes") { |i| $options[:num_nodes] = i }
-    opts.on("-j", "--json [JSON]", String, "JSON file to load options") {|s| $options[:json_file] = s}
-    opts.on("--debug", "Debug mode") { $options[:debug] = true }
-    opts.on("--json_debug", "Debug queries that won't die") { $options[:json_debug] = true }
-    opts.on("--perhost [NUM]", Integer, "How many peers to run per host") {|i| $options[:perhost] = i}
-    opts.on("--use-hm", "Use HM nodes") {$options[:use_hm] = true}
-    opts.on("--uid [UID]", String, "UID of file") {|s| $options[:uid] = s}
-    opts.on("--jobid [JOBID]", String, "JOBID of job") {|s| $options[:jobid] = s}
-    opts.on("--mosaic-path [PATH]", String, "Path for mosaic") {|s| $options[:mosaic_path] = s}
-    opts.on("--brew", "Use homebrew (OSX)") { $options[:osx_brew] = true }
-    opts.on("--run-local", "Run locally without mesos") { $options[:run_mode] = :local }
-    opts.on("--create-local", "Create the cpp file locally") { $options[:create_local] = true }
-    opts.on("--compile-local", "Compile locally") { $options[:compile_local] = true }
-    opts.on("--dbt-exec-only", "Execute DBToaster only (skipping query build)") { $options[:dbt_exec_only] = true }
-    opts.on("--fetch-cpp", "Fetch a cpp file after remote creation") { $options[:fetch_cpp] = true}
-    opts.on("--fetch-bin", "Fetch bin + cpp files after remote compilation") { $options[:fetch_bin] = true}
-    opts.on("--fetch-results", "Fetch results after job") { $options[:fetch_results] = true }
-    opts.on("--latest-uid",  "Use the latest uid on the server") { $options[:latest_uid] = true}
-    opts.on("--dry-run",  "Dry run for Mosaic deployment (generates K3 YAML topology)") { $options[:dry_run] = true}
-    opts.on("--dots", "Get the awesome dots") { $options[:dots] = true }
-    # JSON logging
-    opts.on("--json-full", "Turn on JSON logging for ktrace") { $options[:logging] = :full }
-    opts.on("--json-final", "Turn on final JSON logging for ktrace") { $options[:logging] = :final }
-    opts.on("--json-regex [REGEX]", "Regex pattern for JSON logging") { |s| $options[:json_regex] = s}
-    opts.on("--json-none", "Turn off JSON logging for ktrace") { $options[:logging] = :none }
-    opts.on("--core-dump", "Turn on core dump for distributed run") { $options[:core_dump] = true }
-    opts.on("--corrective", "Run in corrective mode") { $options[:corrective] = true }
-    opts.on("--no-isobatch", "Disable isobatch mode") { $options[:isobatch] = false }
-    opts.on("--batch-size [SIZE]", "Set the (re)batch size") {|s| $options[:batch_size] = s }
-    opts.on("--no-reserve", "Prevent reserve on the poly buffers") { $options[:no_poly_reserve] = true }
-    opts.on("--extract-times [PATH]", "Extract times from sandbox") { |s| $options[:extract_times] = s }
-
-    opts.on("--profile-events", "Run with event profiling") { $options[:event_profile] = true }
-    opts.on("--str-trace", "Run with string tracing") { $options[:str_trace] = true } #?
-    opts.on("--raw-yaml [FILE]", "Supply a yaml file") { |s| $options[:raw_yaml_file] = s }
-    opts.on("--map-overlap [FLOAT]", "Adjust % overlap of maps on cluster. 100%=all maps everywhere") { |f| $options[:map_overlap] = f }
-    opts.on("--buckets [INT]", "Number of buckets (partitioning)") { |s| $options[:buckets] = s }
-    opts.on("--replicas [INT]", "Number of replicas in consistent hashing (for partitioning)") { |s| $options[:replicas] = s }
-    opts.on("--query [NAME]", "Name of query to run (optional, derived from path)") { |s| $options[:query] = s }
-    opts.on("--gen-deletes", "Generate deletes") { $options[:gen_deletes] = true }
-
-    # Compiler arguments
-    opts.on("--compileargs [STRING]", "Pass arguments to compiler (distributed only)") { |s| $options[:compileargs] = s }
-
-    # Specialized compiler arguments
-    opts.on("--moderate",  "Query is of moderate skew (and size)") { $options[:skew] = :moderate}
-    opts.on("--moderate2",  "Query is of moderate skew (and size), class 2") { $options[:skew] = :moderate2}
-    opts.on("--extreme",  "Query is of extreme skew (and size)") { $options[:skew] = :extreme}
-    opts.on("--dmat",       "Use distributed materialization")                 { $options[:compileargs] += " --sparallel2stage sparallel2=True" }
-    opts.on("--dmat-debug", "Use distributed materialization (in debug mode)") { $options[:compileargs] += " --sparallel2stage sparallel2-debug=True" }
-    opts.on("--wmoderate",  "Skew argument")                                   { $options[:compileargs] += " --workerfactor hm=3 --workerblocks hd=4:qp3=4:qp4=4:qp5=4:qp6=4" }
-    opts.on("--wmoderate2", "Skew argument")                                   { $options[:compileargs] += " --workerfactor hm=3 --workerblocks hd=2:qp3=2:qp4=2:qp5=2:qp6=2" }
-    opts.on("--wextreme",   "Skew argument")                                   { $options[:compileargs] += " --workerfactor hm=4 --workerblocks hd=1:qp3=1:qp4=1:qp5=1:qp6=1" }
-
-    # Latency profiling
-    opts.on("--msg-delay [MS]", "Set switch message delay (ms)") { |i| $options[:msg_delay] = i }
-    opts.on("--profile-latency", "Run with latency profiling options") {
-      $options[:event_profile] = true
-      $options[:latency_profiling] = true
-    }
-    opts.on("--process-latency", "Post-processing on latency files") { $options[:process_latencies] = true }
-    opts.on("--latency-job-dir [PATH]", "Manual selection of job directory") { |s| $options[:latency_dir] = s }
-
-    # Message profiling (heat maps)
-    opts.on("--profile-messages", "Run with message profiling options") {
-      $options[:event_profile] = true
-      $options[:message_profiling] = true
-    }
-    opts.on("--plot-messages", "Create message heat maps") { $options[:plot_messages] = true }
-
-    # Memory profiling options
-    opts.on("--gc-epoch [MS]", "Set gc epoch time (ms)") { |i| $options[:gc_epoch] = i }
-    # Memory profiling (low interval = profiling)
-    opts.on("--mem-interval [NUM]", "Set C++ heap profiling interval (ms)") {|s| $options[:profile_interval] = s}
-    opts.on("--process-memory", "Process memory data") {|s| $options[:process_memory] = s}
-    # JEMalloc options
-    opts.on("--jemalloc-profile", "Profile jemalloc") { $options[:jemalloc_profile] = true }
-    opts.on("--jemalloc-stats", "Get times from jemalloc") { $options[:jemalloc_stats] = true }
-    opts.on("--jemalloc-tune", "Tune jemalloc") { $options[:jemalloc_tune] = true }
-
-    # Perf options
-    opts.on("--perf-stat", "Get stats from perf") { $options[:perf_stat] = true }
-    opts.on("--perf-record", "Turn on perf profiling") { $options[:perf_record] = true}
-    opts.on("--perf-gen-record", "Get perf generic recording (no call graph)") { $options[:perf_gen_record] = true }
-    opts.on("--perf-graph", "Graph perf results") { $options[:perf_graph] = true}
-    opts.on("--perf-frequency [NUM]", String, "Set perf profiling frequency") { |s| $options[:perf_frequency] = s }
-    opts.on("--perf-record-event [EVENT]", "Perf record a specific event (with call graph)") {|s| $options[:perf_record_event] = s }
-    opts.on("--perf-gen-record-event [EVENT]", "Perf record a specific event (no call graph)") {|s| $options[:perf_gen_record_event] = s }
-
-    # Remote run command manipulation
-    opts.on("--cmd-prefix [STR]", "Use this command prefix remotely") {|s| $options[:cmd_prefix] = s}
-    opts.on("--cmd-infix [STR]", "Use this command infix remotely") {|s| $options[:cmd_infix] = s}
-    opts.on("--cmd-suffix [STR]", "Use this command suffix remotely") {|s| $options[:cmd_suffix] = s}
-
-    # Control switch distribution
-    opts.on("--switch-pile", "Pile the switches on the first machines") {$options[:switch_pile] = true}
-    opts.on("--switch-perhost [NUM]", "Peers per host for switches") {|s| $options[:switch_perhost] = s}
-
-    # Currently these seem to have no effect
-    opts.on("--numactl [NUM]", "Force app to run only on numa node x") {|s| $options[:numactl] = s}
-    opts.on("--network-threads [NUM]", "Set number of networking threads to use") {|s| $options[:network_threads] = s}
-
-    # Stages to run
-    # Ktrace is not run by default.
-    opts.on("-a", "--all", "All stages") {
-      $options[:dbtoaster]  = true; $options[:mosaic] = true; $options[:create_k3]  = true
-      $options[:compile_k3] = true; $options[:deploy_k3]  = true; $options[:compare]    = true
-    }
-    opts.on("-1", "--mosaic",    "Mosaic stage (creates Mosaic K3 program)")       { $options[:mosaic]     = true }
-    opts.on("-2", "--dbtoaster", "DBToaster stage")                                { $options[:dbtoaster]  = true }
-    opts.on("-3", "--create",    "Create K3 stage (creates Mosaic CPP program)")   { $options[:create_k3]  = true }
-    opts.on("-4", "--compile",   "Compile K3 stage (compiles Mosaic CPP program)") { $options[:compile_k3] = true }
-    opts.on("-5", "--deploy",    "Deploy stage")                                   { $options[:deploy_k3]  = true }
-    opts.on("-6", "--compare",   "Compare stage")                                  { $options[:compare]    = true }
-    opts.on("-7", "--ktrace",    "KTrace stage")                                   { $options[:ktrace]     = true }
-  end
-  parser.parse!
-
+  parse_opts() 
   # get directory of script
   $script_path = File.expand_path(File.dirname(__FILE__))
 
@@ -1255,6 +1117,145 @@ def main()
       perf_flame_graph(sandbox, trig_times)
     end
   end
+end
+
+def parse_opts()
+  $options = {
+    :run_mode   => :dist,
+    :logging    => :none,
+    :isobatch   => true,
+    :corrective => false,
+    :compileargs => "",
+    :profile_interval => 5000
+  }
+
+  usage = "Usage: #{$PROGRAM_NAME} sql_file options"
+  parser = OptionParser.new do |opts|
+    opts.banner = usage
+    opts.on("-w", "--workdir [PATH]", "Path in which to create files") {|s| $options[:workdir] = s}
+    opts.on("--binary [STR]", "Set a binary image to run with (possibly not in workdir)") {|s| $options[:binary] = s}
+    opts.on("-d", "--dbtdata [PATH]", String, "Set the path of the dbt data file") { |s| $options[:dbt_data_path] = s }
+    opts.on("-p", "--tpch_path [PATH]", String, "Set the path of the tpch fpb files") { |s| $options[:tpch_data_path] = s }
+    opts.on("-i", "--inorder [PATH]", String, "Set the path of the tpch inorder file") { |s| $options[:tpch_inorder_path] = s }
+    opts.on("--k3csv [PATH]", String, "Set the path of the k3 data file(when not using fpbs)") { |s| $options[:k3_csv_path] = s }
+    opts.on("-s", "--switches [NUM]", Integer, "Set the number of switches") { |i| $options[:num_switches] = i }
+    opts.on("-n", "--nodes [NUM]", Integer, "Set the number of nodes") { |i| $options[:num_nodes] = i }
+    opts.on("-j", "--json [JSON]", String, "JSON file to load options") {|s| $options[:json_file] = s}
+    opts.on("--debug", "Debug mode") { $options[:debug] = true }
+    opts.on("--json_debug", "Debug queries that won't die") { $options[:json_debug] = true }
+    opts.on("--perhost [NUM]", Integer, "How many peers to run per host") {|i| $options[:perhost] = i}
+    opts.on("--use-hm", "Use HM nodes") {$options[:use_hm] = true}
+    opts.on("--uid [UID]", String, "UID of file") {|s| $options[:uid] = s}
+    opts.on("--jobid [JOBID]", String, "JOBID of job") {|s| $options[:jobid] = s}
+    opts.on("--mosaic-path [PATH]", String, "Path for mosaic") {|s| $options[:mosaic_path] = s}
+    opts.on("--brew", "Use homebrew (OSX)") { $options[:osx_brew] = true }
+    opts.on("--run-local", "Run locally without mesos") { $options[:run_mode] = :local }
+    opts.on("--create-local", "Create the cpp file locally") { $options[:create_local] = true }
+    opts.on("--compile-local", "Compile locally") { $options[:compile_local] = true }
+    opts.on("--dbt-exec-only", "Execute DBToaster only (skipping query build)") { $options[:dbt_exec_only] = true }
+    opts.on("--fetch-cpp", "Fetch a cpp file after remote creation") { $options[:fetch_cpp] = true}
+    opts.on("--fetch-bin", "Fetch bin + cpp files after remote compilation") { $options[:fetch_bin] = true}
+    opts.on("--fetch-results", "Fetch results after job") { $options[:fetch_results] = true }
+    opts.on("--latest-uid",  "Use the latest uid on the server") { $options[:latest_uid] = true}
+    opts.on("--dry-run",  "Dry run for Mosaic deployment (generates K3 YAML topology)") { $options[:dry_run] = true}
+    opts.on("--dots", "Get the awesome dots") { $options[:dots] = true }
+    # JSON logging
+    opts.on("--json-full", "Turn on JSON logging for ktrace") { $options[:logging] = :full }
+    opts.on("--json-final", "Turn on final JSON logging for ktrace") { $options[:logging] = :final }
+    opts.on("--json-regex [REGEX]", "Regex pattern for JSON logging") { |s| $options[:json_regex] = s}
+    opts.on("--json-none", "Turn off JSON logging for ktrace") { $options[:logging] = :none }
+    opts.on("--core-dump", "Turn on core dump for distributed run") { $options[:core_dump] = true }
+    opts.on("--corrective", "Run in corrective mode") { $options[:corrective] = true }
+    opts.on("--no-isobatch", "Disable isobatch mode") { $options[:isobatch] = false }
+    opts.on("--batch-size [SIZE]", "Set the (re)batch size") {|s| $options[:batch_size] = s }
+    opts.on("--no-reserve", "Prevent reserve on the poly buffers") { $options[:no_poly_reserve] = true }
+    opts.on("--extract-times [PATH]", "Extract times from sandbox") { |s| $options[:extract_times] = s }
+
+    opts.on("--profile-events", "Run with event profiling") { $options[:event_profile] = true }
+    opts.on("--str-trace", "Run with string tracing") { $options[:str_trace] = true } #?
+    opts.on("--raw-yaml [FILE]", "Supply a yaml file") { |s| $options[:raw_yaml_file] = s }
+    opts.on("--map-overlap [FLOAT]", "Adjust % overlap of maps on cluster. 100%=all maps everywhere") { |f| $options[:map_overlap] = f }
+    opts.on("--buckets [INT]", "Number of buckets (partitioning)") { |s| $options[:buckets] = s }
+    opts.on("--replicas [INT]", "Number of replicas in consistent hashing (for partitioning)") { |s| $options[:replicas] = s }
+    opts.on("--query [NAME]", "Name of query to run (optional, derived from path)") { |s| $options[:query] = s }
+    opts.on("--gen-deletes", "Generate deletes") { $options[:gen_deletes] = true }
+
+    # Compiler arguments
+    opts.on("--compileargs [STRING]", "Pass arguments to compiler (distributed only)") { |s| $options[:compileargs] = s }
+
+    # Specialized compiler arguments
+    opts.on("--moderate",  "Query is of moderate skew (and size)") { $options[:skew] = :moderate}
+    opts.on("--moderate2",  "Query is of moderate skew (and size), class 2") { $options[:skew] = :moderate2}
+    opts.on("--extreme",  "Query is of extreme skew (and size)") { $options[:skew] = :extreme}
+    opts.on("--dmat",       "Use distributed materialization")                 { $options[:compileargs] += " --sparallel2stage sparallel2=True" }
+    opts.on("--dmat-debug", "Use distributed materialization (in debug mode)") { $options[:compileargs] += " --sparallel2stage sparallel2-debug=True" }
+    opts.on("--wmoderate",  "Skew argument")                                   { $options[:compileargs] += " --workerfactor hm=3 --workerblocks hd=4:qp3=4:qp4=4:qp5=4:qp6=4" }
+    opts.on("--wmoderate2", "Skew argument")                                   { $options[:compileargs] += " --workerfactor hm=3 --workerblocks hd=2:qp3=2:qp4=2:qp5=2:qp6=2" }
+    opts.on("--wextreme",   "Skew argument")                                   { $options[:compileargs] += " --workerfactor hm=4 --workerblocks hd=1:qp3=1:qp4=1:qp5=1:qp6=1" }
+
+    # Latency profiling
+    opts.on("--msg-delay [MS]", "Set switch message delay (ms)") { |i| $options[:msg_delay] = i }
+    opts.on("--profile-latency", "Run with latency profiling options") {
+      $options[:event_profile] = true
+      $options[:latency_profiling] = true
+    }
+    opts.on("--process-latency", "Post-processing on latency files") { $options[:process_latencies] = true }
+    opts.on("--latency-job-dir [PATH]", "Manual selection of job directory") { |s| $options[:latency_dir] = s }
+
+    # Message profiling (heat maps)
+    opts.on("--profile-messages", "Run with message profiling options") {
+      $options[:event_profile] = true
+      $options[:message_profiling] = true
+    }
+    opts.on("--plot-messages", "Create message heat maps") { $options[:plot_messages] = true }
+
+    # Memory profiling options
+    opts.on("--gc-epoch [MS]", "Set gc epoch time (ms)") { |i| $options[:gc_epoch] = i }
+    # Memory profiling (low interval = profiling)
+    opts.on("--mem-interval [NUM]", "Set C++ heap profiling interval (ms)") {|s| $options[:profile_interval] = s}
+    opts.on("--process-memory", "Process memory data") {|s| $options[:process_memory] = s}
+    # JEMalloc options
+    opts.on("--jemalloc-profile", "Profile jemalloc") { $options[:jemalloc_profile] = true }
+    opts.on("--jemalloc-stats", "Get times from jemalloc") { $options[:jemalloc_stats] = true }
+    opts.on("--jemalloc-tune", "Tune jemalloc") { $options[:jemalloc_tune] = true }
+
+    # Perf options
+    opts.on("--perf-stat", "Get stats from perf") { $options[:perf_stat] = true }
+    opts.on("--perf-record", "Turn on perf profiling") { $options[:perf_record] = true}
+    opts.on("--perf-gen-record", "Get perf generic recording (no call graph)") { $options[:perf_gen_record] = true }
+    opts.on("--perf-graph", "Graph perf results") { $options[:perf_graph] = true}
+    opts.on("--perf-frequency [NUM]", String, "Set perf profiling frequency") { |s| $options[:perf_frequency] = s }
+    opts.on("--perf-record-event [EVENT]", "Perf record a specific event (with call graph)") {|s| $options[:perf_record_event] = s }
+    opts.on("--perf-gen-record-event [EVENT]", "Perf record a specific event (no call graph)") {|s| $options[:perf_gen_record_event] = s }
+
+    # Remote run command manipulation
+    opts.on("--cmd-prefix [STR]", "Use this command prefix remotely") {|s| $options[:cmd_prefix] = s}
+    opts.on("--cmd-infix [STR]", "Use this command infix remotely") {|s| $options[:cmd_infix] = s}
+    opts.on("--cmd-suffix [STR]", "Use this command suffix remotely") {|s| $options[:cmd_suffix] = s}
+
+    # Control switch distribution
+    opts.on("--switch-pile", "Pile the switches on the first machines") {$options[:switch_pile] = true}
+    opts.on("--switch-perhost [NUM]", "Peers per host for switches") {|s| $options[:switch_perhost] = s}
+
+    # Currently these seem to have no effect
+    opts.on("--numactl [NUM]", "Force app to run only on numa node x") {|s| $options[:numactl] = s}
+    opts.on("--network-threads [NUM]", "Set number of networking threads to use") {|s| $options[:network_threads] = s}
+
+    # Stages to run
+    # Ktrace is not run by default.
+    opts.on("-a", "--all", "All stages") {
+      $options[:dbtoaster]  = true; $options[:mosaic] = true; $options[:create_k3]  = true
+      $options[:compile_k3] = true; $options[:deploy_k3]  = true; $options[:compare]    = true
+    }
+    opts.on("-1", "--mosaic",    "Mosaic stage (creates Mosaic K3 program)")       { $options[:mosaic]     = true }
+    opts.on("-2", "--dbtoaster", "DBToaster stage")                                { $options[:dbtoaster]  = true }
+    opts.on("-3", "--create",    "Create K3 stage (creates Mosaic CPP program)")   { $options[:create_k3]  = true }
+    opts.on("-4", "--compile",   "Compile K3 stage (compiles Mosaic CPP program)") { $options[:compile_k3] = true }
+    opts.on("-5", "--deploy",    "Deploy stage")                                   { $options[:deploy_k3]  = true }
+    opts.on("-6", "--compare",   "Compare stage")                                  { $options[:compare]    = true }
+    opts.on("-7", "--ktrace",    "KTrace stage")                                   { $options[:ktrace]     = true }
+  end
+  parser.parse!
 end
 
 main
