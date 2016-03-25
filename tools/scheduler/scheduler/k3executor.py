@@ -441,9 +441,9 @@ class K3Executor(mesos.interface.Executor):
                 self.status.data = "K3 Program FAILED (check logs)"
 
             driver.sendStatusUpdate(self.status)
+            driver.stop()
 
         self.thread = threading.Thread(target=run_task)
-        self.thread.daemon = True
         self.thread.start()
 
     def frameworkMessage(self, driver, message):
@@ -453,8 +453,12 @@ class K3Executor(mesos.interface.Executor):
         self.status.data = self.buffer
         self.status.state = mesos_pb2.TASK_KILLED
         driver.sendStatusUpdate(self.status)
-        logging.warning("Executor was signaled to terminate. Exiting now....")
-        sys.exit(1)
+        logging.warning("Executor was signaled to kill task. Exiting now....")
+        driver.stop()
+
+    def shutdown(self, driver):
+        logging.warning("Executor was signaled to shutdown. Exiting now....")
+        driver.stop()
 
     def error(self, driver, code, message):
         print "Error from Mesos: %s (code %s)" % (message, code)
