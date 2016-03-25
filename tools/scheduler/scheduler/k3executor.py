@@ -443,6 +443,7 @@ class K3Executor(mesos.interface.Executor):
             driver.sendStatusUpdate(self.status)
 
         self.thread = threading.Thread(target=run_task)
+        self.thread.daemon = True
         self.thread.start()
 
     def frameworkMessage(self, driver, message):
