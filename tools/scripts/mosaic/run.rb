@@ -258,8 +258,10 @@ def gen_yaml(role_path)
   puts "MESSAGE PROFILING" if $options[:message_profiling]
   cmd << "--message-profiling " if $options[:message_profiling]
   cmd << "--switch-method pile " if $options[:switch_pile] # not round robin
-  cmd << "--switch-perhost #{$options[:switch_perhost]} " if $options.has_key? :switch_perhost # not round robin
+  cmd << "--switch-perhost #{$options[:switch_perhost]} " if $options[:switch_perhost] # not round robin
+  cmd << "--sample-delay #{$options[:sample_delay]} " if $options[:sample_delay]
 
+  # extra_args are globals set in the program itself ie. gen_yaml doesn't know about them
   extra_args = []
   extra_args << "ms_gc_interval=" + $options[:gc_epoch] if $options[:gc_epoch]
   extra_args << "tm_resolution=" + $options[:gc_epoch] if $options[:gc_epoch] && $options[:gc_epoch].to_i < 1000
@@ -366,12 +368,7 @@ def wait_and_fetch_results(stage_num, jobid)
   sandbox_path = File.join($workdir, "job_#{jobid}")
   `mkdir -p #{sandbox_path}` unless Dir.exists?(sandbox_path)
 
-  file_paths = []
-  res['sandbox'].each do |s|
-    if File.extname(s) == '.tar.gz'
-      file_paths << s
-    end
-  end
+  file_paths = res['sandbox'].select { |f| f =~ /.*\.tar\.gz$/ }
 
   files_to_clean = []
   peer_yaml_files = []
@@ -919,9 +916,7 @@ end
 
 # persist/save source, data paths, and others
 def persist_options()
-  def update_if_there(opts, x)
-    opts[x] = $options[x] if $options[x]
-  end
+  def update_if_there(opts, x) opts[x] = $options[x] if $options[x] end
   options = {}
   update_if_there(options, :source)
   update_if_there(options, :tpch_data_path)
@@ -937,7 +932,7 @@ end
 
 
 def main()
-  parse_opts() 
+  parse_opts()
   # get directory of script
   $script_path = File.expand_path(File.dirname(__FILE__))
 
@@ -1201,6 +1196,7 @@ def parse_opts()
     }
     opts.on("--process-latency", "Post-processing on latency files") { $options[:process_latencies] = true }
     opts.on("--latency-job-dir [PATH]", "Manual selection of job directory") { |s| $options[:latency_dir] = s }
+    opts.on("--sample-delay [DELAY]", "How long to wait between samples (vids)") {|s| $options[:sample_delay] = s}
 
     # Message profiling (heat maps)
     opts.on("--profile-messages", "Run with message profiling options") {

@@ -10,7 +10,7 @@ $options = {
   :config_file    => 'exp_config.yaml',
   :mach_limit     => [:num_machines, 8], # or :per_host
   :experiments    => %i{scalability latency memory},
-  :queries        => %w{6 11a 4 19 13 22a 12 1 17 15 3},
+  :queries        => %w{3 12 1 17 6 11a 4}, #19,15,13,22a don't terminate
   :scale_factors  => [0.1, 1, 10, 100],
   :switch_counts  => [1, 2, 4, 8, 16], # latency only
   :node_counts    => [1, 4, 8, 16, 31],
@@ -87,14 +87,18 @@ def create_config()
       end
     end
   end
+  # Latency experiments
+  sample_delays = {0.1=>10, 1=>100, 10=>1000, 100=>10000}
   if $options[:experiments].include? :latency
     $options[:scale_factors].each do |sf|
       $options[:node_counts].each do |nodes|
-        [1, 2, 4].each do |switches|
+        switch_counts = [1, 2, 4, 8, 16].select {|s| s <= nodes}
+        switch_counts.each do |switches|
           $options[:queries].each do |q|
             trials = sf >= $options[:trial_cutoff] ? 1 : $options[:trials]
             (1..trials).each do |trial|
               t = $headers[0..-1].zip([:latency, sf, nodes, switches, 2, q, trial]).to_h
+              t[:sample_delay] = sample_delays[sf]
               tests << t
             end
           end
@@ -102,6 +106,7 @@ def create_config()
       end
     end
   end
+  # Memory tests
   if $options[:experiments].include? :memory
     $options[:scale_factors].each do |sf|
       $options[:queries].each do |q|
@@ -138,7 +143,7 @@ def run_trial(t)
   perhost = t[:perhost]
   query = t[:q]
   # Keep a seperate output file for the trial
-  puts "---- #{exp}-sf#{sf}-q#{query}-n#{nodes}-s#{switches}-p#{perhost} ----"
+  puts "---- #{exp}: sf#{sf} q#{query} n#{nodes} s#{switches} #{perhost} perhost trial #{t[:trial]}----"
 
   # Construct a call to run.rb
   tpch = "tpch#{query}"
@@ -154,6 +159,7 @@ def run_trial(t)
   infix << " --profile-latency --process-latency" if exp == :latency
   infix << " --mem-interval 250 --gc-epoch #{t[:gc_epoch]} --msg-delay#{t[:delay]} --process-memory" if exp == :memory
   infix << " --perhost #{perhost}" unless nodes < perhost
+  infix << " --sample-delay #{t[:sample_delay]}" if t[:sample_delay]
 
   cmd = "#{File.join($script_path, "run.rb")} -5"\
         " #{File.join($common_path, "K3-Mosaic/tests/queries/tpch/query#{query}.sql")}"\
@@ -195,6 +201,10 @@ def main()
 
   config = load_config() unless $options[:clean]
   config = create_config unless config
+
+  config[:tests].reject! {|t| t[:exp] == $options[:remove_exp]} if $options[:remove_exp]
+  config[:tests].reject! {|t| t[:q] == $options[:remove_q]} if $options[:remove_q]
+
   save_config(config, backup:$options[:clean])
 
   # Otherwise, setup and run
@@ -229,6 +239,8 @@ def parse_args()
     opts.on("-d", "--delays x,y,z", "List of delays to use for memory") {|s| $options[:delays] = s}
 
     opts.on("--clean", "Clean the experiment file") {$options[:clean] = true}
+    opts.on("--remove-q Q", "Remove a query from the queue") {|s| $options[:remove_q] = s}
+    opts.on("--remove-exp EXP", "Remove an experiment from the queue") {|s| $options[:remove_exp] = s}
   end
   parser.parse!
 end
