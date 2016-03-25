@@ -99,21 +99,22 @@ def dump_final_latencies():
     print(banner('Dumping Final latencies'))
     with open('latencies.txt', 'w') as f:
         f.write("Latency stats (do_complete)\n")
-        lats = latencies[events['do_complete']]
-        lats = [lat for lat in lats.values()].sort()
+        lats = latencies[events['do_complete']].values()
         total = sum(lats)
         n = len(lats)
         max_val = max(lats)
         min_val = min(lats)
         mean = total / n
+        lats.sort()
         median = lats[n/2] if n % 2 == 1 else (lats[n/2] + lats[n/2 - 1] / 2)
-        stdev = math.sqrt(sum(map(lambda x: (x - mean)**2, lats)))
+        stdev = math.sqrt(sum(map(lambda x: (x - mean)**2, lats)) / n)
         f.write("mean:{}, median:{}, std_dev:{}, n:{}, min:{}, max:{}\n".format(mean, median, stdev, n, min_val, max_val))
+        print "mean:{}, median:{}, std_dev:{}, n:{}, min:{}, max:{}\n".format(mean, median, stdev, n, min_val, max_val)
 
         f.write("\n---- Per machine: ----\n")
         for i,ev in enumerate(nd_spans):
-            for file,(min,max) in ev.iteritems():
-                f.write("{}: {}, ({}, {})\n".format(file, i, min, max))
+            for file,(min_v,max_v) in ev.iteritems():
+                f.write("{}: {}, ({}, {})\n".format(file, i, min_v, max_v))
 
 def process_events(switch_files, node_files, save_intermediate):
     """ Main function """
