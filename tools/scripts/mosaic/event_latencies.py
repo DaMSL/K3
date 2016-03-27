@@ -16,11 +16,12 @@ from ascii_graph import Pyasciigraph
 # Event classes.
 events = {
     'switch_process': 0,
-    'rcv_fetch': 1,
-    'rcv_push': 2,
-    'do_complete': 3,
-    'corrective': 4,
-    'buffered_push': 5
+    'node_start_process': 1,
+    'rcv_fetch': 2,
+    'rcv_push': 3,
+    'do_complete': 4,
+    'corrective': 5,
+    'buffered_push': 6
     }
 
 # detailed tag -> (number, general event for tracking)
@@ -38,7 +39,8 @@ tags = {
     'fetch_route': (10, None),
     'send_put': (11, None),
     'gc_start': (12, None),
-    'gc_done': (13, None)
+    'gc_done': (13, None),
+    'node_start_process': (14, 'node_start_process')
     }
 
 tag_to_ev = ['' for x in range(len(tags))]
