@@ -399,7 +399,7 @@ class Dispatcher(mesos.interface.Scheduler):
   def killStragglers(self, curr_ts, driver):
     expired_jobs = []
     for (job_id, job) in self.active.items():
-      if (curr_ts - job.start_ts) >= job.time_limit:
+      if job.time_limit != 0 and (curr_ts - job.start_ts) >= job.time_limit:
         logging.info("[DISPATCHER] Cancelling Job %s. Time limit of %d seconds exceeded" % (job_id, job.time_limit))
         expired_jobs.append(job_id)
 

@@ -104,7 +104,7 @@ class Job:
     self.all_peers      = None
     self.master         = None
     self.start_ts       = None
-    self.time_limit     = kwargs.get("timelimit", 20 * 60)
+    self.time_limit     = kwargs.get("time_limit", 0)
 
     if self.binary_url == None:
       logging.error("[FLASKWEB] Error. No binary provided to Job")
