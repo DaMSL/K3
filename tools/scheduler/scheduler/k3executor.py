@@ -443,7 +443,6 @@ class K3Executor(mesos.interface.Executor):
             driver.sendStatusUpdate(self.status)
 
         self.thread = threading.Thread(target=run_task)
-        self.thread.daemon = True
         self.thread.start()
 
     def frameworkMessage(self, driver, message):
@@ -453,8 +452,7 @@ class K3Executor(mesos.interface.Executor):
         self.status.data = self.buffer
         self.status.state = mesos_pb2.TASK_KILLED
         driver.sendStatusUpdate(self.status)
-        logging.warning("Executor was signaled to terminate. Exiting now....")
-        sys.exit(1)
+        logging.warning("Executor was signaled to terminate.")
 
     def error(self, driver, code, message):
         print "Error from Mesos: %s (code %s)" % (message, code)
