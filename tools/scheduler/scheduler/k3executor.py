@@ -441,8 +441,11 @@ class K3Executor(mesos.interface.Executor):
                 self.status.data = "K3 Program FAILED (check logs)"
 
             driver.sendStatusUpdate(self.status)
+            logging.warning("K3 Program Task completed normally. Stopping the Driver now....")
+            driver.stop()
 
         self.thread = threading.Thread(target=run_task)
+        self.thread.daemon = True
         self.thread.start()
 
     def frameworkMessage(self, driver, message):
@@ -452,7 +455,10 @@ class K3Executor(mesos.interface.Executor):
         self.status.data = self.buffer
         self.status.state = mesos_pb2.TASK_KILLED
         driver.sendStatusUpdate(self.status)
-        logging.warning("Executor was signaled to terminate.")
+        logging.warning("Executor was signaled to terminate. Stopping the DriverExiting now....")
+        driver.stop()
+        logging.warning("Driver was (supposed to be) stopped. Exiting now....")
+        sys.exit(1)
 
     def error(self, driver, code, message):
         print "Error from Mesos: %s (code %s)" % (message, code)
@@ -463,6 +469,6 @@ if __name__ == "__main__":
 
     driver = mesos.native.MesosExecutorDriver(K3Executor())
     status = 0 if driver.run() == mesos_pb2.DRIVER_STOPPED else 1
-    driver.stop()
-
+    status_msg = 'FAILED' if status else 'SUCCESS'
+    print('PRINT: Executor-Driver has stopped. Exit status: %s' % status_msg)
     sys.exit(status)
