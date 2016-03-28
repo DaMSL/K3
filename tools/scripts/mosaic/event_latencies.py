@@ -48,6 +48,7 @@ for _, v in tags.iteritems():
     tag_to_ev[v[0]] = v[1]
 
 # An interval tree of vid-segments to update start times. Uses fetch events
+# Switch-start-process events are the 2nd part of the time tuple
 switchspans = IntervalTree()
 
 # A dictionary of event -> vid -> span (min, max). Uses all other events
@@ -61,30 +62,38 @@ latencyspans = [(sys.maxint, -sys.maxint - 1) for ev in events]
 
 nd_spans = [{} for ev in events]
 
-def update_latency(tag, vid, t, filename):
+def interval_lkup(vid):
     # get the matching interval from the switch interval tree
     intervals = switchspans[vid]
-    if len(intervals) > 1:
-        print("Invalid point query on switch vid intervals")
+    l = len(intervals)
+    if l > 1:
+        print("Invalid point query on switch vid intervals: too many intervals")
+        return None
+    elif l == 0:
+        print("No start interval found for {}".format(vid))
+        return None
     else:
-        if len(intervals) == 0:
-            print("No start interval found for {}".format(vid))
-        else:
-            # get the interval's latency (there should be only one match)
-            lat = t - list(intervals)[0].data
+        return list(intervals)[0]
 
-            ev = events[tag]
+def update_latency(event_tag, vid, t, filename, use_switch):
+    interval = interval_lkup(vid).data
+    idx = 0 if use_switch else 1
+    if interval is not None:
+        # get the interval's latency (there should be only one match)
+        lat = t - interval[idx]
 
-            old_lat = latencies[ev][vid] if vid in latencies[ev] else -1
-            latencies[ev][vid] = max(old_lat, lat)
+        ev = events[event_tag]
 
-            (rmin, rmax) = latencyspans[ev]
-            latencyspans[ev] = (min(rmin, lat), max(rmax, lat))
+        old_lat = latencies[ev][vid] if vid in latencies[ev] else -1
+        latencies[ev][vid] = max(old_lat, lat)
 
-            m = re.search('.*(qp[^/]+)/.*',filename)
-            machine = filename if m is None else m.group(1)
-            (rmin, rmax) = nd_spans[ev][machine] if machine in nd_spans[ev] else (sys.maxint, -sys.maxint-1)
-            nd_spans[ev][machine] = (min(rmin, lat), max(rmax, lat))
+        (rmin, rmax) = latencyspans[ev]
+        latencyspans[ev] = (min(rmin, lat), max(rmax, lat))
+
+        m = re.search('.*(qp[^/]+)/.*',filename)
+        machine = filename if m is None else m.group(1)
+        (rmin, rmax) = nd_spans[ev][machine] if machine in nd_spans[ev] else (sys.maxint, -sys.maxint-1)
+        nd_spans[ev][machine] = (min(rmin, lat), max(rmax, lat))
 
 
 def update_nodespan(tag, vid, t):
@@ -118,75 +127,6 @@ def dump_final_latencies():
             for file,(min_v,max_v) in ev.iteritems():
                 f.write("{}: {}, ({}, {})\n".format(file, i, min_v, max_v))
 
-def process_events(switch_files, node_files, save_intermediate):
-    """ Main function """
-    # Build an interval tree with switch files.
-    # Probe and reconstruct latencies from node files.
-    for fn in switch_files:
-        with open(fn) as csvfile:
-            swreader = csv.reader(csvfile, delimiter=',')
-            prev_vid = 0
-            prev_v = 0
-            prev_t = 0
-            count = 0
-            for row in swreader:
-                count = count + 1
-                [tag, vid, comp, t] = map(lambda x: int(x), row)
-
-                if tag == tags['pre_send_fetch'][0]:
-                    prev_vid = vid
-                    prev_t = t
-                elif tag == tags['post_send_fetch'][0]:
-                    # add one to post_send_fetch vid to include it also
-                    switchspans[prev_vid:vid + 1] = t
-                    lat = t - prev_t
-                    # print(vid, lat) # debug
-
-                    # initialize latencies for this vid
-                    ev = events[tags['post_send_fetch'][1]]
-                    latencies[ev][vid] = lat
-
-                    (rmin, rmax) = latencyspans[ev]
-                    latencyspans[ev] = (min(rmin, lat), max(rmax, lat))
-                else:
-                    print("Unknown switch tag: {}".format(tag))
-        # print("Processed {} lines in switch file {}".format(count, fn))
-    # print("latencies: {}".format(latencies)) # debug
-
-    for fn in node_files:
-        with open(fn) as csvfile:
-            swreader = csv.reader(csvfile, delimiter=',')
-            count = 0
-            for row in swreader:
-                count = count + 1
-                [tag, vid, comp, t] = map(lambda x: int(x), row)
-
-                # For each class of event, track the last event from the start of the
-                # update at this vid, and the timespan of the event class.
-                if tag < len(tag_to_ev):
-                    event = tag_to_ev[tag]
-                    if not event is None:
-                        update_latency(event, vid, t, fn)
-                        update_nodespan(event, vid, t)
-
-                # else:
-                #   print("Unknown node tag: {tag}".format(**locals()))
-        # print("Processed {} lines in node file {}".format(count, fn))
-    # print("latencies: {}".format(latencies)) # debug
-
-    dump_final_latencies()
-
-    build_histograms()
-
-    if save_intermediate:
-        # Finally, save intermediate data for now.
-        print(banner("Saving intermediate latency data"))
-
-        with open('latencies.yml', 'w') as outfile:
-            yaml.dump(latencies, outfile, default_flow_style=True)
-
-        with open('nodespans.yml', 'w') as outfile:
-            yaml.dump(nodespans, outfile, default_flow_style=True)
 
 def build_histograms():
     # Build latency histograms
@@ -229,6 +169,90 @@ def build_histograms():
               print("Exception on {}".format(k))
               print(e)
 
+def process_events(switch_files, node_files, save_intermediate, use_switch):
+    """ Main function """
+    # Build an interval tree with switch files.
+    # Probe and reconstruct latencies from node files.
+    for fn in switch_files:
+        with open(fn) as csvfile:
+            swreader = csv.reader(csvfile, delimiter=',')
+            prev_vid = 0
+            prev_v = 0
+            prev_t = 0
+            count = 0
+            for row in swreader:
+                count = count + 1
+                [tag, vid, comp, t] = map(lambda x: int(x), row)
+
+                if tag == tags['pre_send_fetch'][0]:
+                    prev_vid = vid
+                    prev_t = t
+                elif tag == tags['post_send_fetch'][0]:
+                    # add one to post_send_fetch vid to include it also
+                    # 2nd member of tuple is the node_start_process time
+                    switchspans[prev_vid:vid + 1] = [t, None]
+                    lat = t - prev_t
+                    # print(vid, lat) # debug
+
+                    # initialize latencies for this vid
+                    ev = events[tags['post_send_fetch'][1]]
+                    latencies[ev][vid] = lat
+
+                    (rmin, rmax) = latencyspans[ev]
+                    latencyspans[ev] = (min(rmin, lat), max(rmax, lat))
+                else:
+                    print("Unknown switch tag: {}".format(tag))
+        # print("Processed {} lines in switch file {}".format(count, fn))
+    # print("latencies: {}".format(latencies)) # debug
+
+    # for latency from node processing, we need to update the switch spans
+    nd_start_tag = tags['node_start_process'][0]
+    for fn in node_files:
+        with open(fn) as csvfile:
+            swreader = csv.reader(csvfile, delimiter=',')
+            for row in swreader:
+                [tag, vid, comp, t] = map(lambda x: int(x), row)
+                # for node_start_process, update spans with earliest time
+                if tag == nd_start_tag:
+                    interval = interval_lkup(vid)
+                    if interval.data[1] is None or interval.data[1] > t:
+                        interval.data[1] = t 
+
+    # Now calculate for all events
+    for fn in node_files:
+        with open(fn) as csvfile:
+            swreader = csv.reader(csvfile, delimiter=',')
+            for count,row in enumerate(swreader):
+                [tag, vid, comp, t] = map(lambda x: int(x), row)
+                # For each class of event, track the last event from the start of the
+                # update at this vid, and the timespan of the event class.
+                if tag < len(tag_to_ev):
+                    # for node_start_process, always go from the switch
+                    use_switch = True if tag == nd_start_tag else use_switch
+                    event = tag_to_ev[tag]
+                    if not event is None:
+                        update_latency(event, vid, t, fn, use_switch)
+                        update_nodespan(event, vid, t)
+
+                # else:
+                #   print("Unknown node tag: {}".format(tag))
+        # print("Processed {} lines in node file {}".format(count, fn))
+    # print("latencies: {}".format(latencies)) # debug
+
+    dump_final_latencies()
+
+    build_histograms()
+
+    if save_intermediate:
+        # Finally, save intermediate data for now.
+        print(banner("Saving intermediate latency data"))
+
+        with open('latencies.yml', 'w') as outfile:
+            yaml.dump(latencies, outfile, default_flow_style=True)
+
+        with open('nodespans.yml', 'w') as outfile:
+            yaml.dump(nodespans, outfile, default_flow_style=True)
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-s', '--switches', metavar='SWITCH_EVENTS', nargs='+',
@@ -237,9 +261,11 @@ def main():
                         required=True, dest='node_files',   help='node event data files')
     parser.add_argument('--save', default=False,
                         action='store_true', help='save intermediate output')
+    parser.add_argument('--use-switch', default=False, dest='use_switch',
+                        action='store_true', help='use the switch as the latency calculation point')
     args = parser.parse_args()
     if args:
-        process_events(args.switch_files, args.node_files, args.save)
+        process_events(args.switch_files, args.node_files, args.save, args.use_switch)
     else:
         parser.print_help()
 

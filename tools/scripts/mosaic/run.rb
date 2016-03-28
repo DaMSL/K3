@@ -335,7 +335,7 @@ end
 # create perf flame graphs for min/max/median nodes/switches
 def perf_flame_graph(sandbox_path, trig_times)
     perf_tool = File.join($k3_root_path, "tools", "scripts", "perf", "perf_analysis.sh")
-    ["nodes"].each do |role|
+    ['nodes'].each do |role|
       times = trig_times[role]
       num = times.length
       # min node, max node, median node
@@ -852,6 +852,7 @@ def post_process_latencies(jobid)
   dir = Dir.pwd
   Dir.chdir(job_path)
   cmd = "--switches #{switch_files.join(" ")} --nodes #{node_files.join(" ")}"
+  cmd << " --use-switch" if $options[:switch_latency]
   run("#{File.join($script_path, "event_latencies.py")} #{cmd}", always_out:true)
   Dir.chdir(dir)
 end
@@ -1197,6 +1198,7 @@ def parse_opts()
     opts.on("--process-latency", "Post-processing on latency files") { $options[:process_latencies] = true }
     opts.on("--latency-job-dir [PATH]", "Manual selection of job directory") { |s| $options[:latency_dir] = s }
     opts.on("--sample-delay [DELAY]", "How long to wait between samples (vids)") {|s| $options[:sample_delay] = s}
+    opts.on("--switch-latency", "Process latencies starting from switch (not node)") {$options[:switch_latency] = true}
 
     # Message profiling (heat maps)
     opts.on("--profile-messages", "Run with message profiling options") {
