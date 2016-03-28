@@ -13,7 +13,7 @@ $options = {
   :queries        => %w{3 12 1 17 6 11a 4}, #19,15,13,22a don't terminate
   :scale_factors  => [0.1, 1, 10, 100],
   :switch_counts  => [1, 2, 4, 8, 16], # latency only
-  :node_counts    => [1, 4, 8, 16, 31],
+  :node_counts    => [1, 2, 4, 8, 16, 31],
   :gc_epochs      => [5 * 1000, 30 * 1000, 60 * 1000], # memory only
   :delays         => [0, 20, 200],                     # memory only
 
@@ -24,7 +24,7 @@ $options = {
   :trial_cutoff   => 10,
   :rebatch        => nil,
   :sleep_time     => nil,
-  :use_hms        => true, # by default
+  :use_hm         => true, # by default
   :clean          => false
 }
 
@@ -69,6 +69,19 @@ def get_switches(nodes)
   [1,2,4,8,16,32,64].find {|n| n >= nodes}
 end
 
+# we're limited in how many nodes we can run with given a scale factor
+# NOTE: actually we're currenlty just using HMs
+def get_node_counts(sf)
+  case sf
+  when 100
+    $options[:node_counts].reject {|n| n < 8}
+  when 10
+    $options[:node_counts].reject {|n| n < 2}
+  else
+    $options[:node_counts]
+  end
+end
+
 # Scalability: for each experiment, need roundtrip time
 # Latency: for each experiment, need do_complete latency distribution
 # Memory: for each experiment, need memory series over time
@@ -77,21 +90,17 @@ def create_config()
   tests = []
   if $options[:experiments].include? :scalability
     $options[:scale_factors].each do |sf|
-      $options[:node_counts].each do |nodes|
+      get_node_counts(sf).each do |nodes|
         $options[:queries].each do |q|
           trials = sf >= $options[:trial_cutoff] ? 1 : $options[:trials]
           (1..trials).each do |trial|
             tests << $headers[0..-1].zip([:scalability, sf, nodes, get_switches(nodes), 2, q, trial]).to_h
-          end
-        end
-      end
-    end
-  end
+    end end end end end
   # Latency experiments
   sample_delays = {0.1=>10, 1=>100, 10=>1000, 100=>10000}
   if $options[:experiments].include? :latency
     $options[:scale_factors].each do |sf|
-      $options[:node_counts].each do |nodes|
+      get_node_counts(sf).each do |nodes|
         switch_counts = [1, 2, 4, 8, 16].select {|s| s <= nodes}
         switch_counts.each do |switches|
           $options[:queries].each do |q|
@@ -100,17 +109,12 @@ def create_config()
               t = $headers[0..-1].zip([:latency, sf, nodes, switches, 2, q, trial]).to_h
               t[:sample_delay] = sample_delays[sf]
               tests << t
-            end
-          end
-        end
-      end
-    end
-  end
+  end end end end end end
   # Memory tests
   if $options[:experiments].include? :memory
     $options[:scale_factors].each do |sf|
-      $options[:queries].each do |q|
-        $options[:node_counts].each do |nodes|
+      get_node_counts(sf).each do |nodes|
+        ['3', '4'].each do |q|
           $options[:gc_epochs].each do |gc_epoch|
             $options[:delays].each do |delay|
               trials = sf >= $options[:trial_cutoff] ? 1 : $options[:trials]
@@ -119,13 +123,7 @@ def create_config()
                 t[:gc_epoch] = gc_epoch
                 t[:delay] = delay
                 tests << t
-              end
-            end
-          end
-        end
-      end
-    end
-  end
+  end end end end end end end
   #puts tests
   config = {
     :options => $options,
@@ -140,7 +138,7 @@ def run_trial(t)
   sf = t[:sf]
   nodes = t[:nd]
   switches = t[:sw]
-  perhost = t[:perhost]
+  perhost = nodes <= t[:perhost] ? 1 : t[:perhost]
   query = t[:q]
   # Keep a seperate output file for the trial
   puts "---- #{exp}: sf#{sf} q#{query} n#{nodes} s#{switches} #{perhost} perhost trial #{t[:trial]}----"
@@ -158,7 +156,7 @@ def run_trial(t)
   infix << " --use-hm" if $options[:use_hm]
   infix << " --profile-latency --process-latency" if exp == :latency
   infix << " --mem-interval 250 --gc-epoch #{t[:gc_epoch]} --msg-delay#{t[:delay]} --process-memory" if exp == :memory
-  infix << " --perhost #{perhost}" unless nodes < perhost
+  infix << " --perhost #{perhost}"
   infix << " --sample-delay #{t[:sample_delay]}" if t[:sample_delay]
 
   cmd = "#{File.join($script_path, "run.rb")} -5"\
@@ -177,7 +175,7 @@ def run_trial(t)
   out_file = File.read(output_path)
   if out_file =~ /.*Mesos job succeeded$/m
     jobid = out_file[/^JOBID = (\d+)$/m, 1].to_i
-    t['jobid'] = jobid
+    t[:jobid] = jobid
     puts "Job #{jobid} succeeded"
     job_dir = File.join(query_workdir, "job_#{jobid}")
     f = File.read(File.join(job_dir, 'time.txt'))
@@ -187,10 +185,17 @@ def run_trial(t)
       'n_dev'  => m[4], 's_mean' => m[5], 's_max'  => m[6], 's_dev'  => m[7]
     }
     t.merge!(new_t)
+    t.delete(:fail) if t[:fail]
     msg = "SUCCESS! Time=#{t['time']}"
+  else
+    t[:fail] = true
   end
   puts "------------ #{msg}  ---------------"
   t
+end
+
+# Function for actual running of tests
+def run()
 end
 
 def main()
@@ -202,16 +207,27 @@ def main()
   config = load_config() unless $options[:clean]
   config = create_config unless config
 
-  config[:tests].reject! {|t| t[:exp] == $options[:remove_exp]} if $options[:remove_exp]
-  config[:tests].reject! {|t| t[:q] == $options[:remove_q]} if $options[:remove_q]
+  # remove unwanted tests
+  if $options[:remove_exp] || $options[:remove_q] || $options[:remove_sf]
+    config[:tests].reject! do |t|
+      ($options[:remove_exp] ? t[:exp] == $options[:remove_exp] : true) &&
+      ($options[:remove_q] ? t[:q] == $options[:remove_q] : true) &&
+      ($options[:remove_sf] ? t[:sf] == $options[:remove_sf] : true)
+    end
+  end
 
   save_config(config, backup:$options[:clean])
 
   # Otherwise, setup and run
   config2 = config.dup
   config[:tests].each_with_index do |test, i|
-    unless test['jobid'] # check for empty
-      test = run_trial(test)
+    unless test[:jobid] || test[:skip] || (test[:fail] && $options[:skipfails]) # check for empty or skip
+      if $options[:skipone] # oneshot
+        test[:skip] = true
+        $options[:skipone] = false
+      else
+        test = run_trial(test)
+      end
       config2[:tests][i] = test
       save_config config2 # update file
     end
@@ -229,7 +245,7 @@ def parse_args()
     opts.on("-e", "--experiments x,y,z", Array, "List of experiments to run (s/l/m)") do |a|
       $options[:experiments] = a.map {|s| s == 'm' ? :memory : s == 'l' ? :latency : :scalability}
     end
-    opts.on("-f", "--sf x,y,z", Array, "List of scale factors to run") {|s| $options[:scale_factors] = s}
+    opts.on("-f", "--sf x,y,z", Array, "List of scale factors to run") {|s| $options[:scale_factors] = s.map {|x| x == '0.1' ? 0.1 : x.to_i}}
     opts.on("-q", "--queries x,y,z", Array, "List of queries to run") {|s| $options[:queries] = s}
     opts.on("-n", "--node-counts x,y,z", Array, "List of node configs to run") {|s| $options[:node_counts] = s.map {|x| x.to_i}}
     opts.on("-s", "--switch-counts x,y,z", Array, "List of switch configs to run") {|s| $options[:switch_counts] = s.map {|x| x.to_i}}
@@ -241,6 +257,8 @@ def parse_args()
     opts.on("--clean", "Clean the experiment file") {$options[:clean] = true}
     opts.on("--remove-q Q", "Remove a query from the queue") {|s| $options[:remove_q] = s}
     opts.on("--remove-exp EXP", "Remove an experiment from the queue") {|s| $options[:remove_exp] = s}
+    opts.on("--skipone", "Skip the next test") {$options[:skipone] = true}
+    opts.on("--skipfails", "Skip failed tests") {$options[:skipfails] = true}
   end
   parser.parse!
 end

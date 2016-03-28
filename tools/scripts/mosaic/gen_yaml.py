@@ -332,7 +332,11 @@ def create_dist_file(args):
     # default node mask uses only hds
     nmask = "^(qp-hd(([4,6,7,9])|(1[0,1,3-6]))"
     if args.use_hm:
-        nmask += "|qp-hm.*)$"
+        # for few nodes, get max memory
+        if num_nodes <= 4:
+            nmask = "^qp-hm.*$"
+        else:
+            nmask += "|qp-hm.*)$"
     else:
         nmask += ")$"
 
