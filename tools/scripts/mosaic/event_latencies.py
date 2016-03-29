@@ -169,7 +169,7 @@ def build_histograms():
               print("Exception on {}".format(k))
               print(e)
 
-def process_events(switch_files, node_files, save_intermediate, use_switch):
+def process_events(switch_files, node_files, use_switch, make_graph):
     """ Main function """
     # Build an interval tree with switch files.
     # Probe and reconstruct latencies from node files.
@@ -216,7 +216,7 @@ def process_events(switch_files, node_files, save_intermediate, use_switch):
                 if tag == nd_start_tag:
                     interval = interval_lkup(vid)
                     if interval.data[1] is None or interval.data[1] > t:
-                        interval.data[1] = t 
+                        interval.data[1] = t
 
     # Now calculate for all events
     for fn in node_files:
@@ -241,17 +241,9 @@ def process_events(switch_files, node_files, save_intermediate, use_switch):
 
     dump_final_latencies()
 
-    build_histograms()
+    if make_graph:
+        build_histograms()
 
-    if save_intermediate:
-        # Finally, save intermediate data for now.
-        print(banner("Saving intermediate latency data"))
-
-        with open('latencies.yml', 'w') as outfile:
-            yaml.dump(latencies, outfile, default_flow_style=True)
-
-        with open('nodespans.yml', 'w') as outfile:
-            yaml.dump(nodespans, outfile, default_flow_style=True)
 
 def main():
     parser = argparse.ArgumentParser()
@@ -259,13 +251,13 @@ def main():
                         required=True, dest='switch_files', help='switch event data files')
     parser.add_argument('-n', '--nodes',    metavar='NODE_EVENTS',   nargs='+',
                         required=True, dest='node_files',   help='node event data files')
-    parser.add_argument('--save', default=False,
-                        action='store_true', help='save intermediate output')
     parser.add_argument('--use-switch', default=False, dest='use_switch',
                         action='store_true', help='use the switch as the latency calculation point')
+    parser.add_argument('--graph', default=False,
+                        action='store_true', help='create an ascii graph and histogram')
     args = parser.parse_args()
     if args:
-        process_events(args.switch_files, args.node_files, args.save, args.use_switch)
+        process_events(args.switch_files, args.node_files, args.use_switch, args.graph)
     else:
         parser.print_help()
 
