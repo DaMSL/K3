@@ -95,8 +95,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('-f', '--results-file', required=True, dest='results_file',
             help='Results file from which to read')
-    parser.add_argument('-e', '--experiment', required=True,
-            help='Experiment (s, l, m)')
+    parser.add_argument('-e', '--experiments', required=True, nargs='+',
+            help='Experiments (s, l, m)')
     args = parser.parse_args()
     if args is None:
         parser.print_help()
@@ -109,7 +109,7 @@ def main():
     print("workdir={}".format(workdir))
 
     tests = results[':tests']
-    if args.experiment == 's':
+    if 's' in args.experiments:
         scalability(args, tests, workdir)
 
 

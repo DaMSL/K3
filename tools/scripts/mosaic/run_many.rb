@@ -14,8 +14,8 @@ $options = {
   :scale_factors  => [0.1, 1, 10, 100],
   :switch_counts  => [1, 2, 4, 8, 16], # latency only
   :node_counts    => [1, 2, 4, 8, 16, 31],
-  :gc_epochs      => [5 * 1000, 30 * 1000, 60 * 1000], # memory only
-  :delays         => [0, 20, 200],                     # memory only
+  :gc_epochs      => [30 * 1000, 60 * 1000, 5 * 50 * 1000], # memory only
+  :delays         => [0],                     # memory only
 
   # NOTE: most we can do is 2 perhost without disasterous slowdown
   # TODO: correctives currently don't work
@@ -109,9 +109,9 @@ def create_config()
   if $options[:experiments].include? :latency
     $options[:scale_factors].each do |sf|
       get_node_counts(sf).each do |nodes|
-        switch_counts = [1, 2, 4, 8, 16].select {|s| s <= nodes}
+        switch_counts = $options[:switch_counts].select {|s| s <= nodes}
         switch_counts.each do |switches|
-          $options[:queries].each do |q|
+          ['3', '4'].each do |q|
             get_trials(sf).each do |trial|
               t = $headers[0..-1].zip([:latency, sf, nodes, switches, 2, q, trial]).to_h
               t[:sample_delay] = sample_delays[sf]
@@ -119,9 +119,9 @@ def create_config()
   end end end end end end
   # Memory tests
   if $options[:experiments].include? :memory
-    $options[:scale_factors].each do |sf|
-      get_node_counts(sf).each do |nodes|
-        ['3', '4'].each do |q|
+    [1, 10].each do |sf|
+      [1, 4, 8].each do |nodes|
+        ['3'].each do |q|
           $options[:gc_epochs].each do |gc_epoch|
             $options[:delays].each do |delay|
               get_trials(sf).each do |trial|
