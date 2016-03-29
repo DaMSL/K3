@@ -229,7 +229,7 @@ def do_process(t)
 end
 
 # Function for actual running of tests
-def run(config)
+def run_exp(config)
   config = create_config unless config
 
   # remove unwanted tests
@@ -260,7 +260,7 @@ def run(config)
 end
 
 # data processing for latency & memory
-def run_processing(config)
+def run_process(config)
   puts "Must have existing config file"; exit(1) if config.nil?
   process = if File.exist? $options[:processing_file]
               File.open($options[:processing_file], 'r') {|f| YAML.load(f)}
@@ -282,7 +282,11 @@ def main()
   FileUtils.mkdir_p $workdir unless File.exist? $workdir
 
   config = load_config() unless $options[:clean]
-  run(config)
+  if $options[:processing_file]
+    run_process(config)
+  else
+    run_exp(config)
+  end
 end
 
 def parse_args()

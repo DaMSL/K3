@@ -861,7 +861,7 @@ def post_process_memory(jobid)
         dest_file << h_file
   end end end
   node_files.uniq!; switch_files.uniq!; other_files.uniq!
-  File.open(File.join(job_path, 'mem_files.txt')) do |f|
+  File.open(File.join(job_path, 'mem_files.txt'), 'w') do |f|
     f << 'node_files:\n'
     node_files.each {|x| f << x; f << "\n"}
     f << 'switch_files:\n'
