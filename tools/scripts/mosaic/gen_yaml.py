@@ -123,7 +123,7 @@ def tpch_paths_dist(p):
 
 def default_profiling(h):
     largenum = 1000000000
-    batch_sz = 100
+    batch_sz = 1000
     h['do_profile'] = True
     h['mosaic_sendupoly_sample_mod'] = largenum
     h['mosaic_sendpoly_sample_mod'] = largenum
