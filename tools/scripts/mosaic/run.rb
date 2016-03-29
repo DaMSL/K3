@@ -822,32 +822,21 @@ end
 def post_process_latencies(jobid)
   # Note: we assume switches are separate from nodes
   puts "Post-processing latencies"
-  job_path = $options[:run_mode] == :local ? File.join($workdir, 'local') : File.join($workdir, "job_#{jobid}")
+  job_path = File.join($workdir, $options[:run_mode] == :local ? 'local' : "job_#{jobid}")
   job_path = $options[:latency_dir] if $options[:latency_dir]
 
   node_files = []; switch_files = []
-
-  if $options[:run_mode] == :local
-    Dir.glob(File.join(job_path, '*.yaml')) do |file|
-      File.open(file, 'r') do |f|
-        YAML.load_documents f do |yaml|
-          eventlog, role = [yaml['eventlog'], yaml['role'][0]['i']]
-          eventlog_path = File.join(job_path, eventlog)
-          node_files   << eventlog_path if role == 'node'
-          switch_files << eventlog_path if role == 'switch'
-        end
-      end
-    end
-  else # distributed mode
-    Dir.glob(File.join(job_path, '**', 'peers*.yaml')) do |file|
-      # get eventlog_file and role from peers file
-      yaml = YAML.load_file(file)
-      eventlog, role = [yaml['eventlog'], yaml['role'][0]['i']]
-      eventlog_path = File.join(File.split(file)[0], eventlog)
-      node_files   << eventlog_path if role == 'node'
-      switch_files << eventlog_path if role == 'switch'
-    end
-  end
+  pattern = $options[:run_mode] == :local ? '*.yaml' : 'peers*.yaml'
+  Dir.glob(File.join(job_path, '**', pattern)) do |file|
+    # get eventlog_file and role from peers file
+    File.open(file, 'r') do |f|
+      YAML.load_documents f do |yaml|
+        eventlog, role = [yaml['eventlog'], yaml['role'][0]['i']]
+        eventlog_path = File.join(File.split(file)[0], eventlog)
+        node_files   << eventlog_path if role == 'node'
+        switch_files << eventlog_path if role == 'switch'
+  end end end
+  node_files.uniq!; switch_files.uniq!
 
   dir = Dir.pwd
   Dir.chdir(job_path)
@@ -858,39 +847,28 @@ def post_process_latencies(jobid)
 end
 
 def post_process_memory(jobid)
-  # Note: we assume switches are separate from nodes
   puts "Post-processing memory"
-  job_path = $options[:run_mode] == :local ? File.join($workdir, 'local') : File.join($workdir, "job_#{jobid}")
-
-  node_files = []; switch_files = []
-
-  if $options[:run_mode] == :local
-    Dir.glob(File.join(job_path, '*.yaml')) do |file|
-      File.open(file, 'r') do |f|
-        YAML.load_documents f do |yaml|
-          eventlog, role = [yaml['eventlog'], yaml['role'][0]['i']]
-          eventlog_path = File.join(job_path, eventlog)
-          node_files   << eventlog_path if role == 'node'
-          switch_files << eventlog_path if role == 'switch'
-        end
-      end
-    end
-  else # distributed mode
-    Dir.glob(File.join(job_path, '**', 'peers*.yaml')) do |file|
-      # get eventlog_file and role from peers file
-      yaml = YAML.load_file(file)
-      eventlog, role = [yaml['eventlog'], yaml['role'][0]['i']]
-      eventlog_path = File.join(File.split(file)[0], eventlog)
-      node_files   << eventlog_path if role == 'node'
-      switch_files << eventlog_path if role == 'switch'
-    end
+  job_path = File.join($workdir, $options[:run_mode] == :local ? 'local' : "job_#{jobid}")
+  node_files = []; switch_files = []; other_files = []
+  pattern = $options[:run_mode] == :local ? '*.yaml' : 'peers*.yaml'
+  Dir.glob(File.join(job_path, '**', pattern)) do |file|
+    # get eventlog_file and role from peers file
+    File.open(file, 'r') do |f|
+      YAML.load_documents f do |yaml|
+        role = yaml['role'][0]['i']
+        h_file = File.join(File.split(file)[0], 'heap_size.txt')
+        dest_file = role == 'node' ? node_files : role == 'switch' ? switch_files : other_files
+        dest_file << h_file
+  end end end
+  node_files.uniq!; switch_files.uniq!; other_files.uniq!
+  File.open(File.join(job_path, 'mem_files.txt')) do |f|
+    f << 'node_files:\n'
+    node_files.each {|x| f << x; f << "\n"}
+    f << 'switch_files:\n'
+    switch_files.each {|x| f << x; f << "\n"}
+    f << 'other_files:\n'
+    other_files.each {|x| f << x; f << "\n"}
   end
-
-  dir = Dir.pwd
-  Dir.chdir(job_path)
-  cmd = "--switches #{switch_files.join(" ")} --nodes #{node_files.join(" ")}"
-  run("#{File.join($script_path, "event_latencies.py")} #{cmd}", always_out:true)
-  Dir.chdir(dir)
 end
 
 # create heat maps for messages
@@ -1092,7 +1070,7 @@ def main()
 
   post_process_latencies(jobid) if $options[:process_latencies]
 
-  post_process_memory(jobid) if $options[:process_memory]
+  post_process_memory(jobid)
 
   #plot messages
   plot_messages(jobid) if $options[:plot_messages]

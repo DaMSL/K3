@@ -43,15 +43,19 @@ end
 $headers = %i{exp sf nd sw perhost q trial}
 
 def config_path() File.join($workdir, $options[:config_file]) end
+def process_path() File.join($workdir, $options[:process_file]) end
 
 def load_config()
   path = config_path()
-  return nil unless File.exists? path
-  File.open(path, 'r') { |f| YAML.load(f) }
+  File.exists?(path) ? File.open(path, 'r') { |f| YAML.load(f) } : nil
 end
 
-def save_config(config, backup:false)
-  path = config_path
+def load_process()
+  path = process_path()
+  File.exists?(path) ? File.open(path, 'r') { |f| YAML.load(f) } : nil
+end
+
+def save_file(path, data, backup)
   # backup if needed
   if backup && File.exist?(path)
     max = 0
@@ -62,8 +66,11 @@ def save_config(config, backup:false)
     FileUtils.cp(path, "#{path}.#{max+1}")
   end
   FileUtils.cp(path, path + ".bak") if File.exist? path
-  File.open(path, 'w') {|f| f << config.to_yaml}
+  File.open(path, 'w') {|f| f << data.to_yaml}
 end
+
+def save_config(config, backup:false) save_file(config_path(), config, backup) end
+def save_process(process, backup:false) save_file(process_path(), process, backup) end
 
 def get_switches(nodes)
   [1,2,4,8,16,32,64].find {|n| n >= nodes}
@@ -82,6 +89,8 @@ def get_node_counts(sf)
   end
 end
 
+def get_trials(sf) 1..(sf >= $options[:trial_cutoff] ? 2 : $options[:trials]) end
+
 # Scalability: for each experiment, need roundtrip time
 # Latency: for each experiment, need do_complete latency distribution
 # Memory: for each experiment, need memory series over time
@@ -92,8 +101,7 @@ def create_config()
     $options[:scale_factors].each do |sf|
       get_node_counts(sf).each do |nodes|
         $options[:queries].each do |q|
-          trials = sf >= $options[:trial_cutoff] ? 1 : $options[:trials]
-          (1..trials).each do |trial|
+          get_trials(sf).each do |trial|
             tests << $headers[0..-1].zip([:scalability, sf, nodes, get_switches(nodes), 2, q, trial]).to_h
     end end end end end
   # Latency experiments
@@ -104,8 +112,7 @@ def create_config()
         switch_counts = [1, 2, 4, 8, 16].select {|s| s <= nodes}
         switch_counts.each do |switches|
           $options[:queries].each do |q|
-            trials = sf >= $options[:trial_cutoff] ? 1 : $options[:trials]
-            (1..trials).each do |trial|
+            get_trials(sf).each do |trial|
               t = $headers[0..-1].zip([:latency, sf, nodes, switches, 2, q, trial]).to_h
               t[:sample_delay] = sample_delays[sf]
               tests << t
@@ -117,8 +124,7 @@ def create_config()
         ['3', '4'].each do |q|
           $options[:gc_epochs].each do |gc_epoch|
             $options[:delays].each do |delay|
-              trials = sf >= $options[:trial_cutoff] ? 1 : $options[:trials]
-              (1..trials).each do |trial|
+              get_trials(sf).each do |trial|
                 t = $headers[0..-1].zip([:memory, sf, nodes, get_switches(nodes), 2, q, trial]).to_h
                 t[:gc_epoch] = gc_epoch
                 t[:delay] = delay
@@ -134,17 +140,12 @@ end
 
 # Run a single configuration
 def run_trial(t)
-  exp = t[:exp]
-  sf = t[:sf]
-  nodes = t[:nd]
-  switches = t[:sw]
-  perhost = nodes <= t[:perhost] ? 1 : t[:perhost]
-  query = t[:q]
+  perhost = t[:nd] <= t[:perhost] ? 1 : t[:perhost]
   # Keep a seperate output file for the trial
-  puts "---- #{exp}: sf#{sf} q#{query} n#{nodes} s#{switches} #{perhost} perhost trial #{t[:trial]}----"
+  puts "---- #{t[:exp]}: sf#{t[:sf]} q#{t[:q]} n#{t[:nd]} s#{t[:sw]} #{perhost} perhost trial #{t[:trial]}----"
 
   # Construct a call to run.rb
-  tpch = "tpch#{query}"
+  tpch = "tpch#{t[:q]}"
   query_workdir = File.join($workdir, tpch)
   FileUtils.mkdir_p query_workdir if !File.exist? query_workdir
   output_path = File.join(query_workdir, 'out.txt')
@@ -154,17 +155,16 @@ def run_trial(t)
   infix << " --batch-size #{$options[:rebatch]}" if $options[:rebatch]
   infix << " --msg-delay #{$options[:sleep_time]}" if $options[:sleep_time]
   infix << " --use-hm" if $options[:use_hm]
-  infix << " --profile-latency --process-latency" if exp == :latency
-  infix << " --mem-interval 250 --gc-epoch #{t[:gc_epoch]} --msg-delay#{t[:delay]} --process-memory" if exp == :memory
+  infix << " --profile-latency" if t[:exp] == :latency
+  infix << " --mem-interval 250 --gc-epoch #{t[:gc_epoch]} --msg-delay#{t[:delay]} --process-memory" if t[:exp] == :memory
   infix << " --perhost #{perhost}"
   infix << " --sample-delay #{t[:sample_delay]}" if t[:sample_delay]
 
   cmd = "#{File.join($script_path, "run.rb")} -5"\
-        " #{File.join($common_path, "K3-Mosaic/tests/queries/tpch/query#{query}.sql")}"\
+        " #{File.join($common_path, "K3-Mosaic/tests/queries/tpch/query#{t[:q]}.sql")}"\
         " -w #{query_workdir}/"\
-        " -p /local/data/mosaic/#{sf}f"\
-        " -s #{switches} -n #{nodes}"\
-        " --query #{query}"\
+        " -p /local/data/mosaic/#{t[:sf]}f"\
+        " -s #{t[:sw]} -n #{t[:nd]}"\
         " --compile-local --create-local #{infix}"\
         " 2>&1 | tee #{output_path}"
   puts cmd
@@ -194,17 +194,42 @@ def run_trial(t)
   t
 end
 
-# Function for actual running of tests
-def run()
+def do_process(t)
+  perhost = t[:nd] <= t[:perhost] ? 1 : t[:perhost]
+  # Keep a seperate output file for the trial
+  puts "---- Processing job #{t[:jobid]}. #{t[:exp]}: sf#{t[:sf]} q#{t[:q]} n#{t[:nd]} s#{t[:sw]} per#{perhost} trial #{t[:trial]}----"
+
+  # Construct a call to run.rb
+  tpch = "tpch#{t[:q]}"
+  query_workdir = File.join($workdir, tpch)
+  output_path = File.join(query_workdir, 'process.txt')
+  job_dir = File.join(query_workdir, "job_#{t[:jobid]}")
+  infix = ''
+  infix << " --process-latency" if t[:exp] == :latency
+  infix << " --process-memory"  if t[:exp] == :memory
+
+  cmd = "#{File.join($script_path, "run.rb")} -w #{query_workdir}/ #{infix} 2>&1 | tee #{output_path}"
+  puts cmd
+
+  # Run and extract time upon success.
+  system(cmd)
+  if t[:exp] == :latency
+    lat_file = File.join(job_dir, 'latencies.txt')
+    puts "FAILED to process: no latency file found"; return nil if !File.exist? lat_file
+    f = File.read(lat_file)
+    m = /^mean:(.+), median:(.+), std_dev:(.+), n:(.+), min:(.+), max:(.+)/m.match(f)
+    new_t = {
+      'lat_mean' => m[1], 'lat_med' => m[2], 'lat_dev' => m[3],
+      'lat_n'    => m[4], 'lat_min' => m[5], 'lat_max' => m[6]
+    }
+    t.merge!(new_t)
+    puts "SUCCESS! Latency mean=#{t['lat_mean']}"
+  end
+  t
 end
 
-def main()
-  # Initialization
-  parse_args()
-  $workdir = File.expand_path($options[:workdir])
-  FileUtils.mkdir_p $workdir unless File.exist? $workdir
-
-  config = load_config() unless $options[:clean]
+# Function for actual running of tests
+def run(config)
   config = create_config unless config
 
   # remove unwanted tests
@@ -234,6 +259,32 @@ def main()
   end
 end
 
+# data processing for latency & memory
+def run_processing(config)
+  puts "Must have existing config file"; exit(1) if config.nil?
+  process = if File.exist? $options[:processing_file]
+              File.open($options[:processing_file], 'r') {|f| YAML.load(f)}
+            else
+              {}
+            end
+  # find any tests we don't have processing data for
+  config[:tests].each do |test|
+    key = $headers.map {|s| test[s]}
+    process[key] = do_process(test) unless process.has? key
+    save_process(process)
+  end
+end
+
+def main()
+  # Initialization
+  parse_args()
+  $workdir = File.expand_path($options[:workdir])
+  FileUtils.mkdir_p $workdir unless File.exist? $workdir
+
+  config = load_config() unless $options[:clean]
+  run(config)
+end
+
 def parse_args()
   usage = "Usage: #{$PROGRAM_NAME} options"
   parser = OptionParser.new do |opts|
@@ -242,6 +293,7 @@ def parse_args()
     # when a binary is in another directory
     opts.on("-b", "--bindir [PATH]", "Path to binaries") {|s| $options[:bindir] = s}
     opts.on("-c", "--config-file [NAME]", "Name of config file to create") {|s| $options[:config_file] = s}
+    opts.on("-p", "--processing-file [NAME]", "Name of processing file to create") {|s| $options[:processing_file] = s}
     opts.on("-e", "--experiments x,y,z", Array, "List of experiments to run (s/l/m)") do |a|
       $options[:experiments] = a.map {|s| s == 'm' ? :memory : s == 'l' ? :latency : :scalability}
     end
