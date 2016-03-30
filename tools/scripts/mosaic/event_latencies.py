@@ -10,9 +10,6 @@ import re
 import math
 
 from intervaltree import Interval, IntervalTree
-from pyhistogram import Hist1D
-from ascii_graph import Pyasciigraph
-
 # Event classes.
 events = {
     'switch_process': 0,
@@ -102,12 +99,7 @@ def update_nodespan(tag, vid, t):
     nodespans[ev][vid] = (min(rmin, t), max(rmax, t))
 
 
-def banner(s):
-    return '\n'.join(['-' * 50, s, '-' * 50])
-
-
 def dump_final_latencies():
-    print(banner('Dumping Final latencies'))
     with open('latencies.txt', 'w') as f:
         f.write("Latency stats (do_complete)\n")
         lats = latencies[events['do_complete']].values()
@@ -129,8 +121,10 @@ def dump_final_latencies():
 
 
 def build_histograms():
+    from pyhistogram import Hist1D
+    from ascii_graph import Pyasciigraph
+
     # Build latency histograms
-    print(banner("Computing latency histograms"))
 
     # A dictionary of latency histograms per event class.
     lhists = {}
@@ -144,8 +138,6 @@ def build_histograms():
     for ev, vid_lat in enumerate(latencies):
        for lat in vid_lat.values():
            lhists[ev].fill(lat)
-
-    print(banner("Saving latency histograms"))
 
     with open("graph.txt", 'w') as file:
         for k, v in events.iteritems():
@@ -228,10 +220,10 @@ def process_events(switch_files, node_files, use_switch, make_graph):
                 # update at this vid, and the timespan of the event class.
                 if tag < len(tag_to_ev):
                     # for node_start_process, always go from the switch
-                    use_switch = True if tag == nd_start_tag else use_switch
+                    use_switch2 = True if tag == nd_start_tag else use_switch
                     event = tag_to_ev[tag]
                     if not event is None:
-                        update_latency(event, vid, t, fn, use_switch)
+                        update_latency(event, vid, t, fn, use_switch2)
                         update_nodespan(event, vid, t)
 
                 # else:
@@ -251,9 +243,9 @@ def main():
                         required=True, dest='switch_files', help='switch event data files')
     parser.add_argument('-n', '--nodes',    metavar='NODE_EVENTS',   nargs='+',
                         required=True, dest='node_files',   help='node event data files')
-    parser.add_argument('--use-switch', default=False, dest='use_switch',
+    parser.add_argument('--use-switch', default=True, dest='use_switch',
                         action='store_true', help='use the switch as the latency calculation point')
-    parser.add_argument('--graph', default=False,
+    parser.add_argument('--graph', default=True,
                         action='store_true', help='create an ascii graph and histogram')
     args = parser.parse_args()
     if args:

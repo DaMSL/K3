@@ -358,12 +358,9 @@ end
 def wait_and_fetch_results(stage_num, jobid)
   check_param(jobid, "--jobid")
 
-  stage "[#{stage_num}] Waiting for Mesos job to finish..."
   status, res = curl_status_loop("/job/#{jobid}", "FINISHED")
 
   check_status(status, "FINISHED", "Mesos job")
-
-  stage "[#{stage_num}] Getting result data"
 
   sandbox_path = File.join($workdir, "job_#{jobid}")
   `mkdir -p #{sandbox_path}` unless Dir.exists?(sandbox_path)
@@ -411,12 +408,9 @@ def wait_and_fetch_results(stage_num, jobid)
   end
 
   # Run script to convert json format
-  stage "[#{stage_num}] Extracting consolidated logs"
   unless files_to_clean.empty?
     run("#{File.join($script_path, "clean_json.py")} --prefix-path #{sandbox_path} #{files_to_clean.join(" ")}")
   end
-
-  stage "[#{stage_num}] Extracting peer roles"
 
   # Collect peer roles from yaml bootstrap files
   peer_roles = {}
@@ -462,7 +456,6 @@ def run_deploy_k3_remote(uid, bin_path)
   uid_s = uid == "latest" ? "" : "/#{uid}"
 
   # Generate mesos yaml file"
-  stage "[5] Generating YAML deployment configuration"
   gen_yaml(role_path) unless $options[:raw_yaml_file]
 
   stage "[5] Creating new mesos job"
@@ -895,6 +888,8 @@ end
 
 # persist/save source, data paths, and others
 def persist_options()
+  return unless $options[:persist]
+
   def update_if_there(opts, x) opts[x] = $options[x] if $options[x] end
   options = {}
   update_if_there(options, :source)
@@ -1095,6 +1090,7 @@ end
 
 def parse_opts()
   $options = {
+    :persist    => true,
     :run_mode   => :dist,
     :logging    => :none,
     :isobatch   => true,
@@ -1110,6 +1106,7 @@ def parse_opts()
     opts.on("--binary [STR]", "Set a binary image to run with (possibly not in workdir)") {|s| $options[:binary] = s}
     opts.on("-d", "--dbtdata [PATH]", String, "Set the path of the dbt data file") { |s| $options[:dbt_data_path] = s }
     opts.on("-p", "--tpch_path [PATH]", String, "Set the path of the tpch fpb files") { |s| $options[:tpch_data_path] = s }
+    opts.on("--no-persist", "Don't persist data between runs") { |s| $options[:persist] = false }
     opts.on("-i", "--inorder [PATH]", String, "Set the path of the tpch inorder file") { |s| $options[:tpch_inorder_path] = s }
     opts.on("--k3csv [PATH]", String, "Set the path of the k3 data file(when not using fpbs)") { |s| $options[:k3_csv_path] = s }
     opts.on("-s", "--switches [NUM]", Integer, "Set the number of switches") { |i| $options[:num_switches] = i }

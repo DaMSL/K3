@@ -105,13 +105,13 @@ def create_config()
             tests << $headers[0..-1].zip([:scalability, sf, nodes, get_switches(nodes), 2, q, trial]).to_h
     end end end end end
   # Latency experiments
-  sample_delays = {0.1=>10, 1=>100, 10=>1000, 100=>10000}
+  sample_delays = {0.1=>100, 1=>100, 10=>1000, 100=>10000}
   if $options[:experiments].include? :latency
-    $options[:scale_factors].each do |sf|
-      get_node_counts(sf).each do |nodes|
+    [0.1, 1, 10, 100].each do |sf|
+      get_node_counts(sf).reject {|nd| nd > 16}.each do |nodes|
         switch_counts = $options[:switch_counts].select {|s| s <= nodes}
         switch_counts.each do |switches|
-          ['3', '4'].each do |q|
+          ['4', '3'].each do |q|
             get_trials(sf).each do |trial|
               t = $headers[0..-1].zip([:latency, sf, nodes, switches, 2, q, trial]).to_h
               t[:sample_delay] = sample_delays[sf]
@@ -155,7 +155,7 @@ def run_trial(t)
   infix << " --batch-size #{$options[:rebatch]}" if $options[:rebatch]
   infix << " --msg-delay #{$options[:sleep_time]}" if $options[:sleep_time]
   infix << " --use-hm" if $options[:use_hm]
-  infix << " --profile-latency" if t[:exp] == :latency
+  infix << " --profile-latency --process-latency" if t[:exp] == :latency
   infix << " --mem-interval 250 --gc-epoch #{t[:gc_epoch]} --msg-delay#{t[:delay]} --process-memory" if t[:exp] == :memory
   infix << " --perhost #{perhost}"
   infix << " --sample-delay #{t[:sample_delay]}" if t[:sample_delay]
@@ -194,39 +194,7 @@ def run_trial(t)
   t
 end
 
-def do_process(t)
-  perhost = t[:nd] <= t[:perhost] ? 1 : t[:perhost]
-  # Keep a seperate output file for the trial
-  puts "---- Processing job #{t[:jobid]}. #{t[:exp]}: sf#{t[:sf]} q#{t[:q]} n#{t[:nd]} s#{t[:sw]} per#{perhost} trial #{t[:trial]}----"
-
-  # Construct a call to run.rb
-  tpch = "tpch#{t[:q]}"
-  query_workdir = File.join($workdir, tpch)
-  output_path = File.join(query_workdir, 'process.txt')
-  job_dir = File.join(query_workdir, "job_#{t[:jobid]}")
-  infix = ''
-  infix << " --process-latency" if t[:exp] == :latency
-  infix << " --process-memory"  if t[:exp] == :memory
-
-  cmd = "#{File.join($script_path, "run.rb")} -w #{query_workdir}/ #{infix} 2>&1 | tee #{output_path}"
-  puts cmd
-
-  # Run and extract time upon success.
-  system(cmd)
-  if t[:exp] == :latency
-    lat_file = File.join(job_dir, 'latencies.txt')
-    puts "FAILED to process: no latency file found"; return nil if !File.exist? lat_file
-    f = File.read(lat_file)
-    m = /^mean:(.+), median:(.+), std_dev:(.+), n:(.+), min:(.+), max:(.+)/m.match(f)
-    new_t = {
-      'lat_mean' => m[1], 'lat_med' => m[2], 'lat_dev' => m[3],
-      'lat_n'    => m[4], 'lat_min' => m[5], 'lat_max' => m[6]
-    }
-    t.merge!(new_t)
-    puts "SUCCESS! Latency mean=#{t['lat_mean']}"
-  end
-  t
-end
+# run processing in-place. Don't modify config file
 
 # Function for actual running of tests
 def run_exp(config)
@@ -261,17 +229,44 @@ end
 
 # data processing for latency & memory
 def run_process(config)
-  puts "Must have existing config file"; exit(1) if config.nil?
-  process = if File.exist? $options[:processing_file]
-              File.open($options[:processing_file], 'r') {|f| YAML.load(f)}
-            else
-              {}
-            end
+  puts "Processing data"
+  if config.nil?
+    puts "Must have existing config file"
+    exit(1)
+  end
   # find any tests we don't have processing data for
-  config[:tests].each do |test|
-    key = $headers.map {|s| test[s]}
-    process[key] = do_process(test) unless process.has? key
-    save_process(process)
+  config[:tests].each do |t|
+    next if t[:skip] || t[:fail] || t[:exp] != :latency
+
+    # Construct a call to run.rb
+    tpch = "tpch#{t[:q]}"
+    query_workdir = File.join($workdir, tpch)
+    output_path = File.join(query_workdir, 'process.txt')
+    job_dir = File.join(query_workdir, "job_#{t[:jobid]}")
+    latency_path = File.join(job_dir, 'latencies.txt')
+    next if File.exist? latency_path # only do this if no latency file
+
+    puts "---- Processing job #{t[:jobid]}. #{t[:exp]}: sf#{t[:sf]} q#{t[:q]} n#{t[:nd]} s#{t[:sw]} per#{t[:perhost]} trial #{t[:trial]}----"
+
+    infix = ''
+    infix << " --process-latency" if t[:exp] == :latency
+    infix << " --no-persist" # make sure not to overwrite last jobid
+    infix << " --switch-latency" # calculate from switch. doesn't make a big difference
+    infix << " --jobid #{t[:jobid]}"
+
+    cmd = "#{File.join($script_path, "run.rb")} -w #{query_workdir}/ #{infix} 2>&1 | tee #{output_path}"
+    puts cmd
+
+    # Run and extract time upon success.
+    system(cmd)
+    if t[:exp] == :latency
+      if !File.exist? latency_path
+        puts "FAILED to process: no latency file found"
+        exit(1)
+      else
+        puts "SUCCESS!"
+      end
+    end
   end
 end
 
@@ -282,7 +277,7 @@ def main()
   FileUtils.mkdir_p $workdir unless File.exist? $workdir
 
   config = load_config() unless $options[:clean]
-  if $options[:processing_file]
+  if $options[:do_process]
     run_process(config)
   else
     run_exp(config)
@@ -297,7 +292,7 @@ def parse_args()
     # when a binary is in another directory
     opts.on("-b", "--bindir [PATH]", "Path to binaries") {|s| $options[:bindir] = s}
     opts.on("-c", "--config-file [NAME]", "Name of config file to create") {|s| $options[:config_file] = s}
-    opts.on("-p", "--processing-file [NAME]", "Name of processing file to create") {|s| $options[:processing_file] = s}
+    opts.on("-p", "--process", "Run processing (not experiments)") {|s| $options[:do_process] = true}
     opts.on("-e", "--experiments x,y,z", Array, "List of experiments to run (s/l/m)") do |a|
       $options[:experiments] = a.map {|s| s == 'm' ? :memory : s == 'l' ? :latency : :scalability}
     end
@@ -306,7 +301,7 @@ def parse_args()
     opts.on("-n", "--node-counts x,y,z", Array, "List of node configs to run") {|s| $options[:node_counts] = s.map {|x| x.to_i}}
     opts.on("-s", "--switch-counts x,y,z", Array, "List of switch configs to run") {|s| $options[:switch_counts] = s.map {|x| x.to_i}}
     opts.on("-t", "--trials [INT]", "Number of trials per configuration") {|s| $options[:trials] = s.to_i}
-    opts.on("-h", "--no-use-hms", "Disable usage of HM machines") {$options[:use_hms] = false}
+    opts.on("-h", "--no-use-hm", "Disable usage of HM machines") {$options[:use_hm] = false}
     opts.on("-g", "--gc-epochs x,y,z", "List of gc epochs to use for memory") {|s| $options[:gc_epochs] = s}
     opts.on("-d", "--delays x,y,z", "List of delays to use for memory") {|s| $options[:delays] = s}
 

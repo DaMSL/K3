@@ -16,8 +16,8 @@ scale_factors = [0.1, 1, 10, 100]
 tuple_sizes = {0.1: 8 * 10**5, 1: 8 * 10**6, 10: 8 * 10**7, 100: 8*10**8}
 batches = [100, 1000, 10000]
 
-def scalability(args, r_file, workdir):
-    results = {q:{sf:{nd:[] for nd in nodes} for sf in scale_factors} for q in queries}
+def scalability(args, r_file, workdir, result_dir):
+    results = {q:{sf:{nd:None for nd in nodes} for sf in scale_factors} for q in queries}
 
     # create the graphs for scalability test
     for l in r_file:
@@ -37,10 +37,10 @@ def scalability(args, r_file, workdir):
                     results2[k1][k2][k3] = sum(v3)/len(v3)
 
     # dump results
-    with open(os.path.join(workdir, 'plot_throughput.txt'), 'w') as f:
+    with open(os.path.join(result_dir, 'plot_throughput.txt'), 'w') as f:
         yaml.dump(results2, f)
 
-    out_path = os.path.join(workdir, 'plots', 'xput')
+    out_path = os.path.join(result_dir, 'plots')
     if not os.path.exists(out_path):
         os.mkdir(out_path)
 
@@ -93,7 +93,7 @@ def scalability(args, r_file, workdir):
         plt.close()
 
 # This uses a default GC epoch of 5 minutes. Uses scalability data
-def memory(args, r_file, workdir, do_queries):
+def memory(args, r_file, workdir, result_dir, do_queries):
     period = 5
     results = {q:{sf:{nd:None for nd in nodes} for sf in scale_factors} for q in do_queries}
     done = {}
@@ -148,7 +148,7 @@ def memory(args, r_file, workdir, do_queries):
                 results2[q][sf][n] = (final_data, maximum - minimum)
 
 
-    out_path = os.path.join(workdir, 'plots', 'memory')
+    out_path = os.path.join(result_dir, 'plots')
     if not os.path.exists(out_path):
         os.mkdir(out_path)
 
@@ -184,28 +184,126 @@ def memory(args, r_file, workdir, do_queries):
             plt.savefig(os.path.join(out_path, "q{}_sf{}_mem.png".format(q, sf)))
             plt.close()
 
+def latency(args, r_file, workdir, result_dir):
+    results = {q:{sf:{nd:[] for nd in nodes} for sf in scale_factors} for q in queries}
+
+    # Get the data
+    for l in r_file:
+        q = l[':q']
+        sf = l[':sf']
+        nd = l[':nd']
+        if not ':jobid' in l or l[':exp'] != ':latency':
+            continue
+        jobid = l[':jobid']
+        jobpath = os.path.join(workdir, 'tpch{}'.format(q), 'job_{}'.format(jobid))
+        # Add data from all latency files
+        buffer = open(os.path.join(jobpath, 'latencies.txt')).read()
+        m = re.search(r'mean:(\d+).*std_dev:(\d+)', buffer)
+        results[q][sf][nd].append((int(m.group(1)), int(m.group(2))))
+
+    # average out the results
+    results2 = {q:{sf:{nd:None for nd in nodes} for sf in scale_factors} for q in queries}
+    for k1,v1 in results.iteritems():
+        for k2,v2 in v1.iteritems():
+            for k3,v3 in v2.iteritems():
+                if v3 != []:
+                    avg_avg = sum(map(lambda x: x[0], v3))/len(v3)
+                    # average stdev by taking average of variance
+                    avg_stdev = math.sqrt(sum(map(lambda x: x[1]**2, v3))/float(len(v3)))
+                    results2[k1][k2][k3] = (avg_avg, avg_stdev)
+
+    # dump results
+    with open(os.path.join(result_dir, 'plot_latency.txt'), 'w') as f:
+        yaml.dump(results2, f)
+
+    out_path = os.path.join(result_dir, 'plots')
+    if not os.path.exists(out_path):
+        os.mkdir(out_path)
+
+    # create plots per query, per sf
+    for q,v1 in results2.iteritems():
+        # New Figure per query
+        plt.figure()
+        f, ax = plt.subplots()
+
+        # A line per scale factor
+        for sf, v2 in v1.iteritems():
+            if v2 is not None:
+                plt.errorbar(nodes, [v2[n][0] if v2[n] is not None else 0 for n in nodes],
+                        yerr=[v2[n][1] if v2[n] is not None else 0 for n in nodes],
+                        marker='o', label="SF {}".format(sf))
+
+        # Labels, etc.
+        plt.grid(True)
+        plt.legend(loc='best')
+        plt.title("Query {} Latency".format(q))
+        plt.xlabel("Worker Nodes")
+        plt.ylabel("ms")
+
+        # Save to file
+        plt.savefig(os.path.join(out_path, "q{}_nd_lat.png".format(q)))
+        plt.close()
+
+    # create plots per query, per nodes
+    for q,v1 in results2.iteritems():
+        # New Figure per query
+        plt.figure()
+        f, ax = plt.subplots()
+
+        # invert the data
+        res = {n:{sf:None for sf in scale_factors} for n in nodes}
+        for sf, v2 in v1.iteritems():
+            for n, val in v2.iteritems():
+                res[n][sf] = val
+
+        for n, v2 in res.iteritems():
+            if v2 is not None:
+                plt.errorbar(scale_factors,
+                        [v2[sf][0] if v2[sf] is not None else 0 for sf in scale_factors],
+                        yerr=[v2[sf][1] if v2[sf] is not None else 0 for sf in scale_factors],
+                        marker='o', label="{} Nodes".format(n))
+
+        # Labels, etc.
+        plt.grid(True)
+        plt.legend(loc='best')
+        plt.title("Query {} Latency".format(q))
+        plt.xlabel("Scale Factor")
+        plt.ylabel("sec")
+        ax.set_xscale('log')
+
+        # Save to file
+        plt.savefig(os.path.join(out_path, "q{}_sf_lat.png".format(q)))
+        plt.close()
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-f', '--results-file', required=True, dest='results_file',
+    parser.add_argument('-f', '--result-file', required=True, dest='result_file',
             help='Results file from which to read')
     parser.add_argument('-e', '--experiments', required=True, nargs='+',
             help='Experiments (s, l, m, gc)')
+    parser.add_argument('-r', '--result-dir', dest='result_dir',
+            help='Direct output to a specific directory')
     args = parser.parse_args()
     if args is None:
         parser.print_help()
         exit(1)
 
-    with open(args.results_file) as f:
+    with open(args.result_file) as f:
         results = yaml.load(f)
 
-    workdir = os.path.dirname(args.results_file)
+    workdir = os.path.dirname(args.result_file)
     print("workdir={}".format(workdir))
+    result_dir = args.result_dir if args.result_dir is not None else workdir
+    print("result_dir={}".format(result_dir))
 
     tests = results[':tests']
     if 's' in args.experiments:
-        scalability(args, tests, workdir)
+        scalability(args, tests, workdir, result_dir)
     if 'm' in args.experiments:
-        memory(args, tests, workdir, ['3','4'])
+        memory(args, tests, workdir, result_dir, ['3','4'])
+    if 'l' in args.experiments:
+        latency(args, tests, workdir, result_dir)
 
 
 if __name__ == '__main__':
