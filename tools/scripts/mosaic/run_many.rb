@@ -105,7 +105,7 @@ def create_config()
             tests << $headers[0..-1].zip([:scalability, sf, nodes, get_switches(nodes), 2, q, trial]).to_h
     end end end end end
   # Latency experiments
-  sample_delays = {0.1=>100, 1=>100, 10=>1000, 100=>10000}
+  sample_delays = {0.1=>100, 1=>1000, 10=>10000, 100=>100000}
   if $options[:experiments].include? :latency
     [0.1, 1, 10, 100].each do |sf|
       get_node_counts(sf).reject {|nd| nd > 16}.each do |nodes|

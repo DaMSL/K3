@@ -112,7 +112,7 @@ def dump_final_latencies():
         median = lats[n/2] if n % 2 == 1 else (lats[n/2] + lats[n/2 - 1] / 2)
         stdev = math.sqrt(sum(map(lambda x: (x - mean)**2, lats)) / n)
         f.write("mean:{}, median:{}, std_dev:{}, n:{}, min:{}, max:{}\n".format(mean, median, stdev, n, min_val, max_val))
-        print "mean:{}, median:{}, std_dev:{}, n:{}, min:{}, max:{}\n".format(mean, median, stdev, n, min_val, max_val)
+        print "mean:{}, median:{}, std_dev:{}, n:{}, min:{}, max:{}".format(mean, median, stdev, n, min_val, max_val)
 
         f.write("\n---- Per machine: ----\n")
         for i,ev in enumerate(nd_spans):
