@@ -23,7 +23,7 @@ q_tables = {'1':['li'], '3':['cu','or','li'], '4':['or','li'], '6':['li'], '11a'
 q_pct = {k:sum(map(lambda n:map_sizes[n], v))/float(map_total) for k,v in q_tables.iteritems()}
 
 def natural_sort_key(s, _nsre=re.compile(r'(\d+)')):
-    return [int(text) if text.isdigit() else text.lower() for text in re.split(_nsre, s)]  
+    return [int(text) if text.isdigit() else text.lower() for text in re.split(_nsre, s)]
 
 def add_legend(ax):
     # sort legend
@@ -70,7 +70,11 @@ def scalability(args, r_file, workdir, result_dir):
 
         # A line per scale factor
         for sf, v2 in v1.iteritems():
-            plt.plot(nodes, [v2[n] for n in nodes], marker='o', label="SF {}".format(sf))
+            filtered = filter(lambda x:x[1] is not None, zip(nodes, [v2[n] for n in nodes]))
+            if len(filtered) == 0:
+                continue
+            x, y = zip(*filtered)
+            plt.plot(x, y, marker='o', label="SF {}".format(sf))
 
         # Labels, etc.
         plt.grid(True)
@@ -95,8 +99,13 @@ def scalability(args, r_file, workdir, result_dir):
         plt.figure()
         f, ax = plt.subplots()
 
+        # line per node count
         for n, v2 in res.iteritems():
-            plt.plot(scale_factors, [v2[sf] for sf in scale_factors], marker='o', label="{} Nodes".format(n))
+            filtered = filter(lambda x:x[1] is not None, zip(scale_factors, [v2[sf] for sf in scale_factors]))
+            if len(filtered) == 0:
+                continue
+            x, y = zip(*filtered)
+            plt.plot(x, y, marker='o', label="{} Nodes".format(n))
 
         # Labels, etc.
         plt.grid(True)
