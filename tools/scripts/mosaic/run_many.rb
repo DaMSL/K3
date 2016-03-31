@@ -196,16 +196,19 @@ end
 
 # run processing in-place. Don't modify config file
 
+
 # Function for actual running of tests
 def run_exp(config)
+  str_of_exp = {:scalability => 's', :latency => 'l', :memory => 'm'}
   config = create_config unless config
 
   # remove unwanted tests
-  if $options[:remove_exp] || $options[:remove_q] || $options[:remove_sf]
+  if $options[:remove_exp] || $options[:remove_q] || $options[:remove_sf] || $options[:remove_nd]
     config[:tests].reject! do |t|
-      ($options[:remove_exp] ? t[:exp] == $options[:remove_exp] : true) &&
+      ($options[:remove_exp] ? str_of_exp[t[:exp]] == $options[:remove_exp] : true) &&
       ($options[:remove_q] ? t[:q] == $options[:remove_q] : true) &&
       ($options[:remove_sf] ? t[:sf] == $options[:remove_sf] : true)
+      ($options[:remove_nd] ? t[:nd] == $options[:remove_nd] : true)
     end
   end
 
@@ -308,6 +311,8 @@ def parse_args()
     opts.on("--clean", "Clean the experiment file") {$options[:clean] = true}
     opts.on("--remove-q Q", "Remove a query from the queue") {|s| $options[:remove_q] = s}
     opts.on("--remove-exp EXP", "Remove an experiment from the queue") {|s| $options[:remove_exp] = s}
+    opts.on("--remove-sf SF", "Remove an sf from the queue") {|x| $options[:remove_sf] = x == '0.1' ? 0.1 : x.to_i}
+    opts.on("--remove-nd ND", "Remove a node count from the queue") {|s| $options[:remove_nd] = s.to_i}
     opts.on("--skipone", "Skip the next test") {$options[:skipone] = true}
     opts.on("--skipfails", "Skip failed tests") {$options[:skipfails] = true}
   end
