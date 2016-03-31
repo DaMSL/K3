@@ -8,33 +8,51 @@ import argparse
 import yaml
 import os
 import re
+import sys
 
 queries = ['1', '3', '4', '6', '11a', '12', '17']
 nodes = [1, 2, 4, 8, 16, 31]
 scale_factors = [0.1, 1, 10, 100]
-
 tuple_sizes = {0.1: 8 * 10**5, 1: 8 * 10**6, 10: 8 * 10**7, 100: 8*10**8}
 batches = [100, 1000, 10000]
 
+# for calculating num of tuples per query
+map_sizes = {'cu':2411114, 'li':73646424, 'or':16743122, 'pa':2371090, 'ps':11648193, 'su':138625}
+map_total = sum(map_sizes.itervalues())
+q_tables = {'1':['li'], '3':['cu','or','li'], '4':['or','li'], '6':['li'], '11a':['ps','su'], '12':['or','li'], '17':['li','pa'] }
+q_pct = {k:sum(map(lambda n:map_sizes[n], v))/float(map_total) for k,v in q_tables.iteritems()}
+
+def natural_sort_key(s, _nsre=re.compile(r'(\d+)')):
+    return [int(text) if text.isdigit() else text.lower() for text in re.split(_nsre, s)]  
+
+def add_legend(ax):
+    # sort legend
+    handles, labels = ax.get_legend_handles_labels()
+    # sort both labels and handles by labels
+    labels, handles = zip(*sorted(zip(labels, handles), key=lambda x:natural_sort_key(x[0])))
+    ax.legend(handles, labels, loc='best')
+
 def scalability(args, r_file, workdir, result_dir):
-    results = {q:{sf:{nd:None for nd in nodes} for sf in scale_factors} for q in queries}
+    results = {q:{sf:{nd:[] for nd in nodes} for sf in scale_factors} for q in queries}
 
     # create the graphs for scalability test
     for l in r_file:
-        if not 'time' in l or l[':exp'] != ':scalability':
+        if ':jobid' not in l or l[':exp'] != ':scalability':
             continue
+        sf = l[':sf']
+        q = l[':q']
         time_sec = float(l['time']) / 1000
-        tup_per_sec = tuple_sizes[l[':sf']] / time_sec
-        gb_per_sec = l[':sf'] / time_sec
-        results[l[':q']][l[':sf']][l[':nd']].append(tup_per_sec)
+        tup_per_sec = q_pct[q] * tuple_sizes[sf] / time_sec
+        gb_per_sec = q_pct[q] * sf / time_sec
+        results[q][sf][l[':nd']].append(tup_per_sec)
 
     results2 = {q:{sf:{nd:None for nd in nodes} for sf in scale_factors} for q in queries}
     # average out the results
-    for k1,v1 in results.iteritems():
-        for k2,v2 in v1.iteritems():
-            for k3,v3 in v2.iteritems():
+    for q,v1 in results.iteritems():
+        for sf,v2 in v1.iteritems():
+            for nd,v3 in v2.iteritems():
                 if v3 != []:
-                    results2[k1][k2][k3] = sum(v3)/len(v3)
+                    results2[q][sf][nd] = sum(v3)/len(v3)
 
     # dump results
     with open(os.path.join(result_dir, 'plot_throughput.txt'), 'w') as f:
@@ -56,10 +74,10 @@ def scalability(args, r_file, workdir, result_dir):
 
         # Labels, etc.
         plt.grid(True)
-        plt.legend(loc='best')
         plt.title("Query {} Throughput".format(q))
         plt.xlabel("Worker Nodes")
         plt.ylabel("Tuples/sec")
+        add_legend(ax)
 
         # Save to file
         plt.savefig(os.path.join(out_path, "q{}_nd_xput.png".format(q)))
@@ -67,26 +85,26 @@ def scalability(args, r_file, workdir, result_dir):
 
     # create plots per query, per nodes
     for q,v1 in results2.iteritems():
-        # New Figure per query
-        plt.figure()
-        f, ax = plt.subplots()
-
         # invert the data
         res = {n:{sf:None for sf in scale_factors} for n in nodes}
         for sf, v2 in v1.iteritems():
             for n, val in v2.iteritems():
                 res[n][sf] = val
 
+        # New Figure per query
+        plt.figure()
+        f, ax = plt.subplots()
+
         for n, v2 in res.iteritems():
             plt.plot(scale_factors, [v2[sf] for sf in scale_factors], marker='o', label="{} Nodes".format(n))
 
         # Labels, etc.
         plt.grid(True)
-        plt.legend(loc='best')
         plt.title("Query {} Throughput".format(q))
         plt.xlabel("Scale Factor")
         plt.ylabel("Tuples/sec")
         ax.set_xscale('log')
+        add_legend(ax)
 
         # Save to file
         plt.savefig(os.path.join(out_path, "q{}_sf_xput.png".format(q)))
@@ -163,35 +181,34 @@ def memory(args, r_file, workdir, result_dir, do_queries):
             plt.figure()
             f, ax = plt.subplots()
             x_axis = np.arange(0., float(1 + max_length / 1000), float(period))
-            print x_axis
 
             # A line per node
             for nd, d in v2.iteritems():
                 if d is not None:
                     (data, length) = d
                     data = np.append(data, np.zeros(abs(len(x_axis) - len(data)), dtype=np.int64))
-                    print data
                     plt.plot(x_axis, data, label="{} Nodes".format(nd))
 
             # Labels, etc.
             plt.grid(True)
-            plt.legend(loc='best')
             plt.title("Query {} SF {} Memory".format(q, sf))
             plt.xlabel("Time (s)")
             plt.ylabel("Bytes")
+            add_legend(ax)
 
             # Save to file
             plt.savefig(os.path.join(out_path, "q{}_sf{}_mem.png".format(q, sf)))
             plt.close()
 
 def latency(args, r_file, workdir, result_dir):
-    results = {q:{sf:{nd:[] for nd in nodes} for sf in scale_factors} for q in queries}
+    results = {q:{sf:{nd:{sw:[] for sw in nodes if sw <= nd} for nd in nodes if nd <= 16} for sf in scale_factors} for q in ['3','4']}
 
     # Get the data
     for l in r_file:
         q = l[':q']
         sf = l[':sf']
         nd = l[':nd']
+        sw = l[':sw']
         if not ':jobid' in l or l[':exp'] != ':latency':
             continue
         jobid = l[':jobid']
@@ -199,18 +216,19 @@ def latency(args, r_file, workdir, result_dir):
         # Add data from all latency files
         buffer = open(os.path.join(jobpath, 'latencies.txt')).read()
         m = re.search(r'mean:(\d+).*std_dev:(\d+)', buffer)
-        results[q][sf][nd].append((int(m.group(1)), int(m.group(2))))
+        results[q][sf][nd][sw].append((int(m.group(1)), int(m.group(2))))
 
-    # average out the results
-    results2 = {q:{sf:{nd:None for nd in nodes} for sf in scale_factors} for q in queries}
-    for k1,v1 in results.iteritems():
-        for k2,v2 in v1.iteritems():
-            for k3,v3 in v2.iteritems():
-                if v3 != []:
-                    avg_avg = sum(map(lambda x: x[0], v3))/len(v3)
-                    # average stdev by taking average of variance
-                    avg_stdev = math.sqrt(sum(map(lambda x: x[1]**2, v3))/float(len(v3)))
-                    results2[k1][k2][k3] = (avg_avg, avg_stdev)
+    # average out the trials
+    results2 = {q:{sf:{nd:{sw:None for sw in nodes if sw <= nd} for nd in nodes if nd <= 16} for sf in scale_factors} for q in ['3','4']}
+    for q,v1 in results.iteritems():
+        for sf,v2 in v1.iteritems():
+            for nd,v3 in v2.iteritems():
+                for sw,v4 in v3.iteritems():
+                    if v4 != []:
+                        avg_avg = sum(map(lambda x: x[0], v4))/len(v4)
+                        # average stdev by taking average of variance
+                        avg_stdev = math.sqrt(sum(map(lambda x: x[1]**2, v4))/float(len(v4)))
+                        results2[q][sf][nd][sw] = (avg_avg, avg_stdev)
 
     # dump results
     with open(os.path.join(result_dir, 'plot_latency.txt'), 'w') as f:
@@ -219,6 +237,33 @@ def latency(args, r_file, workdir, result_dir):
     out_path = os.path.join(result_dir, 'plots')
     if not os.path.exists(out_path):
         os.mkdir(out_path)
+
+    # plot per query, per sf/node, vs switch count
+    for q,v1 in results2.iteritems():
+        for sf,v2 in v1.iteritems():
+            # New Figure per query
+            plt.figure()
+            f, ax = plt.subplots()
+
+            # A line per node count
+            for nd, v3 in v2.iteritems():
+                if v3 is not None:
+                    plt.errorbar(nodes, [v3[n][0] if n in v3 and v3[n] is not None else 0 for n in nodes],
+                            yerr=[v3[n][1] if n in v3 and v3[n] is not None else 0 for n in nodes],
+                            marker='o', label="{} Nodes".format(nd))
+
+            # Labels, etc.
+            plt.grid(True)
+            #plt.legend(loc='best')
+            plt.title("Query {} Latency".format(q))
+            plt.xlabel("Switches")
+            plt.ylabel("ms")
+            plt.ylim(ymin=0)
+            add_legend(ax)
+
+            # Save to file
+            plt.savefig(os.path.join(out_path, "sw_q{}_sf{}_lat.png".format(q, sf)))
+            plt.close()
 
     # create plots per query, per sf
     for q,v1 in results2.iteritems():
@@ -229,20 +274,25 @@ def latency(args, r_file, workdir, result_dir):
         # A line per scale factor
         for sf, v2 in v1.iteritems():
             if v2 is not None:
-                plt.errorbar(nodes, [v2[n][0] if v2[n] is not None else 0 for n in nodes],
-                        yerr=[v2[n][1] if v2[n] is not None else 0 for n in nodes],
+                # find switch config that gives the min latency
+                min_sw = {k: min(v.itervalues(), key=lambda t:sys.maxint if t is None else t[0])
+                            for k, v in v2.iteritems()}
+                plt.errorbar(nodes, [min_sw[n][0] if n in min_sw and min_sw[n] is not None else 0 for n in nodes],
+                        yerr=[min_sw[n][1] if n in min_sw and min_sw[n] is not None else 0 for n in nodes],
                         marker='o', label="SF {}".format(sf))
 
         # Labels, etc.
         plt.grid(True)
-        plt.legend(loc='best')
         plt.title("Query {} Latency".format(q))
         plt.xlabel("Worker Nodes")
         plt.ylabel("ms")
+        add_legend(ax)
 
         # Save to file
         plt.savefig(os.path.join(out_path, "q{}_nd_lat.png".format(q)))
         plt.close()
+
+    return
 
     # create plots per query, per nodes
     for q,v1 in results2.iteritems():
