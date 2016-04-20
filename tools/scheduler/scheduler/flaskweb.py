@@ -1470,10 +1470,11 @@ if __name__ == '__main__':
   db.createTables()
   master = args.master
   port = int(args.port)
+  host = socket.gethostname() if not args.ip else args.ip,
 
 
   initWeb(
-    host = socket.gethostname() if not args.ip else args.ip,
+    host=host,
     port=port,
     master=master,
     local=args.dir,
@@ -1516,8 +1517,8 @@ if __name__ == '__main__':
     threadCompiler = threading.Thread(target=driverCompiler.run)
     threadCompiler.start()
 
-    logger.info("[FLASKWEB] Starting FlaskWeb Server...")
-    socketio.run(webapp, host='192.168.0.22', port=port, use_reloader=False)
+    logger.info("[FLASKWEB] Starting FlaskWeb Server on IP %s", host[0])
+    socketio.run(webapp, host=host[0], port=port, use_reloader=False)
     webserverTerminate.clear()
     initSocketIO = False
 
@@ -1533,8 +1534,9 @@ if __name__ == '__main__':
     threadCompiler.join()
     logging.debug("[FLASKWEB] Compiler thread complete")
 
-  except socket.error:
+  except socket.error as e:
     logger.error("[FLASKWEB] Flask web cannot start: Port not available.")
+    logger.error('ERROR:  %s', str(e))
     compileService.kill()
     driverDispatch.stop()
     threadDispatch.join()

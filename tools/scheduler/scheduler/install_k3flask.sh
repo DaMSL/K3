@@ -12,6 +12,8 @@
 
 #  Verify ZK, IP, and ports below for rhe run command
 
+echo "Installing Python Dependencies"
+
 apt-get install -y python-dev python-pip vim
 pip install pyyaml
 pip install flask
@@ -20,19 +22,19 @@ pip install enum34
 pip install Flask-SocketIO
 
 mkdir /web/log
+cp k3executor.py /web
 
+echo "Setting up Environment"
+MYIP=$(hostname -i)
 
 echo "export K3_HOME=/k3/K3" > /env
 echo "export K3_FLASK=/k3/K3/tools/scheduler/scheduler" >> /env
-
 echo "alias ll='ls -al --color'" >> /env
 
 #  RUN COMMAND HERE (edit as needed)
-echo "alias run='cd /k3/K3/tools/scheduler/scheduler && python flaskweb.py -m zk://qp2:2181,qp4:2181,qp6:2181/mesos -d /web --ip 192.168.0.22 -p 5000 -c'" >> /env
-
-#  SYNC COMMAND HERE (use/edit as/if needed)
-echo "alias sync='cp -ruT /ring/k3/tools/scheduler/scheduler/ /k3/K3/tools/scheduler/scheduler/'" >> /env
-echo "alias cpexec-py='cp CompileExecutor.py /web/'" >> /env
-echo "alias cpexec-cpp='cp executor/k3executor /web/'" >> /env
+echo "alias run='cd /k3/K3/tools/scheduler/scheduler && python flaskweb.py -m zk://qp2:2181,qp4:2181,qp6:2181/mesos -d /web --ip ${MYIP} -p 5000 -c'" >> /env
 
 source /env
+
+echo
+echo "Flask Service Configured to run on  IP: ${MYIP}  and   PORT: 5000"
