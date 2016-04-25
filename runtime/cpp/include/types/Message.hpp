@@ -12,38 +12,58 @@ namespace K3 {
 // Message container. Holds any type of Value.
 class Message {
  public:
-  Message();
-  virtual ~Message() { }
-  Message(TriggerID, unique_ptr<PackedValue>);
+  Message() {}
+  Message(TriggerID trig, unique_ptr<PackedValue> val) :
+    trigger_(trig), value_(std::move(val)) {}
 
-  unique_ptr<PackedValue> value_;
-  TriggerID trigger_;
   #ifdef K3MESSAGETRACE
   Address source_;
   Address destination_;
   #endif
+  TriggerID trigger_;
+  unique_ptr<PackedValue> value_;
 };
 
 // Sub-class that can be directly read/written for network IO
 class NetworkMessage : public Message {
  public:
-  NetworkMessage();
-  NetworkMessage (NetworkMessage&& other) {
-    trigger_ = other.trigger_;
-    value_ = std::move(other.value_);
-    payload_length_ = other.payload_length_;
-    #ifdef K3MESSAGETRACE
-    source_ = std::move(other.source_);
-    destination_ = std::move(other.destination_);
-    #endif
+  NetworkMessage() : payload_length_(0) {}
+  NetworkMessage(TriggerID t, unique_ptr<PackedValue> v)
+      : Message(t, std::move(v)), payload_length_(v->length()) {}
+  void init_info(); // initialize the info structure
+  void setValue(unique_ptr<PackedValue> v) { value_ = std::move(v); }
+  size_t networkHeaderSize() const {
+    return
+  #ifdef K3MESSAGETRACE
+      sizeof(source_.ip) + sizeof(source_.port) +
+      sizeof(destination_.ip) + sizeof(destination_.port) +
+  #endif
+      sizeof(trigger_) + sizeof(payload_length_);
   }
-  NetworkMessage(TriggerID trig, unique_ptr<PackedValue> v);
-  shared_ptr<std::vector<boost::asio::const_buffer>> outputBuffers() const;
-  shared_ptr<std::vector<boost::asio::mutable_buffer>> inputBuffers();
-  void setValue(unique_ptr<PackedValue> v);
-  size_t networkHeaderSize();
 
   size_t payload_length_;
+};
+
+#ifdef K3MESSAGETRACE
+#define ARRAYSIZE 6
+#else
+#define ARRAYSIZE 2
+#endif
+
+class InNetworkMessage : public NetworkMessage {
+  public:
+  InNetworkMessage() {}
+  InNetworkMessage(TriggerID t, unique_ptr<PackedValue> v) : NetworkMessage(t, std::move(v)) {}
+  std::array<boost::asio::mutable_buffer, ARRAYSIZE>& inputBuffers() const;
+
+  std::array<asio::mutable_buffer, ARRAYSIZE> buffers_;
+};
+
+class OutNetworkMessage : public NetworkMessage {
+  OutNetworkMessage(TriggerID t, unique_ptr<PackedValue> v) : NetworkMessage(t, std::move(v)) {}
+  std::array<boost::asio::const_buffer, ARRAYSIZE + 1>& outputBuffers();
+
+  std::array<asio::const_buffer, ARRAYSIZE + 1> buffers_;
 };
 
 }  // namespace K3

@@ -14,17 +14,17 @@
 namespace K3 {
 
 class InternalOutgoingConnection;
-class ExternalOutgoingConnection;
 class IncomingConnection;
 class Peer;
 class Listener;
 
-// TODO(jbw) move elsewhere
+// We need shared_ptrs to connection to make sure we keep them alive
 template <class Connection>
 class ConnectionMap : public ConcurrentMap<Address, shared_ptr<Connection>> {
  public:
   typedef ConcurrentMap<Address, shared_ptr<Connection>> Super;
   ConnectionMap() : ConcurrentMap<Address, shared_ptr<Connection>>() {}
+
   shared_ptr<Connection> lookupOrCreate(const Address& addr,
                                         boost::asio::io_service& service) {
     boost::strict_lock<ConcurrentMap<Address, shared_ptr<Connection>>> lock(*this);
@@ -41,11 +41,9 @@ class ConnectionMap : public ConcurrentMap<Address, shared_ptr<Connection>> {
 
 typedef ConcurrentMap<Address, shared_ptr<Listener>> ListenerMap;
 typedef ConnectionMap<InternalOutgoingConnection> InternalConnectionMap;
-typedef ConnectionMap<ExternalOutgoingConnection> ExternalConnectionMap;
 typedef ConcurrentMap<Address, shared_ptr<IncomingConnection>> IncomingConnectionMap;
 typedef std::function<void(std::unique_ptr<Message>)> MessageHandler;
 typedef std::function<void(boost_error)> ErrorHandler;
-
 
 class NetworkManager {
  public:
@@ -55,27 +53,25 @@ class NetworkManager {
   void stop();
   void join();
   void listenInternal(shared_ptr<Peer> p);
-  void listenExternal(shared_ptr<Peer> p, Address listen_addr, TriggerID trig, CodecFormat format);
-  void sendInternal(const Address& dst, shared_ptr<NetworkMessage> pm);
-  void sendExternal(const Address& a, shared_ptr<PackedValue> pv);
+  void sendInternal(const Address& dst, unique_ptr<OutNetworkMessage> pm);
 
   // Utilities
   shared_ptr<Listener> getListener(const Address& addr);
-  CodecFormat internalFormat();
+  CodecFormat internalFormat() { return internal_format_; }
 
   // Timers.
   std::shared_ptr<TimerKey>
   timerKey(const TimerType& ty, const Address& src, const Address& dst, const TriggerID& trig);
 
   void addTimer(std::shared_ptr<TimerKey> k, const Delay& delay);
-  void removeTimer(std::shared_ptr<TimerKey> k);
+  void removeTimer(std::shared_ptr<TimerKey> k) { timers_.erase(k); }
+
 
   template<typename F>
   void asyncWaitTimer(std::shared_ptr<TimerKey> k, F handler);
 
  protected:
   shared_ptr<InternalOutgoingConnection> connectInternal(const Address& a);
-  shared_ptr<ExternalOutgoingConnection> connectExternal(const Address& a);
   void addThread();
 
   shared_ptr<spdlog::logger> logger_;
@@ -86,25 +82,23 @@ class NetworkManager {
   boost::thread_group threads_;
 
   // Listeners
-  shared_ptr<ListenerMap> internal_listeners_;
-  shared_ptr<ListenerMap> external_listeners_;
+  shared_ptr<ListenerMap> internal_listeners_; // ref-count
 
   // Connections
-  shared_ptr<InternalConnectionMap> internal_out_conns_;
-  shared_ptr<ExternalConnectionMap> external_out_conns_;
+  shared_ptr<InternalConnectionMap> internal_out_conns_; // ref-count
   CodecFormat internal_format_;
 
   // State
   std::atomic<bool> running_;
 
   // Timers
-  shared_ptr<TimerMap> timers_;
+  TimerMap timers_;
   static std::atomic<unsigned long> timer_cnt_;
 };
 
 template<typename F>
 void NetworkManager::asyncWaitTimer(std::shared_ptr<TimerKey> k, F handler) {
-  timers_->apply(k, [handler = std::forward<F>(handler)](std::unique_ptr<Timer>& t) mutable {
+  timers_.apply(k, [handler = std::forward<F>(handler)](std::unique_ptr<Timer>& t) mutable {
     t->async_wait(handler);
   });
 }

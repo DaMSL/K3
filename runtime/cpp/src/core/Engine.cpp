@@ -14,8 +14,6 @@ namespace K3 {
 
 Engine::Engine(const Options& opts)
     : network_manager_(opts.num_threads_),
-      storage_manager_(),
-      peers_(),
       options_(opts),
       running_(false),
       ready_peers_(0),
@@ -52,7 +50,7 @@ Engine::~Engine() {
 
 void Engine::stop() {
   // Place a Sentintel on each Peer's queue
-  for (auto& it : *peers_) {
+  for (auto& it : peers_) {
     auto d = make_unique<SentinelDispatcher>();
     it.second->getQueue().enqueue(std::move(d));
   }
@@ -61,13 +59,13 @@ void Engine::stop() {
 }
 
 void Engine::join() {
-  if (running_ && peers_) {
-    for (auto& it : *peers_) {
+  if (running_ && !peers_.empty()) {
+    for (auto& it : peers_) {
       it.second->join();
     }
   }
   #ifdef K3TRIGGERTIMES
-  for (auto& it : *peers_) {
+  for (auto& it : peers_) {
     it.second->printStatistics();
   }
   #endif
@@ -78,8 +76,8 @@ void Engine::join() {
 }
 
 ProgramContext& Engine::getContext(const Address& addr) {
-  auto it = peers_->find(addr);
-  if (it != peers_->end()) {
+  auto it = peers_.find(addr);
+  if (it != peers_.end()) {
     return it->second->getContext();
   } else {
     throw std::runtime_error("Engine getPeer(): Peer not found");

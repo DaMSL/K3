@@ -58,7 +58,7 @@ class Engine {
   shared_ptr<spdlog::logger> logger_;
   NetworkManager network_manager_;
   StorageManager storage_manager_;
-  shared_ptr<const std::unordered_map<Address, shared_ptr<Peer>>> peers_;
+  std::unordered_map<Address, shared_ptr<Peer>> peers_;
 
   // Configuration
   Options options_;
@@ -81,33 +81,31 @@ void Engine::run() {
       [this]() { return make_shared<Context>(*this); });
   auto rdy_callback = [this]() { ready_peers_++; };
 
-  auto tmp_peers = make_shared<std::unordered_map<Address, shared_ptr<Peer>>>();
   vector<YAML::Node> nodes =
       serialization::yaml::parsePeers(options_.peer_strs_);
   for (auto node : nodes) {
     Address addr = serialization::yaml::meFromYAML(node);
-    if (tmp_peers->find(addr) != tmp_peers->end()) {
+    if (peers_.find(addr) != end(peers_)) {
       throw std::runtime_error("Engine createPeers(): Duplicate address: " +
                                addr.toString());
     }
     auto p = make_shared<Peer>(ctxt_fac, node, rdy_callback, options_);
-    (*tmp_peers)[addr] = p;
+    peers_[addr] = p;
   }
-  peers_ = tmp_peers;
-  total_peers_ = peers_->size();
+  total_peers_ = peers_.size();
 
   // Wait for peers to check in
   while (total_peers_ > ready_peers_) continue;
   logger_->info("All peers are ready.");
 
   // Accept network connections and send initial messages
-  for (auto& it : *peers_) {
+  for (auto& it : peers_) {
     network_manager_.listenInternal(it.second);
     it.second->processRole();
   }
 
   // All roles are processed: signal peers to start message loop
-  for (auto& it : *peers_) {
+  for (auto& it : peers_) {
     it.second->start();
   }
   running_ = true;
@@ -120,7 +118,7 @@ string getTriggerName(int);
 template <class T>
 void Engine::send(const Address& src, const Address& dst, TriggerID trig,
                   T&& value) {
-  if (!peers_) {
+  if (peers_.empty()) {
     throw std::runtime_error(
         "Engine send(): Can't send before peers_ is initialized");
   }
@@ -129,10 +127,10 @@ void Engine::send(const Address& src, const Address& dst, TriggerID trig,
                     << dst.toString() << " @"
                     << getTriggerName(trig);
   }
-  auto it = peers_->find(dst);
-  if (options_.local_sends_enabled_ && it != peers_->end()) {
+  auto it = peers_.find(dst);
+  if (options_.local_sends_enabled_ && it != end(peers_)) {
     // Direct enqueue for local messages
-    unique_ptr<NativeValue> nv = std::make_unique<TNativeValue<T>>(std::move(value));
+    auto nv = std::make_unique<TNativeValue<T>>(std::move(value));
     auto d = getDispatcher(*it->second, std::move(nv), trig);
     #ifdef K3MESSAGETRACE
     d->source_ = src;
@@ -145,20 +143,18 @@ void Engine::send(const Address& src, const Address& dst, TriggerID trig,
   } else {
     // Serialize and send over the network, otherwise
     unique_ptr<PackedValue> pv = pack<T>(value, K3_INTERNAL_FORMAT);
-    shared_ptr<NetworkMessage> m =
-        make_shared<NetworkMessage>(trig, std::move(pv));
+    auto m = make_unique<OutNetworkMessage>(trig, std::move(pv));
     #ifdef K3MESSAGETRACE
     m->source_ = src;
     m->destination_ = dst;
     #endif
-    network_manager_.sendInternal(dst, m);
+    network_manager_.sendInternal(dst, std::move(m));
   }
 }
 
 template <class T>
 void Engine::send(const Address& src, const Address& dst, TriggerID trig,
-                  const T& value)
-{
+                  const T& value) {
   send(src, dst, trig, T(value));
 }
 
@@ -166,9 +162,8 @@ void Engine::send(const Address& src, const Address& dst, TriggerID trig,
 // Delayed sends, based on timers.
 template <class T>
 void Engine::delayedSend(const Address& src, const Address& dst, TriggerID trig,
-                         T&& value, const TimerType& tmty, int delay)
-{
-  if (!peers_) {
+                         T&& value, const TimerType& tmty, int delay) {
+  if (peers_.empty()) {
     throw std::runtime_error(
         "Engine send(): Can't send before peers_ is initialized");
   }
@@ -194,8 +189,7 @@ void Engine::delayedSend(const Address& src, const Address& dst, TriggerID trig,
 
 template <class T>
 void Engine::delayedSend(const Address& src, const Address& dst, TriggerID trig,
-                         const T& value, const TimerType& tmty, int delay)
-{
+                         const T& value, const TimerType& tmty, int delay) {
   delayedSend(src, dst, trig, T(value), tmty, delay);
 }
 

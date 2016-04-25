@@ -13,15 +13,19 @@ namespace K3 {
 class OutgoingConnection {
  public:
   OutgoingConnection(const Address& addr, asio::io_service& service);
-  virtual ~OutgoingConnection();
-  shared_ptr<asio::ip::tcp::socket> getSocket();
-  bool connected();
+
+  ~OutgoingConnection() {
+    if (connected_) { socket_.close(); }
+  }
+
+  asio::ip::tcp::socket& getSocket() { return socket_; }
+  bool connected() { return connected_; }
 
  protected:
   Address address_;
   bool connected_;
-  shared_ptr<asio::io_service::strand> strand_;
-  shared_ptr<asio::ip::tcp::socket> socket_;
+  asio::ip::tcp::socket socket_;
+  asio::io_service::strand strand_;
 };
 
 class InternalOutgoingConnection
@@ -30,27 +34,52 @@ class InternalOutgoingConnection
  public:
   InternalOutgoingConnection(const Address& addr, asio::io_service& service)
       : OutgoingConnection(addr, service) {}
-  void send(shared_ptr<NetworkMessage> pm, shared_ptr<ErrorHandler> e_handler);
-
+  template <class E> // E = ErrorHandler
+  void send(unique_ptr<OutNetworkMessage>, E&&);
+  template <class E> // E = ErrorHandler
+  void writeLoop(E&&);
  protected:
-  void writeLoop(shared_ptr<ErrorHandler> e_handler);
-
-  std::queue<shared_ptr<NetworkMessage>> outbox_;
+  // The outbox is necessary to make sure that we synchronize every part: the async_write calls
+  // are kept in order using the strand, and the actual writing is one-at-a-time using the outbox
+  std::queue<OutNetworkMessage*> outbox_;
 };
 
-class ExternalOutgoingConnection
-    : public OutgoingConnection,
-      public enable_shared_from_this<ExternalOutgoingConnection> {
- public:
-  ExternalOutgoingConnection(const Address& addr, asio::io_service& service)
-      : OutgoingConnection(addr, service) {}
-  void send(shared_ptr<PackedValue> pm, shared_ptr<ErrorHandler> e_handler);
+template<class E> // E = ErrorHandler
+void InternalOutgoingConnection::send(unique_ptr<OutNetworkMessage> pm,
+                                      E&& e_handler) {
+  if (!connected_) {
+    throw std::runtime_error(
+        "InternalOutgoingConnection send(): not connected");
+  }
 
- protected:
-  void writeLoop(shared_ptr<ErrorHandler> e_handler);
+  // A strand is important to make sure we're not sending out of order
+  // We need to release the unique_ptr since it currently doesn't work with lambdas
+  strand_.post([this_shared=shared_from_this(), e_handler=std::forward<E>(e_handler), pm = pm.release()]() {
+    this_shared->outbox_.push(pm);
+    if (this_shared->outbox_.size() == 1) {
+      this_shared->writeLoop(std::forward<E>(e_handler));
+    }
+  });
+}
 
-  std::queue<shared_ptr<PackedValue>> outbox_;
-};
+template <class E> // E = ErrorHandler
+void InternalOutgoingConnection::writeLoop(E&& e_handler) {
+  auto pm = outbox_.front();
+  shared_ptr<InternalOutgoingConnection> this_shared = shared_from_this();
+  auto callback = [this_shared, e_handler=std::forward<E>(e_handler)]
+    (boost::system::error_code ec, size_t) {
+    if (ec) {
+      e_handler(ec);
+    }
+    delete this_shared->outbox_.front(); // make sure to delete the message
+    this_shared->outbox_.pop();          // now remove from the queue
+
+    if (this_shared->outbox_.size() > 0) {
+      this_shared->writeLoop(std::forward<E>(e_handler));
+    }
+  };
+  asio::async_write(getSocket(), pm->outputBuffers(), strand_.wrap(callback));
+}
 
 }  // namespace K3
 

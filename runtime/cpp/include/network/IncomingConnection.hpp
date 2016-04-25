@@ -8,14 +8,15 @@ namespace K3 {
 
 class IncomingConnection {
  public:
-  IncomingConnection(asio::io_service&, CodecFormat);
-  virtual ~IncomingConnection();
-  shared_ptr<asio::ip::tcp::socket> getSocket();
-  virtual void receiveMessages(shared_ptr<MessageHandler>,
-                               shared_ptr<ErrorHandler>) = 0;
+  IncomingConnection(asio::io_service& service,
+                                       CodecFormat format) : socket_(service), format_(format) {}
+
+  ~IncomingConnection() { socket_.close(); }
+
+  asio::ip::tcp::socket& getSocket() { return socket_; }
 
  protected:
-  shared_ptr<asio::ip::tcp::socket> socket_;
+  asio::ip::tcp::socket socket_;
   CodecFormat format_;
 };
 
@@ -24,29 +25,58 @@ class InternalIncomingConnection
     : public IncomingConnection,
       public enable_shared_from_this<InternalIncomingConnection> {
  public:
-  InternalIncomingConnection(asio::io_service&, CodecFormat);
-  virtual void receiveMessages(shared_ptr<MessageHandler>,
-                               shared_ptr<ErrorHandler>);
+  InternalIncomingConnection(asio::io_service& service, CodecFormat format)
+    : IncomingConnection(service, format) {}
+
+  template <class M, class E> // M = MessageHandler, E = ErrorHandler
+  void receiveMessages(M&&, E&&);
 };
 
-// Read Values from the network. Associated with a particular trigger and address.
-class ExternalIncomingConnection
-    : public IncomingConnection,
-      public enable_shared_from_this<ExternalIncomingConnection> {
- public:
-  ExternalIncomingConnection(asio::io_service& service, CodecFormat format,
-                             Address peer_addr, TriggerID dest_trig)
-      : IncomingConnection(service, format) {
-    peer_addr_ = peer_addr;
-    trigger_ = dest_trig;
-  }
-  virtual void receiveMessages(shared_ptr<MessageHandler>,
-                               shared_ptr<ErrorHandler>);
+template <class M, class E> // M is messagehandler, E is error_handler
+void InternalIncomingConnection::receiveMessages(M&& m_handler, E&& e_handler) {
+  // Create an empty NetworkMessage for reading into
+  // Using a raw pointer because closures need to be copyable
+  InNetworkMessage* m = new InNetworkMessage();
 
- protected:
-  Address peer_addr_;
-  TriggerID trigger_;
-};
+  // Callback for when the network header has been read (source, dest, trigger,
+  // payload_length)
+  auto header_callback = [this_shared = shared_from_this(), m,
+       e_handler=std::forward<E>(e_handler),
+       m_handler=std::forward<M>(m_handler)]
+       (boost_error ec, size_t bytes) {
+    if (ec) {
+      e_handler(ec);
+      return;
+    }
+    if (bytes == m->networkHeaderSize()) {
+      // Resize the buffer and isssue a second async read
+      // Again, use a raw pointer since closures need to be copyable
+      Buffer* payload_buf = new Buffer(m->payload_length_);
+      auto buffer = asio::buffer(payload_buf->data(), payload_buf->size());
+      auto payload_callback =
+        [this_shared, m, payload_buf,
+          e_handler=std::forward<E>(e_handler),
+          m_handler=std::forward<M>(m_handler)]
+          (boost_error ec, size_t bytes) {
+            if (!ec && bytes == m->payload_length_) {
+              // Create a PackedValue from the buffer, and call the message handler
+              auto pv = std::make_unique<BufferPackedValue>(payload_buf, this_shared->format_);
+              m->setValue(std::move(pv));
+              m_handler(std::unique_ptr<NetworkMessage>(m));
+
+              // Recurse to receive the next message
+              this_shared->receiveMessages(std::forward<M>(m_handler), std::forward<E>(e_handler));
+            } else {
+              e_handler(ec);
+            }
+          };
+
+      asio::async_read(this_shared->getSocket(), buffer, std::move(payload_callback));
+    }
+  };
+
+  asio::async_read(getSocket(), m->inputBuffers(), std::move(header_callback));
+}
 
 }  // namespace K3
 

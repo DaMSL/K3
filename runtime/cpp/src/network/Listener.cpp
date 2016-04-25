@@ -11,24 +11,19 @@ namespace K3 {
 
 Listener::Listener(asio::io_service& service, const Address& address,
                    shared_ptr<Peer> peer, CodecFormat format,
-                   shared_ptr<IncomingConnectionFactory> in_factory) {
-  address_ = address;
-  peer_ = peer;
-  format_ = format;
-  in_conns_ = make_shared<IncomingConnectionMap>();
-  conn_factory_ = in_factory;
+                   IncomingConnectionFactory in_factory) :
+  address_(address), peer_(peer), format_(format),
+  acceptor_(service), conn_factory_(in_factory) {
+  auto ip = boost::asio::ip::address_v4(address_.ip);
+  boost::asio::ip::tcp::endpoint ep(ip, address_.port);
 
   // Prepare to accept connections
   for (int tries = 24; tries > 0; tries--) {
     try {
-      acceptor_ = make_shared<boost::asio::ip::tcp::acceptor>(service);
-      auto ip = boost::asio::ip::address_v4(address_.ip);
-      boost::asio::ip::tcp::endpoint ep(ip, address_.port);
-      acceptor_->open(ep.protocol());
-      boost::asio::socket_base::reuse_address option(true);
-      acceptor_->set_option(option);
-      acceptor_->bind(ep);
-      acceptor_->listen();
+      acceptor_.open(ep.protocol());
+      acceptor_.set_option(boost::asio::socket_base::reuse_address(true));
+      acceptor_.bind(ep);
+      acceptor_.listen();
       break;
     }
     catch (std::exception& e) {
@@ -43,34 +38,16 @@ Listener::Listener(asio::io_service& service, const Address& address,
   }
 }
 
-void Listener::acceptConnection(shared_ptr<ErrorHandler> acpt_e_handler) {
-  shared_ptr<IncomingConnection> conn =
-      (*conn_factory_)(acceptor_->get_io_service(), format_);
-
-  shared_ptr<Listener> this_shared = shared_from_this();
-  acceptor_->async_accept(
-      *conn->getSocket(),
-      [this_shared, conn, acpt_e_handler](const boost::system::error_code& ec) {
-        if (ec) {
-          (*acpt_e_handler)(ec);
-        } else {
-          this_shared->registerConnection(conn);
-          this_shared->acceptConnection(acpt_e_handler);
-        }
-      });
-}
 
 void Listener::registerConnection(shared_ptr<IncomingConnection> c) {
   string s = c->getSocket()->remote_endpoint().address().to_string();
   unsigned short port = c->getSocket()->remote_endpoint().port();
   Address a = make_address(s, port);
-  in_conns_->insert(a, c);
+  in_conns_.insert(a, c);
 
-  shared_ptr<Peer> peer = peer_;
   auto tok = peer_->getQueue().newProducerToken();
 
-  shared_ptr<MessageHandler> m_handler = make_shared<MessageHandler>(
-      [peer, tok](std::unique_ptr<Message> m) {
+  auto m_handler = [peer = peer_, tok](std::unique_ptr<Message> m) {
         auto d = peer->getContext().__getDispatcher(std::move(m->value_), m->trigger_);
         #ifdef K3MESSAGETRACE
         d->source_ = m->source_;
@@ -80,22 +57,19 @@ void Listener::registerConnection(shared_ptr<IncomingConnection> c) {
         d->trigger_ = m->trigger_;
         #endif
         peer->getQueue().enqueue(tok, std::move(d));
-      });
+      };
 
-  shared_ptr<IncomingConnectionMap> conn_map = in_conns_;
-  shared_ptr<ErrorHandler> e_handler;
-  e_handler = make_shared<ErrorHandler>([conn_map, a](
-      const boost::system::error_code& ec) {
-        conn_map->erase(a);
+  auto e_handler = [this_shared = shared_from_this(), a](const boost::system::error_code& ec) {
+        this_shared->in_conns_.erase(a);
         if (ec.message() != "End of file") {
           std::cout << "Encountered invalid message. Closing connection.\n";
           std::cout << ec.message() << "\n";
         }
-      });
+      };
 
-  c->receiveMessages(m_handler, e_handler);
+  c->receiveMessages(std::move(m_handler), std::move(e_handler));
 }
 
-int Listener::numConnections() { return in_conns_->size(); }
+int Listener::numConnections() { return in_conns_.size(); }
 
 }  // namespace K3

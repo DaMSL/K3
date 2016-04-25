@@ -14,20 +14,40 @@ class Peer;
 class Listener : public std::enable_shared_from_this<Listener> {
  public:
   Listener(asio::io_service&, const Address& address, shared_ptr<Peer>,
-           CodecFormat, shared_ptr<IncomingConnectionFactory>);
-  void acceptConnection(shared_ptr<ErrorHandler>);
+           CodecFormat, IncomingConnectionFactory);
+  template <class E> // ErrorHandler
+  void acceptConnection(E&&);
   int numConnections();
 
  protected:
   void registerConnection(shared_ptr<IncomingConnection>);
 
   Address address_;
-  shared_ptr<Peer> peer_;
-  shared_ptr<boost::asio::ip::tcp::acceptor> acceptor_;
+  shared_ptr<Peer> peer_; // Keep the Peer alive while listener is alive
+  boost::asio::ip::tcp::acceptor acceptor_;
   CodecFormat format_;
-  shared_ptr<IncomingConnectionFactory> conn_factory_;
-  shared_ptr<IncomingConnectionMap> in_conns_;
+  IncomingConnectionFactory conn_factory_;
+  IncomingConnectionMap in_conns_;
 };
+
+template<class E> // ErrorHandler
+void Listener::acceptConnection(E&& acpt_e_handler) {
+  shared_ptr<IncomingConnection> conn = conn_factory_(acceptor_.get_io_service(), format_);
+
+  // Make sure this Listener lives long enough
+  acceptor_.async_accept(
+      conn->getSocket(),
+      [this_shared = shared_from_this(), conn, acpt_e_handler=std::forward<E>(acpt_e_handler)]
+        (const boost::system::error_code& ec) {
+        if (ec) {
+          acpt_e_handler(ec);
+        } else {
+          this_shared->registerConnection(conn);
+          // this shouldn't be necessary
+          //this_shared->acceptConnection(std::forward<E>(acpt_e_handler));
+        }
+      });
+}
 
 }  // namespace K3
 
