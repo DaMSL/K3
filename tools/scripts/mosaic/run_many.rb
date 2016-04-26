@@ -205,14 +205,14 @@ def run_exp(config)
   # remove unwanted tests
   if $options[:remove_exp] || $options[:remove_q] || $options[:remove_sf] || $options[:remove_nd]
     config[:tests].reject! do |t|
+      # one of these must be specified, causing a possible false here
       ($options[:remove_exp] ? str_of_exp[t[:exp]] == $options[:remove_exp] : true) &&
       ($options[:remove_q] ? t[:q] == $options[:remove_q] : true) &&
-      ($options[:remove_sf] ? t[:sf] == $options[:remove_sf] : true)
+      ($options[:remove_sf] ? t[:sf] == $options[:remove_sf] : true) &&
       ($options[:remove_nd] ? t[:nd] == $options[:remove_nd] : true)
     end
+    save_config(config, backup:true)
   end
-
-  save_config(config, backup:$options[:clean])
 
   # Otherwise, setup and run
   config2 = config.dup

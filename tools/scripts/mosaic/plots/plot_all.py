@@ -4,6 +4,7 @@
 import numpy as np
 import math
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import argparse
 import yaml
 import os
@@ -12,15 +13,26 @@ import sys
 
 queries = ['1', '3', '4', '6', '11a', '12', '17']
 nodes = [1, 2, 4, 8, 16, 31]
-scale_factors = [0.1, 1, 10, 100]
+scale_factors = [0.1, 1, 10] #, 100]
 tuple_sizes = {0.1: 8 * 10**5, 1: 8 * 10**6, 10: 8 * 10**7, 100: 8*10**8}
 batches = [100, 1000, 10000]
+
+# for plots
+nd_styles = {1:('r','*'), 2:('k','x'), 4:('g','o'), 8:('c','^'), 16:('b','+'), 31:('m','D')}
+sf_styles = {0.1:('r','<'), 1:('g','+'), 10:('c','^'), 100:('m','D')}
+q_colors = ['b', 'g', 'c', 'b', 'g', 'c', 'b']
 
 # for calculating num of tuples per query
 map_sizes = {'cu':2411114, 'li':73646424, 'or':16743122, 'pa':2371090, 'ps':11648193, 'su':138625}
 map_total = sum(map_sizes.itervalues())
 q_tables = {'1':['li'], '3':['cu','or','li'], '4':['or','li'], '6':['li'], '11a':['ps','su'], '12':['or','li'], '17':['li','pa'] }
 q_pct = {k:sum(map(lambda n:map_sizes[n], v))/float(map_total) for k,v in q_tables.iteritems()}
+
+font = {'family':'serif',
+        'color':'black',
+        'weight':'normal',
+        'size':12
+        }
 
 def natural_sort_key(s, _nsre=re.compile(r'(\d+)')):
     return [int(text) if text.isdigit() else text.lower() for text in re.split(_nsre, s)]
@@ -62,10 +74,54 @@ def scalability(args, r_file, workdir, result_dir):
     if not os.path.exists(out_path):
         os.mkdir(out_path)
 
+    # combined figures
+    # create combined plots per query, per sf
+
+    def do_combo_plots(x_max, y_max):
+        total = 0
+        for q_base_idx in range(0, len(queries), y_max * x_max):
+            f, axarr = plt.subplots(y_max, x_max, sharex=True)
+            i = 0
+            for y, axarr2 in enumerate(axarr):
+                for x, ax in enumerate(axarr2):
+                    if q_base_idx + i >= len(queries):
+                        ax.axis('off')
+                        continue
+                    q = queries[q_base_idx + i]
+                    v1 = results2[q]
+
+                    # A line per scale factor
+                    for sf, v2 in v1.iteritems():
+                        filtered = filter(lambda x:x[1] is not None, zip(nodes, [v2[n] for n in nodes]))
+                        if len(filtered) == 0:
+                            continue
+                        xvals, yvals = zip(*filtered)
+                        ax.plot(xvals, yvals, color=sf_styles[sf][0], marker=sf_styles[sf][1], label="SF {}".format(sf))
+
+                    # Labels, etc.
+                    ax.grid(True)
+                    ax.set_title("Query {}".format(q), fontdict=font)
+                    if y == y_max - 1 or total + x_max >= len(queries):
+                        ax.set_xlabel("Worker Nodes", fontdict=font)
+                    ax.get_yaxis().set_major_formatter(ticker.FuncFormatter(lambda x,p: "{}".format(int(x/1000))))
+                    if x == 0:
+                        ax.set_ylabel("KTuples/sec", fontdict=font)
+                    if x == x_max - 1 and y == y_max - 1 or total + 1 >= len(queries):
+                        add_legend(ax)
+
+                    i += 1
+                    total += 1
+
+            # Save to file
+            plt.savefig(os.path.join(out_path, "comb_q{}-{}_nd_xput.pdf".format(q_base_idx, q_base_idx+x_max * y_max)))
+            plt.close()
+
+    do_combo_plots(2, 2)
+    do_combo_plots(3, 3)
+
     # create plots per query, per sf
     for q,v1 in results2.iteritems():
         # New Figure per query
-        plt.figure()
         f, ax = plt.subplots()
 
         # A line per scale factor
@@ -74,17 +130,17 @@ def scalability(args, r_file, workdir, result_dir):
             if len(filtered) == 0:
                 continue
             x, y = zip(*filtered)
-            plt.plot(x, y, marker='o', label="SF {}".format(sf))
+            plt.plot(x, y, color=sf_styles[sf][0], marker=sf_styles[sf][1], label="SF {}".format(sf))
 
         # Labels, etc.
         plt.grid(True)
-        plt.title("Query {} Throughput".format(q))
-        plt.xlabel("Worker Nodes")
-        plt.ylabel("Tuples/sec")
+        plt.title("Query {} Throughput".format(q), fontdict=font)
+        plt.xlabel("Worker Nodes", fontdict=font)
+        plt.ylabel("Tuples/sec", fontdict=font)
         add_legend(ax)
 
         # Save to file
-        plt.savefig(os.path.join(out_path, "q{}_nd_xput.png".format(q)))
+        plt.savefig(os.path.join(out_path, "q{}_nd_xput.pdf".format(q)))
         plt.close()
 
     # create plots per query, per nodes
@@ -96,7 +152,6 @@ def scalability(args, r_file, workdir, result_dir):
                 res[n][sf] = val
 
         # New Figure per query
-        plt.figure()
         f, ax = plt.subplots()
 
         # line per node count
@@ -105,19 +160,44 @@ def scalability(args, r_file, workdir, result_dir):
             if len(filtered) == 0:
                 continue
             x, y = zip(*filtered)
-            plt.plot(x, y, marker='o', label="{} Nodes".format(n))
+            plt.plot(x, y, color=nd_styles[nd][0], marker=nd_styles[nd][1], label="{} Nodes".format(n))
 
         # Labels, etc.
         plt.grid(True)
-        plt.title("Query {} Throughput".format(q))
-        plt.xlabel("Scale Factor")
-        plt.ylabel("Tuples/sec")
+        plt.title("Query {} Throughput".format(q), fontdict=font)
+        plt.xlabel("Scale Factor", fontdict=font)
+        plt.ylabel("Tuples/sec", fontdict=font)
         ax.set_xscale('log')
         add_legend(ax)
 
         # Save to file
-        plt.savefig(os.path.join(out_path, "q{}_sf_xput.png".format(q)))
+        plt.savefig(os.path.join(out_path, "q{}_sf_xput.pdf".format(q)))
         plt.close()
+
+    # create bar plots showing differences between queries
+    # figure per sf, node count so we can choose
+    for sf in scale_factors:
+        for nd in nodes:
+            data = [results2[q][sf][nd] for q in queries]
+            if all(map(lambda x:x is None, data)):
+                continue
+            data, labels = zip(*filter(lambda x:x[0] is not None, zip(data, queries)))
+            x_loc = np.arange(len(labels))
+            width = 1
+
+            f, ax = plt.subplots()
+            rects = ax.bar(x_loc, data, width, color=q_colors)
+            ax.set_ylabel('KTuples/sec', fontdict=font)
+            ax.set_xlabel('TPC-H Queries', fontdict=font)
+            #ax.set_title('SF {}, {} nodes Throughput'.format(sf, nd), fontdict=font)
+            ax.get_yaxis().set_major_formatter(ticker.FuncFormatter(lambda x,p: "{}".format(int(x/1000))))
+            ax.set_xticks(x_loc + width / 2.0)
+            ax.set_xticklabels(queries)
+
+            # Save to file
+            plt.savefig(os.path.join(out_path, "comp_sf{}_{}nd_xput.pdf".format(sf, nd)))
+            plt.close()
+
 
 # This uses a default GC epoch of 5 minutes. Uses scalability data
 def memory(args, r_file, workdir, result_dir, do_queries):
@@ -187,7 +267,6 @@ def memory(args, r_file, workdir, result_dir, do_queries):
 
             max_length = max(map(lambda d: 0 if d is None else d[1], v2.values()))
 
-            plt.figure()
             f, ax = plt.subplots()
             x_axis = np.arange(0., float(1 + max_length / 1000), float(period))
 
@@ -196,17 +275,20 @@ def memory(args, r_file, workdir, result_dir, do_queries):
                 if d is not None:
                     (data, length) = d
                     data = np.append(data, np.zeros(abs(len(x_axis) - len(data)), dtype=np.int64))
-                    plt.plot(x_axis, data, label="{} Nodes".format(nd))
+                    plt.plot(x_axis, data, color=nd_styles[nd][0], marker=nd_styles[nd][1], label="{} Nodes".format(nd))
 
             # Labels, etc.
             plt.grid(True)
-            plt.title("Query {} SF {} Memory".format(q, sf))
-            plt.xlabel("Time (s)")
-            plt.ylabel("Bytes")
+            #plt.title("Query {} SF {} Memory".format(q, sf), fontdict=font)
+            plt.xlabel("Time (s)", fontdict=font)
+            ax.get_yaxis().set_major_formatter(ticker.FuncFormatter(lambda x,p: "{}".format(int(x/1000000000))))
+            plt.ylabel("GBytes", fontdict=font)
             add_legend(ax)
 
             # Save to file
-            plt.savefig(os.path.join(out_path, "q{}_sf{}_mem.png".format(q, sf)))
+            name = "q{}_sf{}_mem.pdf".format(q, sf)
+            print name
+            plt.savefig(os.path.join(out_path, name))
             plt.close()
 
 def latency(args, r_file, workdir, result_dir):
@@ -251,7 +333,6 @@ def latency(args, r_file, workdir, result_dir):
     for q,v1 in results2.iteritems():
         for sf,v2 in v1.iteritems():
             # New Figure per query
-            plt.figure()
             f, ax = plt.subplots()
 
             # A line per node count
@@ -259,25 +340,24 @@ def latency(args, r_file, workdir, result_dir):
                 if v3 is not None:
                     plt.errorbar(nodes, [v3[n][0] if n in v3 and v3[n] is not None else 0 for n in nodes],
                             yerr=[v3[n][1] if n in v3 and v3[n] is not None else 0 for n in nodes],
-                            marker='o', label="{} Nodes".format(nd))
+                            color=nd_styles[nd][0], marker=nd_styles[nd][1], label="{} Nodes".format(nd))
 
             # Labels, etc.
             plt.grid(True)
             #plt.legend(loc='best')
-            plt.title("Query {} Latency".format(q))
-            plt.xlabel("Switches")
-            plt.ylabel("ms")
+            plt.title("Query {} Latency".format(q), fontdict=font)
+            plt.xlabel("Switches", fontdict=font)
+            plt.ylabel("ms", fontdict=font)
             plt.ylim(ymin=0)
             add_legend(ax)
 
             # Save to file
-            plt.savefig(os.path.join(out_path, "sw_q{}_sf{}_lat.png".format(q, sf)))
+            plt.savefig(os.path.join(out_path, "sw_q{}_sf{}_lat.pdf".format(q, sf)))
             plt.close()
 
     # create plots per query, per sf
     for q,v1 in results2.iteritems():
         # New Figure per query
-        plt.figure()
         f, ax = plt.subplots()
 
         # A line per scale factor
@@ -288,17 +368,17 @@ def latency(args, r_file, workdir, result_dir):
                             for k, v in v2.iteritems()}
                 plt.errorbar(nodes, [min_sw[n][0] if n in min_sw and min_sw[n] is not None else 0 for n in nodes],
                         yerr=[min_sw[n][1] if n in min_sw and min_sw[n] is not None else 0 for n in nodes],
-                        marker='o', label="SF {}".format(sf))
+                        color=sf_styles[sf][0], marker=sf_styles[sf][1], label="SF {}".format(sf))
 
         # Labels, etc.
         plt.grid(True)
-        plt.title("Query {} Latency".format(q))
-        plt.xlabel("Worker Nodes")
-        plt.ylabel("ms")
+        plt.title("Query {} Latency".format(q), fontdict=font)
+        plt.xlabel("Worker Nodes", fontdict=font)
+        plt.ylabel("ms", fontdict=font)
         add_legend(ax)
 
         # Save to file
-        plt.savefig(os.path.join(out_path, "q{}_nd_lat.png".format(q)))
+        plt.savefig(os.path.join(out_path, "q{}_nd_lat.pdf".format(q)))
         plt.close()
 
     return
@@ -306,7 +386,6 @@ def latency(args, r_file, workdir, result_dir):
     # create plots per query, per nodes
     for q,v1 in results2.iteritems():
         # New Figure per query
-        plt.figure()
         f, ax = plt.subplots()
 
         # invert the data
@@ -325,13 +404,13 @@ def latency(args, r_file, workdir, result_dir):
         # Labels, etc.
         plt.grid(True)
         plt.legend(loc='best')
-        plt.title("Query {} Latency".format(q))
-        plt.xlabel("Scale Factor")
-        plt.ylabel("sec")
+        plt.title("Query {} Latency".format(q), fontdict=font)
+        plt.xlabel("Scale Factor", fontdict=font)
+        plt.ylabel("sec", fontdict=font)
         ax.set_xscale('log')
 
         # Save to file
-        plt.savefig(os.path.join(out_path, "q{}_sf_lat.png".format(q)))
+        plt.savefig(os.path.join(out_path, "q{}_sf_lat.pdf".format(q)))
         plt.close()
 
 

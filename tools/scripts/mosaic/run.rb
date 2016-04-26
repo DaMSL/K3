@@ -1005,7 +1005,7 @@ def main()
   dbt_name = "dbt_" + $nice_name
   dbt_name_hpp = dbt_name + ".hpp"
 
-  $server_url = "mddb2:5000"
+  $server_url = "qp2:5000"
 
   bin_file = $nice_name
   bin_path = $options[:binary] ? $options[:binary] : File.join($workdir, bin_file)

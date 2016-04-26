@@ -7,6 +7,7 @@ import os
 import copy
 import re
 import yaml
+import math
 
 import routing_patterns
 
@@ -333,7 +334,9 @@ def create_dist_file(args):
     nmask = "^(qp-hd(([4,6,7,9])|(1[0,1,3-6]))"
     if args.use_hm:
         # for few nodes, get max memory
-        if num_nodes <= 4:
+        if num_nodes <= 8 or \
+            (args.perhost is not None and
+                math.ceil(num_nodes / float(args.perhost)) <= 8):
             nmask = "^qp-hm.*$"
         else:
             nmask += "|qp-hm.*)$"
