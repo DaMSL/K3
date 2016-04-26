@@ -39,9 +39,9 @@ Listener::Listener(asio::io_service& service, const Address& address,
 }
 
 
-void Listener::registerConnection(shared_ptr<IncomingConnection> c) {
-  string s = c->getSocket()->remote_endpoint().address().to_string();
-  unsigned short port = c->getSocket()->remote_endpoint().port();
+void Listener::registerConnection(shared_ptr<InternalIncomingConnection> c) {
+  string s = c->getSocket().remote_endpoint().address().to_string();
+  unsigned short port = c->getSocket().remote_endpoint().port();
   Address a = make_address(s, port);
   in_conns_.insert(a, c);
 

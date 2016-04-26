@@ -3,11 +3,12 @@
 
 #include <memory>
 #include "network/NetworkManager.hpp"
+#include "IncomingConnection.hpp"
 #include <concurrentqueue/blockingconcurrentqueue.h>
 
 namespace K3 {
 
-typedef std::function<shared_ptr<IncomingConnection>(
+typedef std::function<shared_ptr<InternalIncomingConnection>(
     asio::io_service&, CodecFormat)> IncomingConnectionFactory;
 
 class Peer;
@@ -20,7 +21,7 @@ class Listener : public std::enable_shared_from_this<Listener> {
   int numConnections();
 
  protected:
-  void registerConnection(shared_ptr<IncomingConnection>);
+  void registerConnection(shared_ptr<InternalIncomingConnection>);
 
   Address address_;
   shared_ptr<Peer> peer_; // Keep the Peer alive while listener is alive
@@ -32,7 +33,7 @@ class Listener : public std::enable_shared_from_this<Listener> {
 
 template<class E> // ErrorHandler
 void Listener::acceptConnection(E&& acpt_e_handler) {
-  shared_ptr<IncomingConnection> conn = conn_factory_(acceptor_.get_io_service(), format_);
+  shared_ptr<InternalIncomingConnection> conn = conn_factory_(acceptor_.get_io_service(), format_);
 
   // Make sure this Listener lives long enough
   acceptor_.async_accept(

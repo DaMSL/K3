@@ -29,11 +29,11 @@ class InternalIncomingConnection
     : IncomingConnection(service, format) {}
 
   template <class M, class E> // M = MessageHandler, E = ErrorHandler
-  void receiveMessages(M&&, E&&);
+  void receiveMessages(M, E);
 };
 
 template <class M, class E> // M is messagehandler, E is error_handler
-void InternalIncomingConnection::receiveMessages(M&& m_handler, E&& e_handler) {
+void InternalIncomingConnection::receiveMessages(M m_handler, E e_handler) {
   // Create an empty NetworkMessage for reading into
   // Using a raw pointer because closures need to be copyable
   InNetworkMessage* m = new InNetworkMessage();
@@ -41,8 +41,8 @@ void InternalIncomingConnection::receiveMessages(M&& m_handler, E&& e_handler) {
   // Callback for when the network header has been read (source, dest, trigger,
   // payload_length)
   auto header_callback = [this_shared = shared_from_this(), m,
-       e_handler=std::forward<E>(e_handler),
-       m_handler=std::forward<M>(m_handler)]
+       e_handler=std::move(e_handler),
+       m_handler=std::move(m_handler)]
        (boost_error ec, size_t bytes) {
     if (ec) {
       e_handler(ec);
@@ -55,8 +55,8 @@ void InternalIncomingConnection::receiveMessages(M&& m_handler, E&& e_handler) {
       auto buffer = asio::buffer(payload_buf->data(), payload_buf->size());
       auto payload_callback =
         [this_shared, m, payload_buf,
-          e_handler=std::forward<E>(e_handler),
-          m_handler=std::forward<M>(m_handler)]
+          e_handler=std::move(e_handler),
+          m_handler=std::move(m_handler)]
           (boost_error ec, size_t bytes) {
             if (!ec && bytes == m->payload_length_) {
               // Create a PackedValue from the buffer, and call the message handler
@@ -65,7 +65,7 @@ void InternalIncomingConnection::receiveMessages(M&& m_handler, E&& e_handler) {
               m_handler(std::unique_ptr<NetworkMessage>(m));
 
               // Recurse to receive the next message
-              this_shared->receiveMessages(std::forward<M>(m_handler), std::forward<E>(e_handler));
+              this_shared->receiveMessages(std::move(m_handler), std::move(e_handler));
             } else {
               e_handler(ec);
             }

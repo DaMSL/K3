@@ -54,15 +54,16 @@ class InNetworkMessage : public NetworkMessage {
   public:
   InNetworkMessage() {}
   InNetworkMessage(TriggerID t, unique_ptr<PackedValue> v) : NetworkMessage(t, std::move(v)) {}
-  std::array<boost::asio::mutable_buffer, ARRAYSIZE>& inputBuffers() const;
-
+  std::array<boost::asio::mutable_buffer, ARRAYSIZE>& inputBuffers();
+  private:
   std::array<asio::mutable_buffer, ARRAYSIZE> buffers_;
 };
 
 class OutNetworkMessage : public NetworkMessage {
+  public:
   OutNetworkMessage(TriggerID t, unique_ptr<PackedValue> v) : NetworkMessage(t, std::move(v)) {}
   std::array<boost::asio::const_buffer, ARRAYSIZE + 1>& outputBuffers();
-
+  private:
   std::array<asio::const_buffer, ARRAYSIZE + 1> buffers_;
 };
 

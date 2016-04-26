@@ -14,7 +14,7 @@
 namespace K3 {
 
 class InternalOutgoingConnection;
-class IncomingConnection;
+class InternalIncomingConnection;
 class Peer;
 class Listener;
 
@@ -41,7 +41,7 @@ class ConnectionMap : public ConcurrentMap<Address, shared_ptr<Connection>> {
 
 typedef ConcurrentMap<Address, shared_ptr<Listener>> ListenerMap;
 typedef ConnectionMap<InternalOutgoingConnection> InternalConnectionMap;
-typedef ConcurrentMap<Address, shared_ptr<IncomingConnection>> IncomingConnectionMap;
+typedef ConcurrentMap<Address, shared_ptr<InternalIncomingConnection>> IncomingConnectionMap;
 typedef std::function<void(std::unique_ptr<Message>)> MessageHandler;
 typedef std::function<void(boost_error)> ErrorHandler;
 
