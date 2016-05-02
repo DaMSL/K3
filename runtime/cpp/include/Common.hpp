@@ -310,6 +310,103 @@ class ConcurrentHashMap : public boost::basic_lockable_adapter<boost::mutex>
   boost::externally_locked<Container, CContainer> map_;
 };
 
+// Fast lock based on no sleep: every operation must be short
+struct FastLock {
+  FastLock() : i(0) {}
+  std::atomic_int i;
+};
+
+class FastLockReader {
+  public:
+  FastLockReader(FastLock &f) : lock_(f) {
+    // Try to take the lock by adding to the number. Spinlock
+    while(lock_.i.fetch_add(1) < 0) { --lock_.i; }
+  }
+
+  void release() {
+    release_ = false;
+    --lock_.i;
+  }
+
+  ~FastLockReader() { if (release_) { --lock_.i; }; }
+
+  protected:
+  bool release_ = true;
+  FastLock& lock_;
+};
+
+#define VAL 100000
+
+class FastLockWriter {
+  public:
+  FastLockWriter(FastLock &f) : lock_(f) {
+    // Try to take the lock by adding to the number. Spinlock
+    while(lock_.i.fetch_sub(VAL) > 0) { lock_.i += VAL; }
+  }
+  ~FastLockWriter() { lock_.i += VAL; }
+
+  protected:
+  FastLock& lock_;
+};
+
+// A fast hashtable-based lock
+// Only useful for really fast operations that require no sleep
+template <class Key, class Val, typename Hash = std::hash<Key>, typename Equal = std::equal_to<Key>>
+class FastConcurrentHashMap
+{
+  using Container = std::unordered_map<Key, Val, Hash, Equal>;
+
+ public:
+  FastConcurrentHashMap() {}
+
+  void insert(Key&& key, Val&& v) {
+    FastLockWriter flw(lock_);
+    map_[std::forward<Key>(key)] = std::forward<Val>(v);
+  }
+
+  // Has to copy out of the map to allow for concurrency
+  std::pair<Val,bool> lookup(const Key& key) {
+    FastLockReader flr(lock_);
+    auto it = map_.find(key);
+    if (it != map_.end()) {
+      return {it->second, true};
+    } else {
+      Val result;
+      return {result, false};
+    }
+  }
+
+  // Has to copy out of the map to allow for concurrency
+  template <class F>
+  Val lookupOrNew(Key&& key, F fn) {
+    FastLockReader flr(lock_);
+    auto it = map_.find(key);
+    if (it != map_.end()) {
+      return it->second;
+    } else {
+      flr.release();
+      FastLockWriter flw(lock_);
+      Val result = fn();
+      map_[std::forward<Key>(key)] = result;
+      return result;
+    }
+  }
+
+  void erase(const Key& key) {
+    FastLockWriter flw(lock_);
+    map_.erase(key);
+  }
+
+  int size() {
+    FastLockReader flr(lock_);
+    return map_.size();
+  }
+
+ protected:
+  Container map_;
+  FastLock lock_;
+};
+
 class base_string;
 typedef base_string string_impl;  // Toggle string implementations
 
