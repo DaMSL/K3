@@ -39,13 +39,12 @@ void Listener::acceptConnection(E&& acpt_e_handler) {
   acceptor_.async_accept(
       conn->getSocket(),
       [this_shared = shared_from_this(), conn, acpt_e_handler=std::forward<E>(acpt_e_handler)]
-        (const boost::system::error_code& ec) {
+        (const boost::system::error_code& ec) mutable {
         if (ec) {
           acpt_e_handler(ec);
         } else {
           this_shared->registerConnection(conn);
-          // this shouldn't be necessary
-          //this_shared->acceptConnection(std::forward<E>(acpt_e_handler));
+          this_shared->acceptConnection(std::forward<E>(acpt_e_handler));
         }
       });
 }

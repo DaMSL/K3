@@ -28,12 +28,12 @@ class InternalIncomingConnection
   InternalIncomingConnection(asio::io_service& service, CodecFormat format)
     : IncomingConnection(service, format) {}
 
-  template <class M, class E> // M = MessageHandler, E = ErrorHandler
-  void receiveMessages(M, E);
+  // M = MessageHandler, E = ErrorHandler
+  template <class M, class E> void receiveMessages(M&&, E&&);
 };
 
-template <class M, class E> // M is messagehandler, E is error_handler
-void InternalIncomingConnection::receiveMessages(M m_handler, E e_handler) {
+template <class M, class E> // M is messagehandler, E is errorHandler
+void InternalIncomingConnection::receiveMessages(M&& m_handler, E&& e_handler) {
   // Create an empty NetworkMessage for reading into
   // Using a raw pointer because closures need to be copyable
   InNetworkMessage* m = new InNetworkMessage();
@@ -41,9 +41,9 @@ void InternalIncomingConnection::receiveMessages(M m_handler, E e_handler) {
   // Callback for when the network header has been read (source, dest, trigger,
   // payload_length)
   auto header_callback = [this_shared = shared_from_this(), m,
-       e_handler=std::move(e_handler),
-       m_handler=std::move(m_handler)]
-       (boost_error ec, size_t bytes) {
+       e_handler=std::forward<E>(e_handler),
+       m_handler=std::forward<M>(m_handler)]
+       (boost_error ec, size_t bytes) mutable {
     if (ec) {
       e_handler(ec);
       return;
@@ -52,12 +52,11 @@ void InternalIncomingConnection::receiveMessages(M m_handler, E e_handler) {
       // Resize the buffer and isssue a second async read
       // Again, use a raw pointer since closures need to be copyable
       Buffer* payload_buf = new Buffer(m->payload_length_);
-      auto buffer = asio::buffer(payload_buf->data(), payload_buf->size());
       auto payload_callback =
         [this_shared, m, payload_buf,
-          e_handler=std::move(e_handler),
-          m_handler=std::move(m_handler)]
-          (boost_error ec, size_t bytes) {
+          e_handler=std::forward<E>(e_handler),
+          m_handler=std::forward<M>(m_handler)]
+          (boost_error ec, size_t bytes) mutable {
             if (!ec && bytes == m->payload_length_) {
               // Create a PackedValue from the buffer, and call the message handler
               auto pv = std::make_unique<BufferPackedValue>(payload_buf, this_shared->format_);
@@ -65,12 +64,13 @@ void InternalIncomingConnection::receiveMessages(M m_handler, E e_handler) {
               m_handler(std::unique_ptr<NetworkMessage>(m));
 
               // Recurse to receive the next message
-              this_shared->receiveMessages(std::move(m_handler), std::move(e_handler));
+              this_shared->receiveMessages(std::forward<M>(m_handler), std::forward<E>(e_handler));
             } else {
               e_handler(ec);
             }
           };
 
+      auto buffer = asio::buffer(payload_buf->data(), payload_buf->size());
       asio::async_read(this_shared->getSocket(), buffer, std::move(payload_callback));
     }
   };
