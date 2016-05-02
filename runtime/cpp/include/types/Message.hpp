@@ -29,7 +29,7 @@ class NetworkMessage : public Message {
  public:
   NetworkMessage() : payload_length_(0) {}
   NetworkMessage(TriggerID t, unique_ptr<PackedValue> v)
-      : Message(t, std::move(v)), payload_length_(v->length()) {}
+      : Message(t, std::move(v)), payload_length_(value_->length()) {}
   void init_info(); // initialize the info structure
   void setValue(unique_ptr<PackedValue> v) { value_ = std::move(v); }
   size_t networkHeaderSize() const {
