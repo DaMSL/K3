@@ -117,6 +117,7 @@ unit_t ProfilingBuiltins::tcmallocStop(unit_t) {
 // JEMalloc
 unit_t ProfilingBuiltins::jemallocStart(unit_t) {
 #ifdef K3_JEMALLOC
+  std::cout << "jemallocStart: starting profiling" << std::endl;
   bool enable = true;
   mallctl("prof.active", NULL, 0, &enable, sizeof(enable));
 #ifdef K3_HEAP_SERIES
@@ -136,10 +137,6 @@ unit_t ProfilingBuiltins::jemallocStart(unit_t) {
   auto shutdown = [](std::string& name) {};
   heap_series_start(init, body, shutdown);
 #endif // K3_HEAP_SERIES
-
-#else
-  std::cout << "jemallocStart: JEMALLOC is not defined. not starting."
-            << std::endl;
 #endif
   return unit_t{};
 }
@@ -152,6 +149,7 @@ unit_t ProfilingBuiltins::jemallocStop(unit_t) {
   mallctl("prof.dump", NULL, 0, NULL, 0);
   bool enable = false;
   mallctl("prof.active", NULL, 0, &enable, sizeof(enable));
+  std::cout << "jemallocStop: ending profiling" << std::endl;
 #endif
   return unit_t{};
 }
@@ -180,8 +178,8 @@ unit_t ProfilingBuiltins::jemallocDump(unit_t) {
   // No need for jemalloc profiling (slow)
   unit_t ProfilingBuiltins::jemallocTotalSizeStart(unit_t) {
 #ifdef K3_JEMALLOC_HEAP_SIZE
-    mallctlnametomib("stats.allocated", mib_, &miblen_);
     std::cout << "Starting JEMALLOC total memory size tracking. Period: " << period_ << "\n";
+    mallctlnametomib("stats.allocated", mib_, &miblen_);
 
     auto init = []() {
       std::string name = "heap_size.txt";
