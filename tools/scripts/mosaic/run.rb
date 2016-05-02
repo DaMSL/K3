@@ -371,7 +371,7 @@ def wait_and_fetch_results(stage_num, jobid)
   peer_yaml_files = []
   file_paths.each do |f|
     f_path = File.join($workdir, f)
-    node_sandbox_path = File.join(sandbox_path, File.basename(f, ".*"))
+    node_sandbox_path = File.join(sandbox_path, File.basename(f, ".tar.gz"))
     `mkdir -p #{node_sandbox_path}` unless Dir.exist?(node_sandbox_path)
 
     # Retrieve, extract and move node sandbox.
@@ -1115,7 +1115,7 @@ def parse_opts()
     opts.on("--debug", "Debug mode") { $options[:debug] = true }
     opts.on("--json_debug", "Debug queries that won't die") { $options[:json_debug] = true }
     opts.on("--perhost [NUM]", Integer, "How many peers to run per host") {|i| $options[:perhost] = i}
-    opts.on("--use-hm", "Use HM nodes") {$options[:use_hm] = true}
+    opts.on("--use-hm", "Use HM nodes") {$options[:use_hm] = false}
     opts.on("--uid [UID]", String, "UID of file") {|s| $options[:uid] = s}
     opts.on("--jobid [JOBID]", String, "JOBID of job") {|s| $options[:jobid] = s}
     opts.on("--mosaic-path [PATH]", String, "Path for mosaic") {|s| $options[:mosaic_path] = s}
