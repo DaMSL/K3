@@ -283,6 +283,12 @@ def gen_yaml(role_path)
   end
   extra_args << "replicas=" + $options[:replicas] if $options[:replicas]
   extra_args << "isobatch_mode=" + ($options[:isobatch]).to_s
+  case $options[:debug_run]
+  when :sw
+    extra_args << "debug_run=2"
+  when :tuples
+    extra_args << "debug_run=1"
+  end
   cmd << "--extra-args " << extra_args.join(',') << " " if extra_args.size > 0
 
   yaml = run("#{File.join($script_path, "gen_yaml.py")} #{cmd}")
@@ -309,6 +315,7 @@ def extract_times(sandbox_path, verbose=false)
             trig_tm = (($1.to_f) * 1000).to_i
             trig_times.has_key?(role) ? trig_times[role] << [short_nm, trig_tm] : \
                                         trig_times[role] = [[short_nm, trig_tm]]
+            role = "others"
           when /^Total time \(ms\): (.*)$/
             time = $1
         end
@@ -334,25 +341,38 @@ end
 
 # create perf flame graphs for min/max/median nodes/switches
 def perf_flame_graph(sandbox_path, trig_times)
-    perf_tool = File.join($k3_root_path, "tools", "scripts", "perf", "perf_analysis.sh")
-    ['nodes'].each do |role|
-      times = trig_times[role]
-      num = times.length
-      # min node, max node, median node
-      nodes = [times[0][0], times[-1][0], times[num/2][0]].uniq
-      # for each of these nodes, convert the perf file to a flame graph
-      nodes.each do |node|
-        glob = File.join(sandbox_path, "*#{node}", "perf.data")
-        Dir.glob(glob) do |perf_file|
-          # create flame graph
-          flame_path = File.join(sandbox_path, "#{node}_flame")
-          exe_path = File.join($workdir, $nice_name)
-          cmd = "#{perf_tool} 0 #{exe_path} /usr/bin/perf #{flame_path} #{perf_file}"
-          puts cmd
-          `#{cmd}`
-        end
+  perf_tool = File.join($k3_root_path, "tools", "scripts", "perf", "perf_analysis.sh")
+  ['nodes'].each do |role|
+    times = trig_times[role]
+    num = times.length
+    # min node, max node, median node
+    nodes = [times[0][0], times[-1][0], times[num/2][0]].uniq
+    # for each of these nodes, convert the perf file to a flame graph
+    nodes.each do |node|
+      node_nm, middle = $options[:run_mode] == :local ? ['local', ''] : [node, "*#{node}"]
+      glob = File.join(sandbox_path, middle, 'perf.data')
+      Dir.glob(glob) do |perf_file|
+        # create flame graph
+        flame_path = File.join(sandbox_path, "#{node_nm}_flame")
+        exe_path = File.join($workdir, $nice_name)
+        cmd = "#{perf_tool} 0 #{exe_path} /usr/bin/perf #{flame_path} #{perf_file}"
+        puts cmd
+        `#{cmd}`
       end
     end
+  end
+end
+
+def extract_times_and_graph(path)
+  # Extract time, which is in the master's stdout. Currently checking all stdout.
+  (_, trig_times, s) = extract_times(path, true)
+  # save times
+  File.open(File.join(path, "time.txt"), 'w') { |file| file.write(s) } if s != ""
+
+  # If requested, create perf graphs
+  if $options[:perf_graph]
+    perf_flame_graph(path, trig_times)
+  end
 end
 
 def wait_and_fetch_results(stage_num, jobid)
@@ -397,15 +417,7 @@ def wait_and_fetch_results(stage_num, jobid)
     end
   end
 
-  # Extract time, which is in the master's stdout. Currently checking all stdout.
-  (_, trig_times, s) = extract_times(sandbox_path, true)
-  # save times
-  File.open(File.join(sandbox_path, "time.txt"), 'w') { |file| file.write(s) } if s != ""
-
-  # If requested, create perf graphs
-  if $options[:perf_graph]
-    perf_flame_graph(sandbox_path, trig_times)
-  end
+  extract_times_and_graph(sandbox_path)
 
   # Run script to convert json format
   unless files_to_clean.empty?
@@ -440,6 +452,36 @@ def wait_and_fetch_results(stage_num, jobid)
 
 end
 
+def create_commands()
+  perf_freq = if $options.has_key? :perf_frequency then $options[:perf_frequency] else '60' end
+  dwarf = '--call-graph dwarf'
+  record_prefix = "perf record -a -F #{perf_freq}"
+
+  malloc_conf = []
+  malloc_conf << 'narenas:20' if $options[:jemalloc_tune]
+  malloc_conf << 'stats_print:true' if $options[:jemalloc_stats]
+  malloc_conf += ['prof:true'] if $options[:jemalloc_profile]
+
+  cmd_prefix = ''
+  cmd_prefix = "perf stat -B #{$all_events} #{cmd_prefix}" if $options[:perf_stat]
+  cmd_prefix = "#{record_prefix} #{dwarf} #{cmd_prefix}" if $options[:perf_record]
+  cmd_prefix = "#{record_prefix} #{cmd_prefix}" if $options[:perf_gen_record]
+  cmd_prefix = "#{record_prefix} #{dwarf} -e #{$options[:perf_record_event]} #{cmd_prefix}" \
+    if $options[:perf_record_event]
+  cmd_prefix = "#{record_prefix} -e #{$options[:perf_gen_record_event]} #{cmd_prefix}" \
+    if $options[:perf_gen_record_event]
+  cmd_prefix = "#{cmd_prefix} numactl -m #{$options[:numactl]} -N #{$options[:numactl]}" if $options[:numactl]
+
+  cmd_infix = ''
+  cmd_infix += " -g #{$options[:json_regex]}" if $options[:json_regex]
+  cmd_infix += " -t #{$options[:network_threads]}" if $options[:network_threads]
+  cmd_infix += " --profile_interval #{$options[:profile_interval]}" if $options[:profile_interval]
+
+  cmd_prefix = "export MALLOC_CONF='#{malloc_conf.join(',')}'; #{cmd_prefix}" unless malloc_conf.empty?
+
+  [cmd_prefix, cmd_infix, '']
+end
+
 def run_deploy_k3_remote(uid, bin_path)
   role_path = $options[:raw_yaml_file] ? $options[:raw_yaml_file] : File.join($workdir, $nice_name + ".yaml")
 
@@ -459,41 +501,18 @@ def run_deploy_k3_remote(uid, bin_path)
   gen_yaml(role_path) unless $options[:raw_yaml_file]
 
   stage "[5] Creating new mesos job"
-  curl_args = {}
-  malloc_conf = []
-  cmd_prefix = ''; cmd_infix = ''; cmd_suffix = ''
-  perf_freq = if $options.has_key? :perf_frequency then $options[:perf_frequency] else '60' end
-  dwarf = '--call-graph dwarf'
-  record_prefix = "perf record -a -F #{perf_freq}"
-
   # handle options
+  curl_args = {}
   curl_args['jsonlog']   = 'yes' if $options[:logging] == :full
   curl_args['jsonfinal'] = 'yes' if $options[:logging] == :final
+  curl_args['core_dump'] = 'yes' if $options[:core_dump]
 
-  cmd_prefix = "perf stat -B #{$all_events} #{cmd_prefix}" if $options[:perf_stat]
-  cmd_prefix = "#{record_prefix} #{dwarf} #{cmd_prefix}" if $options[:perf_record]
-  cmd_prefix = "#{record_prefix} #{cmd_prefix}" if $options[:perf_gen_record]
-  cmd_prefix = "#{record_prefix} #{dwarf} -e #{$options[:perf_record_event]} #{cmd_prefix}" \
-    if $options[:perf_record_event]
-  cmd_prefix = "#{record_prefix} -e #{$options[:perf_gen_record_event]} #{cmd_prefix}" \
-    if $options[:perf_gen_record_event]
-  cmd_prefix = "#{cmd_prefix} numactl -m #{$options[:numactl]} -N #{$options[:numactl]}" if $options[:numactl]
-  cmd_infix += " -g #{$options[:json_regex]}" if $options[:json_regex]
-  cmd_infix += " -t #{$options[:network_threads]}" if $options[:network_threads]
-  cmd_infix += " --profile_interval #{$options[:profile_interval]}" if $options[:profile_interval]
-
-  malloc_conf << 'narenas:20' if $options[:jemalloc_tune]
-  malloc_conf << 'stats_print:true' if $options[:jemalloc_stats]
-  malloc_conf += ['prof:true'] if $options[:jemalloc_profile]
-
-  cmd_prefix = "export MALLOC_CONF='#{malloc_conf.join(',')}'; #{cmd_prefix}" unless malloc_conf.empty?
+  cmd_prefix, cmd_infix, cmd_suffix = create_commands()
 
   # Allow overriding
   cmd_prefix = $options[:cmd_prefix] if $options[:cmd_prefix]
   cmd_infix  = $options[:cmd_infix]  if $options[:cmd_infix]
   cmd_suffix = $options[:cmd_suffix] if $options[:cmd_suffix]
-
-  curl_args['core_dump'] = 'yes' if $options[:core_dump]
 
   # save to curl args
   curl_args['cmd_prefix'] = cmd_prefix unless cmd_prefix == ''
@@ -517,6 +536,7 @@ def run_deploy_k3_local(bin_path)
   local_yaml_path = File.join(local_path, $nice_name + '.yaml')
   out_path = File.join(local_path, 'stdout_local.txt')
   role_path = $options[:raw_yaml_file] ? $options[:raw_yaml_file] : local_yaml_path
+
   gen_yaml(role_path) unless $options[:raw_yaml_file]
 
   json_dist_path = File.join(local_path, 'json')
@@ -524,35 +544,16 @@ def run_deploy_k3_local(bin_path)
   stage "[5] Running K3 executable locally"
   FileUtils.rm_rf json_dist_path
   FileUtils.mkdir_p json_dist_path
-  frequency = $options[:perf_frequency] ? $options[:perf_frequency] : '10'
-  malloc_conf = []
-  malloc_conf << 'narenas:20' if $options[:jemalloc_tune]
-  malloc_conf << 'stats_print:true' if $options[:jemalloc_stats]
-  malloc_conf += ['prof:true'] if $options[:jemalloc_profile]
-  cmd_prefix = ''; cmd_infix = ''
-  cmd_prefix = "perf record -F #{frequency} --call-graph dwarf #{cmd_prefix}" if $options[:perf_record]
-  cmd_prefix = "perf stat -B #{$all_events} #{cmd_prefix} " if $options[:perf_stat]
-  cmd_prefix = "export MALLOC_CONF='#{malloc_conf.join(',')}'; #{cmd_prefix}" unless malloc_conf.empty?
-  cmd_infix << " --num_threads #{$options[:network_threads]}" if $options[:network_threads]
-  cmd_infix << " --json #{json_dist_path} " unless $options[:logging] == :none
-  cmd_infix << " --json_final_only " if $options[:logging] == :final
-  cmd_infix << " --json_messages_regex '#{$options[:json_regex]}' " if $options[:json_regex]
-  cmd_infix << " --profile_interval #{$options[:profile_interval]}" if $options[:profile_interval]
+
+  cmd_prefix, cmd_infix, cmd_suffix = create_commands()
+
   dir = Dir.pwd
   Dir.chdir local_path # so all files are produced here
   cmd = "#{bin_path} -p #{role_path} #{cmd_infix} > #{out_path} 2>&1"
-  run(cmd_prefix + cmd, local:true)
+  run(cmd_prefix + cmd + cmd_suffix, local:true)
   Dir.chdir dir
 
-  # Extract time, which is in the master's stdout. Currently checking all stdout.
-  (_, trig_times, s) = extract_times(local_path, true)
-  # save times
-  File.open(File.join(local_path, "time.txt"), 'w') { |file| file.write(s) } if s != ''
-
-  # If requested, create perf graphs
-  if $options[:perf_graph]
-    perf_flame_graph(local_path, trig_times)
-  end
+  extract_times_and_graph(local_path)
 end
 
 # convert a string to the narrowest value
@@ -1096,7 +1097,8 @@ def parse_opts()
     :isobatch   => true,
     :corrective => false,
     :compileargs => "",
-    :profile_interval => 5000
+    :profile_interval => 5000,
+    :debug_run => :normal
   }
 
   usage = "Usage: #{$PROGRAM_NAME} sql_file options"
@@ -1136,11 +1138,17 @@ def parse_opts()
     opts.on("--json-regex [REGEX]", "Regex pattern for JSON logging") { |s| $options[:json_regex] = s}
     opts.on("--json-none", "Turn off JSON logging for ktrace") { $options[:logging] = :none }
     opts.on("--core-dump", "Turn on core dump for distributed run") { $options[:core_dump] = true }
-    opts.on("--corrective", "Run in corrective mode") { $options[:corrective] = true }
-    opts.on("--no-isobatch", "Disable isobatch mode") { $options[:isobatch] = false }
     opts.on("--batch-size [SIZE]", "Set the (re)batch size") {|s| $options[:batch_size] = s }
     opts.on("--no-reserve", "Prevent reserve on the poly buffers") { $options[:no_poly_reserve] = true }
     opts.on("--extract-times [PATH]", "Extract times from sandbox") { |s| $options[:extract_times] = s }
+    opts.on("--corrective", "Run in corrective mode") { $options[:corrective] = true }
+    opts.on("--no-isobatch", "Disable isobatch mode") { $options[:isobatch] = false }
+
+    # Debug runs: limit protocol
+    opts.on("--debug-run [MODE]", "Run debug run mode (sw/tuples)") do |s|
+      $options[:debug_run] = :sw if s == 'sw'
+      $options[:debug_run] = :tuples if s == 'tuples'
+    end
 
     opts.on("--profile-events", "Run with event profiling") { $options[:event_profile] = true }
     opts.on("--str-trace", "Run with string tracing") { $options[:str_trace] = true } #?
