@@ -146,11 +146,12 @@ def add_profiling(h, args, lat_override=None):
     if args.latency_profiling or args.message_profiling:
         default_profiling(h)
     if args.latency_profiling:
-        h['mosaic_event_sample_mod'] = args.sample_delay if lat_override is None else lat_override
+        sample_delay = 100 if args.sample_delay is None else args.sample_delay
+        h['mosaic_event_sample_mod'] = sample_delay if lat_override is None else lat_override
     if args.message_profiling:
-        h['mosaic_sendupoly_sample_mod'] = args.sample_delay
-        h['mosaic_sendpoly_sample_mod'] = args.sample_delay
-
+        sample_delay = 1 if args.sample_delay is None else args.sample_delay
+        h['mosaic_sendupoly_sample_mod'] = sample_delay
+        h['mosaic_sendpoly_sample_mod'] = sample_delay
 
 def create_local_file(args):
     extra_args = parse_extra_args(args.extra_args)
@@ -202,7 +203,7 @@ def create_local_file(args):
 
         if role == 'switch' or role == 'switch_old':
             # latency profiling needs full switch logging
-            add_profiling(peer, args, lat_override=0)
+            add_profiling(peer, args, lat_override=1)
             if args.csv_path:
                 peer['switch_path'] = args.csv_path
             if args.tpch_data_path:
@@ -269,7 +270,7 @@ def create_dist_file(args):
     switch_role.update(pmap if pmap is not None else {})
     switch_role.update(opt_route if opt_route is not None else {})
     # latency profiling needs full switch logging
-    add_profiling(switch_role, args, lat_override=0)
+    add_profiling(switch_role, args, lat_override=1)
 
     switch_role.update(extra_args)
 
@@ -400,7 +401,7 @@ def main():
                         default=False, dest="message_profiling", help="activate profiling")
     parser.add_argument("--switch-method", default='round_robin',
                         dest="switch_method", help="How to assign switches")
-    parser.add_argument("--sample-delay", default='100',
+    parser.add_argument("--sample-delay",
                         dest='sample_delay', help="How often to sample")
     args = parser.parse_args()
     if args.run_mode == "dist":
