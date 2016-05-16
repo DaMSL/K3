@@ -133,11 +133,14 @@ def default_profiling(h):
     h['mosaic_sendput_sample_mod'] = largenum
     h['mosaic_push_sample_mod'] = largenum
     h['mosaic_msgcount_sample_mod'] = largenum
+
     h['mosaic_sendupoly_buffer_batch_sz'] = batch_sz
     h['mosaic_sendpoly_buffer_batch_sz'] = batch_sz
     h['mosaic_event_buffer_batch_sz'] = batch_sz
+    h['mosaic_route_buffer_batch_sz'] = batch_sz
+    h['mosaic_sendput_buffer_batch_sz'] = batch_sz
+    h['mosaic_push_buffer_batch_sz'] = batch_sz
     h['mosaic_msgcount_buffer_batch_sz'] = batch_sz
-
 
 def add_profiling(h, args, lat_override=None):
     if args.latency_profiling or args.message_profiling:
