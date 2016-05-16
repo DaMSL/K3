@@ -533,7 +533,8 @@ end
 # local deployment
 def run_deploy_k3_local(bin_path)
   local_path = File.join($workdir, 'local')
-  local_yaml_path = File.join(local_path, $nice_name + '.yaml')
+  `rm -r #{File.join(local_path, "*")}`
+  local_yaml_path = File.join(local_path, 'peers0.yaml')
   out_path = File.join(local_path, 'stdout_local.txt')
   role_path = $options[:raw_yaml_file] ? $options[:raw_yaml_file] : local_yaml_path
 
@@ -867,12 +868,13 @@ end
 
 # create heat maps for messages
 def plot_messages(jobid)
-  job_path = File.join($workdir, "job_#{jobid}")
+  job_s = $options[:run_mode] == :local ? "local" : "job_#{jobid}" 
+  jobid = $options[:run_mode] == :local ? "local" : jobid
+  job_path = File.join($workdir, job_s)
   plots_path = File.join($script_path, "plots")
-  yaml_path = $options[:run_mode] == :local ? "local_msgs.yaml" : File.join(job_path, "#{jobid}_msgs.yaml")
-  local_path = File.join($workdir, "#{$nice_name}_local.yaml")
-  path = $options[:run_mode] == :local ? "-f #{local_path}" : "-j #{job_path}"
-  heat_path = $options[:run_mode] == :local ? "heat" : File.join(job_path, "heat")
+  yaml_path = File.join(job_path, "#{jobid}_msgs.yaml")
+  path = "-j #{job_path}"
+  heat_path = File.join(job_path, "heat")
 
   puts "Post-Processing Message Counts"
   run("#{File.join(plots_path, "process-msg-counts.rb")} #{path} > #{yaml_path}", always_out:true)
