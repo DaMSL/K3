@@ -868,7 +868,7 @@ end
 
 # create heat maps for messages
 def plot_messages(jobid)
-  job_s = $options[:run_mode] == :local ? "local" : "job_#{jobid}" 
+  job_s = $options[:run_mode] == :local ? "local" : "job_#{jobid}"
   jobid = $options[:run_mode] == :local ? "local" : jobid
   job_path = File.join($workdir, job_s)
   plots_path = File.join($script_path, "plots")
@@ -1053,13 +1053,20 @@ def main()
   end
 
   if $options[:deploy_k3]
+    if !$options[:tpch_data_path] && !$options[:k3_csv_path]
+      puts "Must have a data path"
+      exit 1
+    end
     if $options[:dry_run]
       role_path = $options[:raw_yaml_file] ? $options[:raw_yaml_file] : File.join($workdir, $nice_name + "_local.yaml")
       gen_yaml(role_path) unless $options[:raw_yaml_file]
-    elsif $options[:run_mode] == :local
-      run_deploy_k3_local(bin_path)
     else
-      jobid = run_deploy_k3_remote(uid, bin_path)
+      if $options[:run_mode] == :local
+        run_deploy_k3_local(bin_path)
+      else
+        jobid = run_deploy_k3_remote(uid, bin_path)
+      end
+      $options[:process_memory] = True
     end
   end
 
@@ -1068,7 +1075,8 @@ def main()
 
   post_process_latencies(jobid) if $options[:process_latencies]
 
-  post_process_memory(jobid)
+  # Cheap, so we do it on every real run as well
+  post_process_memory(jobid) if $options[:process_memory]
 
   #plot messages
   plot_messages(jobid) if $options[:plot_messages]
