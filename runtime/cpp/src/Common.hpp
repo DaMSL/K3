@@ -314,7 +314,7 @@ class ConcurrentHashMap : public boost::basic_lockable_adapter<boost::mutex>
 // Supports NUM-1 readers, and 1 writer
 class FastLock {
   public:
-  FastLock() : i(0) {}
+  FastLock() : lock(0), intent(0) {}
   const int NUM = 5000;
   void read_lock() {
     // Try to take the intent. If anyone is trying to write, we can't take intent
@@ -363,7 +363,7 @@ class FastLockReader {
 class FastLockWriter {
   public:
   FastLockWriter(FastLock &f) : lock_(f) { lock_.write_lock(); }
-  ~FastLockWriter() { if (release_) lock.write_unlock(); }
+  ~FastLockWriter() { if (release_) lock_.write_unlock(); }
   void release() {
     release_ = false;
     lock_.write_unlock();
