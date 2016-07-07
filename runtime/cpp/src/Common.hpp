@@ -311,41 +311,65 @@ class ConcurrentHashMap : public boost::basic_lockable_adapter<boost::mutex>
 };
 
 // Fast lock based on no sleep: every operation must be short
-struct FastLock {
+// Supports NUM-1 readers, and 1 writer
+class FastLock {
+  public:
   FastLock() : i(0) {}
-  std::atomic_int i;
+  const int NUM = 5000;
+  void read_lock() {
+    // Try to take the intent. If anyone is trying to write, we can't take intent
+    while (intent.fetch_add(1) < 0) {
+      --intent;
+    }
+    --lock;
+  }
+  void read_unlock() {
+    ++lock;
+    ++intent;
+  }
+  void write_lock() {
+    // Announce intent to lock. Can only do so if nobody else has write-locked
+    while (intent.fetch_sub(NUM) < 0) {
+      intent += NUM;
+    }
+    // All readers and other writers should exit now
+    while (lock.fetch_sub(NUM) != 0) {
+      lock += NUM;
+    }
+    lock -= NUM; // Take write lock
+  }
+  void write_unlock() {
+    lock += NUM;
+    intent += NUM;
+  }
+
+  protected:
+  std::atomic_int intent;
+  std::atomic_int lock;
 };
 
 class FastLockReader {
   public:
-  FastLockReader(FastLock &f) : lock_(f) {
-    // Try to take the lock by adding to the number. Spinlock
-    while(lock_.i.fetch_add(1) < 0) { --lock_.i; }
-  }
-
+  FastLockReader(FastLock &f) : lock_(f) { lock_.read_lock(); }
+  ~FastLockReader() { if (release_) lock_.read_unlock(); }
   void release() {
     release_ = false;
-    --lock_.i;
+    lock_.read_unlock();
   }
-
-  ~FastLockReader() { if (release_) { --lock_.i; }; }
-
   protected:
   bool release_ = true;
   FastLock& lock_;
 };
-
-#define VAL 100000
-
 class FastLockWriter {
   public:
-  FastLockWriter(FastLock &f) : lock_(f) {
-    // Try to take the lock by adding to the number. Spinlock
-    while(lock_.i.fetch_sub(VAL) > 0) { lock_.i += VAL; }
+  FastLockWriter(FastLock &f) : lock_(f) { lock_.write_lock(); }
+  ~FastLockWriter() { if (release_) lock.write_unlock(); }
+  void release() {
+    release_ = false;
+    lock_.write_unlock();
   }
-  ~FastLockWriter() { lock_.i += VAL; }
-
   protected:
+  bool release_ = true;
   FastLock& lock_;
 };
 
