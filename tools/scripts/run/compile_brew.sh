@@ -5,5 +5,5 @@ dist/build/k3/k3 \
 	--mpargs package-db=$SNDPATH --mpsearch src \
 	compile \
 	  --gcc -l cpp \
-		--cpp-flags='-DK3MESSAGETRACE -DK3GLOBALTRACE -DK3TRIGGERTIMES  -DBOOST_LOG_DYN_LINK -DYAS_SERIALIZE_BOOST_TYPES=1 -Iruntime/cpp/include -Iruntime/cpp/include/external -lboost_serialization-mt -lboost_system-mt -lboost_regex-mt -lboost_thread-mt -lyaml-cpp -lpthread -lboost_log_setup-mt -lboost_log-mt -lboost_program_options-mt -lcsvpp -ftemplate-depth-1024 -O4' \
+		--cpp-flags='-DK3MESSAGETRACE -DK3GLOBALTRACE -DK3TRIGGERTIMES  -DBOOST_LOG_DYN_LINK -DYAS_SERIALIZE_BOOST_TYPES=1 -Iruntime/cpp/src -Iruntime/cpp/src/external -lboost_serialization-mt -lboost_system-mt -lboost_regex-mt -lboost_thread-mt -lyaml-cpp -lpthread -lboost_log_setup-mt -lboost_log-mt -lboost_program_options-mt -lcsvpp -ftemplate-depth-1024 -O4' \
 		-r runtime $@

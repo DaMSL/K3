@@ -18,5 +18,5 @@ dist/build/k3/k3 \
   --mpargs package-db=$SNDPATH --mpsearch src $K3MPARGS \
   compile \
     $CXX -l cpp \
-    --cpp-flags="-DK3MESSAGETRACE -DK3GLOBALTRACE -DK3TRIGGERTIMES -DBOOST_LOG_DYN_LINK -DYAS_SERIALIZE_BOOST_TYPES=1 -Iruntime/cpp/include/ -Iruntime/cpp/include/external ${BSLINCLUDE} ${K3_CXXFLAGS} -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp -ldynamic -lbsl -lbdl -ftemplate-depth-1024 -O4" \
+    --cpp-flags="-DK3MESSAGETRACE -DK3GLOBALTRACE -DK3TRIGGERTIMES -DBOOST_LOG_DYN_LINK -DYAS_SERIALIZE_BOOST_TYPES=1 -Iruntime/cpp/src/ -Iruntime/cpp/src/external ${BSLINCLUDE} ${K3_CXXFLAGS} -lboost_serialization -lboost_system -lboost_regex -lboost_thread -lyaml-cpp -lpthread -lboost_log_setup -lboost_log -lboost_program_options -lcsvpp -ldynamic -lbsl -lbdl -ftemplate-depth-1024 -O4" \
     -r runtime $@
