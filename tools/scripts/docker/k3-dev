@@ -113,43 +113,9 @@ RUN echo 'deb http://ppa.launchpad.net/hvr/ghc/ubuntu wily main' > /etc/apt/sour
     cabal install cabal-install -j
 
 # Install decent vim configuration
-RUN mkdir -p /root/.vim/autoload && mkdir -p /root/.vim/bundle \
-    cd /root/.vim && \
-    curl -LSso /root/.vim/autoload/pathogen.vim https://raw.githubusercontent.com/tpope/vim-pathogen/master/autoload/pathogen.vim && \
-    cd /root/.vim/bundle && \
-    git clone https://github.com/tpope/vim-sensible.git; \
-    git clone https://github.com/tmhedberg/matchit.git; \
-    git clone https://github.com/kien/ctrlp.vim.git; \
-    git clone https://github.com/tpope/vim-abolish.git; \
-    git clone https://github.com/tpope/vim-surround.git; \
-    git clone https://github.com/tpope/vim-unimpaired.git; \
-    git clone https://github.com/tpope/vim-repeat.git; \
-    git clone https://github.com/tpope/vim-vinegar.git; \
-    git clone https://github.com/tpope/vim-sleuth.git; \
-    git clone https://github.com/tpope/vim-eunuch.git; \
-    git clone https://github.com/tpope/vim-fugitive.git; \
-    git clone https://github.com/int3/vim-extradite.git; \
-    git clone https://github.com/scrooloose/nerdtree.git; \
-    git clone https://github.com/scrooloose/syntastic.git; \
-    git clone https://github.com/godlygeek/tabular.git; \
-    git clone https://github.com/kshenoy/vim-signature.git; \
-    git clone https://github.com/bling/vim-airline.git; \
-    git clone https://github.com/kana/vim-textobj-lastpat.git; \
-    git clone https://github.com/kana/vim-textobj-user.git; \
-    git clone https://github.com/kana/vim-textobj-syntax.git; \
-    git clone https://github.com/kana/vim-textobj-line.git; \
-    git clone https://github.com/coderifous/textobj-word-column.vim.git; \
-    git clone https://github.com/bronson/vim-visual-star-search.git; \
-    git clone https://github.com/justinmk/vim-sneak.git; \
-    git clone https://github.com/chrisbra/NrrwRgn.git; \
-    git clone https://github.com/welle/targets.vim.git; \
-    git clone https://github.com/sjl/gundo.vim.git; \
-    git clone https://github.com/Peeja/vim-cdo.git; \
-    git clone https://github.com/tomtom/tcomment_vim.git; \
-    git clone https://github.com/airblade/vim-gitgutter.git; \
-    git clone https://github.com/jreybert/vimagit.git; \
-    echo 'execute pathogen#infect() | syntax on | filetype plugin indent on' > /root/.vimrc; \
-    cd /
+RUN git clone https://github.com/bluddy/dotfiles.git && \
+    cp dotfiles/vimrc_min /root/.vimrc && \
+    vim -c 'PlugInstall' -c 'wa'
 
 # Clone K3-Mosaic from Git and build
 RUN eval `opam config env` && \
