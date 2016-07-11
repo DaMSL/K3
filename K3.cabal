@@ -62,7 +62,7 @@ executable k3
         heaps,
         hint,
         hslogger,
-        hssqlppp,
+        hssqlppp <= 0.4.2,
         ieee754 == 0.7.4,
         monad-par,
         monad-par-extras,
